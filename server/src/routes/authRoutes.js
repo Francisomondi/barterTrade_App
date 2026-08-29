@@ -1,5 +1,4 @@
 import express from "express";
-
 import passport from "../config/passport.js";
 
 import {
@@ -8,7 +7,7 @@ import {
   getMe,
 } from "../controllers/authController.js";
 
-import { protect } from "../middlewares/authMiddleware.js";
+import { protect } from "../middleware/authMiddleware.js";
 
 import { generateToken } from "../utils/auth.js";
 
@@ -39,7 +38,9 @@ router.get(
     const token = generateToken(req.user);
 
     res.redirect(
-      `http://localhost:5173/auth/callback?token=${token}`
+      `http://localhost:5173/auth/callback?token=${encodeURIComponent(
+        token
+      )}`
     );
   }
 );

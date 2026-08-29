@@ -11,21 +11,14 @@ passport.use(
       callbackURL: process.env.GOOGLE_CALLBACK_URL,
     },
 
-    async (
-      accessToken,
-      refreshToken,
-      profile,
-      done
-    ) => {
+    async (accessToken, refreshToken, profile, done) => {
       try {
         const email =
           profile.emails?.[0]?.value?.toLowerCase();
 
         if (!email) {
           return done(
-            new Error(
-              "Google account does not have an email"
-            )
+            new Error("Google account does not have an email")
           );
         }
 
@@ -53,24 +46,37 @@ passport.use(
               authProvider: "GOOGLE",
             },
           });
-        } else if (!user.googleId) {
-          user = await prisma.user.update({
-            where: {
-              id: user.id,
-            },
+        } else {
+          const updates = {};
 
-            data: {
-              googleId: profile.id,
-              avatar:
-                user.avatar ||
-                profile.photos?.[0]?.value ||
-                null,
-            },
-          });
+          if (!user.googleId) {
+            updates.googleId = profile.id;
+          }
+
+          if (!user.avatar && profile.photos?.[0]?.value) {
+            updates.avatar = profile.photos[0].value;
+          }
+
+          if (Object.keys(updates).length > 0) {
+            user = await prisma.user.update({
+              where: {
+                id: user.id,
+              },
+              data: updates,
+            });
+          }
+        }
+
+        if (user.status !== "ACTIVE") {
+          return done(
+            new Error("This account is not active")
+          );
         }
 
         return done(null, user);
       } catch (error) {
+        console.error("GOOGLE AUTH ERROR:", error);
+
         return done(error, null);
       }
     }
