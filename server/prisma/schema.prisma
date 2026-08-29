@@ -96,9 +96,11 @@ model User {
   id              String       @id @default(uuid())
   name            String
   email           String       @unique
-  password        String
+  password        String?
   phone           String?      @unique
   avatar          String?
+  googleId        String?      @unique
+  authProvider    String       @default("LOCAL")
   bio             String?
   location        String?
   role            UserRole     @default(USER)
