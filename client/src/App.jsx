@@ -12,21 +12,41 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import AuthCallback from "./pages/AuthCallback";
 
+import Marketplace from "./pages/Marketplace";
+import CreateListing from "./pages/CreateListing";
+import ListingDetails from "./pages/ListingDetails";
+import MyListings from "./pages/MyListings";
+
 import ProtectedRoute from "./components/ProtectedRoute";
+import Navbar from "./components/Navbar";
 
 const App = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
+
+        <Navbar />
+
         <Routes>
+
           <Route
             path="/"
             element={
               <Navigate
-                to="/login"
+                to="/marketplace"
                 replace
               />
             }
+          />
+
+          <Route
+            path="/marketplace"
+            element={<Marketplace />}
+          />
+
+          <Route
+            path="/listings/:id"
+            element={<ListingDetails />}
           />
 
           <Route
@@ -45,12 +65,36 @@ const App = () => {
           />
 
           <Route element={<ProtectedRoute />}>
+
             <Route
               path="/dashboard"
               element={<Dashboard />}
             />
+
+            <Route
+              path="/listings/create"
+              element={<CreateListing />}
+            />
+
+            <Route
+              path="/my-listings"
+              element={<MyListings />}
+            />
+
           </Route>
+
+          <Route
+            path="*"
+            element={
+              <Navigate
+                to="/marketplace"
+                replace
+              />
+            }
+          />
+
         </Routes>
+
       </AuthProvider>
     </BrowserRouter>
   );

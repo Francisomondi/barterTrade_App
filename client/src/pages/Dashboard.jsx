@@ -1,53 +1,65 @@
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { Link } from "react-router-dom";
 
 const Dashboard = () => {
-  const navigate = useNavigate();
-
-  const {user,logout} = useAuth();
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
-  if (!user) {
-    return null;
-  }
-
   return (
-    <div>
-      <h1>Welcome, {user.name}</h1>
+    <div className="min-h-screen bg-gray-50 p-6">
 
-      <p>
-        You are successfully logged into Barter Trade.
-      </p>
+      <div className="mx-auto max-w-7xl">
 
-      <div>
-        <p>
-          <strong>Email:</strong>{" "}
-          {user.email}
+        <h1 className="text-3xl font-bold">
+          Dashboard
+        </h1>
+
+        <p className="mt-2 text-gray-500">
+          Welcome to Barter Trade.
         </p>
 
-        <p>
-          <strong>Role:</strong>{" "}
-          {user.role}
-        </p>
+        <div className="mt-8 grid gap-5 md:grid-cols-3">
 
-        <p>
-          <strong>Barter Score:</strong>{" "}
-          {user.barterScore}
-        </p>
+          <Link
+            to="/marketplace"
+            className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
+          >
+            <h2 className="text-xl font-bold">
+              Marketplace
+            </h2>
 
-        <p>
-          <strong>Completed Trades:</strong>{" "}
-          {user.completedTrades}
-        </p>
+            <p className="mt-2 text-gray-500">
+              Browse items available for
+              barter.
+            </p>
+          </Link>
+
+          <Link
+            to="/listings/create"
+            className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
+          >
+            <h2 className="text-xl font-bold">
+              List an Item
+            </h2>
+
+            <p className="mt-2 text-gray-500">
+              Put something up for barter.
+            </p>
+          </Link>
+
+          <Link
+            to="/my-listings"
+            className="rounded-2xl bg-white p-6 shadow-sm transition hover:shadow-md"
+          >
+            <h2 className="text-xl font-bold">
+              My Listings
+            </h2>
+
+            <p className="mt-2 text-gray-500">
+              Manage your barter items.
+            </p>
+          </Link>
+
+        </div>
+
       </div>
 
-      <button onClick={handleLogout}>
-        Logout
-      </button>
     </div>
   );
 };

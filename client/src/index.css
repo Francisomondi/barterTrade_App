@@ -1,87 +1,25 @@
-* {
-  box-sizing: border-box;
+
+@import "tailwindcss";
+
+:root {
+  --color-maroon-950: #320b14;
+  --color-maroon-900: #3d0f18;
+  --color-maroon-800: #4b121e;
+  --color-maroon-700: #5b1725;
+  --color-maroon-600: #701f30;
+  --color-maroon-500: #8a2638;
+  --color-maroon-100: #f5e8eb;
+  --color-maroon-50: #fbf5f6;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f5f7fb;
+  min-width: 320px;
+  background: #f8f5f3;
+  color: #21191b;
 }
 
-.auth-page {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.auth-card {
-  width: 100%;
-  max-width: 450px;
-  background: white;
-  padding: 32px;
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
-}
-
-.auth-card h1 {
-  margin-top: 0;
-}
-
-.auth-card form {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.auth-card label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-}
-
-.auth-card input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 16px;
-}
-
-.auth-card button {
-  width: 100%;
-  padding: 13px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.auth-error {
-  margin-bottom: 16px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0;
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  height: 1px;
-  background: #ddd;
-  flex: 1;
-}
-
-.google-button {
-  margin-bottom: 16px;
-}
