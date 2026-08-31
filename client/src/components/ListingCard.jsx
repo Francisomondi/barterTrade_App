@@ -3,9 +3,7 @@ import { Link } from "react-router-dom";
 const ListingCard = ({
   listing,
 }) => {
-  const image =
-    listing.images?.[0]?.url ||
-    "https://placehold.co/600x400?text=Barter+Trade";
+  const image = listing.images?.[0]?.url || "https://placehold.co/600x400?text=Barter+Trade";
 
   return (
     <Link
@@ -13,7 +11,7 @@ const ListingCard = ({
       className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
     >
 
-      <div className="aspect-[4/3] overflow-hidden bg-gray-100">
+      <div className="overflow-hidden bg-gray-100">
 
         <img
           src={image}

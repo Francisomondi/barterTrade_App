@@ -6,7 +6,7 @@ const CategoryCard = ({
   return (
     <button
       onClick={() => onClick(category.id)}
-      className={`min-w-[150px] rounded-2xl border p-4 text-left transition ${
+      className={`rounded-2xl border p-4 text-left transition ${
         active
           ? "border-green-600 bg-green-600 text-white"
           : "border-gray-200 bg-white hover:border-green-400"

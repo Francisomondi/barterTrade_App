@@ -1,10 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-
-import {
-  getMyListings,
-  removeListing,
-} from "../api/listingApi";
+import { getMyListings, removeListing} from "../api/listingApi";
 
 const MyListings = () => {
   const [listings, setListings] =
@@ -116,7 +112,7 @@ const MyListings = () => {
                   <img
                     src={image}
                     alt={listing.title}
-                    className="aspect-[4/3] w-full object-cover"
+                    className="w-full object-cover"
                   />
 
                   <div className="p-4">

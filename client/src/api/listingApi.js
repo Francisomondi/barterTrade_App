@@ -9,33 +9,25 @@ export const getListings = async (params = {}) => {
 };
 
 export const getListingById = async (id) => {
-  const response = await api.get(
-    `/listings/${id}`
-  );
+  const response = await api.get(`/listings/${id}`);
 
   return response.data;
 };
 
 export const getMyListings = async () => {
-  const response = await api.get(
-    "/listings/user/me"
-  );
+  const response = await api.get("/listings/user/me");
 
   return response.data;
 };
 
 export const createListing = async (listingData) => {
-  const response = await api.post(
-    "/listings",
-    listingData
-  );
+  const response = await api.post("/listings", listingData);
 
   return response.data;
 };
 
 export const removeListing = async (id) => {
-  const response = await api.delete(
-    `/listings/${id}`
+  const response = await api.delete(`/listings/${id}`
   );
 
   return response.data;
