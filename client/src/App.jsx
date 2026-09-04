@@ -83,10 +83,7 @@ const App = () => {
               element={<MyListings />}
             />
 
-            <Route
-              path="/listings/:id/make-offer"
-              element={<MakeOffer />}
-            />
+            <Route path="/make-offer/:id" element={<MakeOffer />} />
             <Route path="/offers" element={<Offers />} />
 
           </Route>

@@ -5,6 +5,7 @@ import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import listingRoutes from "./routes/listingRoutes.js";
 import offerRoutes from "./routes/offerRoutes.js";
+import tradeRoutes from "./routes/tradeRoutes.js";
 
 const app = express();
 
@@ -30,5 +31,6 @@ app.use("/api/auth", authRoutes);
 app.use( "/api/categories", categoryRoutes);
 app.use( "/api/listings", listingRoutes);
 app.use("/api/offers",offerRoutes)
+app.use("/api/trades", tradeRoutes);
 
 export default app;
