@@ -1,19 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import {
-  getCategories,
-} from "../api/categoryApi";
-
-import {
-  createListing,
-} from "../api/listingApi";
+import {getCategories} from "../api/categoryApi";
+import { createListing} from "../api/listingApi";
 
 const CreateListing = () => {
   const navigate = useNavigate();
 
-  const [categories, setCategories] =
-    useState([]);
+  const [categories, setCategories] = useState([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -26,17 +19,10 @@ const CreateListing = () => {
     location: "",
   });
 
-  const [imageUrl, setImageUrl] =
-    useState("");
-
-  const [images, setImages] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [images, setImages] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const loadCategories = async () => {
@@ -156,7 +142,7 @@ const CreateListing = () => {
       <div className="mx-auto max-w-4xl">
         <div className="mb-8">
           <p className="text-sm font-medium text-green-600">
-            BARter TRADE
+            Barter Trade
           </p>
 
           <h1 className="mt-2 text-3xl font-bold">

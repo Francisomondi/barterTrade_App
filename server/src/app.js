@@ -4,6 +4,7 @@ import passport from "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import listingRoutes from "./routes/listingRoutes.js";
+import offerRoutes from "./routes/offerRoutes.js";
 
 const app = express();
 
@@ -28,5 +29,6 @@ app.get("/api/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use( "/api/categories", categoryRoutes);
 app.use( "/api/listings", listingRoutes);
+app.use("/api/offers",offerRoutes)
 
 export default app;

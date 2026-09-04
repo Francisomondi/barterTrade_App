@@ -17,6 +17,8 @@ import CreateListing from "./pages/CreateListing";
 import ListingDetails from "./pages/ListingDetails";
 import MyListings from "./pages/MyListings";
 
+import MakeOffer from "./pages/MakeOffer";
+import Offers from "./pages/Offers";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Navbar from "./components/Navbar";
 
@@ -80,6 +82,12 @@ const App = () => {
               path="/my-listings"
               element={<MyListings />}
             />
+
+            <Route
+              path="/listings/:id/make-offer"
+              element={<MakeOffer />}
+            />
+            <Route path="/offers" element={<Offers />} />
 
           </Route>
 

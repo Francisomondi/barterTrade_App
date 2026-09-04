@@ -1,24 +1,16 @@
 import { useEffect, useState } from "react";
-import {
-  Link,
-  useParams,
-} from "react-router-dom";
+import {Link,useParams,useNavigate} from "react-router-dom";
+import {getListingById} from "../api/listingApi";
 
-import {
-  getListingById,
-} from "../api/listingApi";
 
 const ListingDetails = () => {
   const { id } = useParams();
 
-  const [listing, setListing] =
-    useState(null);
+  const navigate = useNavigate();
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [error, setError] =
-    useState("");
+  const [listing, setListing] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const loadListing = async () => {
@@ -208,9 +200,16 @@ const ListingDetails = () => {
             </div>
 
             <button
-              className="mt-6 w-full rounded-xl bg-green-600 py-4 font-semibold text-white hover:bg-green-700"
+              onClick={() =>
+                navigate("/make-offer", {
+                  state: {
+                    listing,
+                  },
+                })
+              }
+              className="rounded-xl bg-[#5B1725] px-6 py-3 font-bold text-white shadow-lg transition hover:bg-[#3D0F18]"
             >
-              Offer a Trade
+              Make Trade Offer
             </button>
           </div>
         </div>

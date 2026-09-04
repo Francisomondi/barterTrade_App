@@ -104,154 +104,137 @@ const Marketplace = () => {
           HERO
       ======================================================= */}
 
-      <section className="relative isolate overflow-hidden]">
+    {/* HERO */}
+    <section className="relative isolate min-h-[620px] overflow-hidden bg-[#3D0F18]">
 
-        {/* 3D BACKGROUND IMAGE */}
+      {/* 3D BACKGROUND IMAGE */}
+      <div
+        className="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage:
+            "url('/images/hero.jpeg')",
+        }}
+      />
 
-        <div
-          className="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage:
-              "url('/images/hero.jpeg')",
-          }}
-        />
+      {/* IMAGE DARKENING / OPACITY */}
+      <div className="absolute inset-0 -z-10 bg-[#3D0F18]/75" />
 
-        {/* IMAGE OPACITY */}
+      {/* MAROON GRADIENT */}
+      <div className="absolute inset-0 -z-10 " />
 
-        <div className="absolute inset-0 -z-10 bg-[#3D0F18]/60" />
+      {/* 3D DECORATIVE GLOW */}
+      <div className="pointer-events-none absolute -right-40 -top-40 -z-10 h-[500px] w-[500px] rounded-full bg-[#A83A50]/20 blur-[100px]" />
 
-        {/* DARK MAROON OVERLAY */}
+      <div className="pointer-events-none absolute -bottom-40 -left-40 -z-10 h-[500px] w-[500px] rounded-full bg-[#701F30]/30 blur-[100px]" />
 
-        <div className="absolute inset-0 -z-10" />
+      {/* HERO CONTENT */}
+      <div className="mx-auto flex min-h-[620px] max-w-7xl items-center px-6 py-20 md:px-8">
 
-        {/* BOTTOM FADE */}
+        <div className="max-w-4xl">
 
-        <div className="absolute inset-x-0 bottom-0 -z-10 h-40 " />
+          {/* BADGE */}
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white shadow-lg backdrop-blur-md">
 
-        {/* DECORATIVE GLOW */}
+            <span className="h-2 w-2 rounded-full bg-[#DCAEB7]" />
 
-        <div className="absolute -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-[#8A2638]/30 blur-3xl" />
+            Kenya's Barter Marketplace
 
-        <div className="absolute -bottom-40 left-20 -z-10 h-96 w-96 rounded-full bg-[#701F30]/30 blur-3xl" />
+          </div>
 
-        {/* HERO CONTENT */}
+          {/* TITLE */}
+          <h1 className="max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl md:text-7xl">
 
-        <div className="mx-auto max-w-7xl px-6 py-20 md:py-28 lg:py-32">
+            Trade what you have
 
-          <div className="max-w-3xl">
+            <br />
 
-            {/* BADGE */}
+            <span className="text-[#DCAEB7]">
+              for what you need.
+            </span>
 
-            <div className="mb-7 inline-flex items-center gap-3 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur-md">
+          </h1>
 
-              <span className="h-2.5 w-2.5 rounded-full bg-[#DCAEB7] shadow-[0_0_12px_rgba(220,174,183,0.8)]" />
+          {/* DESCRIPTION */}
+          <p className="mt-7 max-w-2xl text-base leading-7 text-white/80 md:text-lg">
 
-              Kenya&apos;s Barter Marketplace
+            Exchange items of similar value
+            with people around you.
 
-            </div>
+            <br className="hidden md:block" />
 
-            {/* HEADING */}
+            No complicated buying process.
+            Just find an item, make an offer
+            and trade.
 
-            <h1 className="text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
+          </p>
 
-              Trade what you have
+          {/* SEARCH */}
+          <div className="mt-10 max-w-4xl">
 
-              <br />
+            <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 shadow-2xl backdrop-blur-xl md:flex-row">
 
-              <span className="text-[#DCAEB7]">
-                for what you need.
-              </span>
+              <div className="relative flex-1">
 
-            </h1>
-
-            {/* DESCRIPTION */}
-
-            <p className="mt-7 max-w-2xl text-base leading-7 text-white/80 md:text-lg">
-
-              Exchange items of similar value
-              with other people without
-              traditional buying and selling.
-
-              <span className="block mt-2 text-white/60">
-                Find it. Offer it. Trade it.
-              </span>
-
-            </p>
-
-            {/* SEARCH CONTAINER */}
-
-            <div className="mt-10 max-w-4xl">
-
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/20 bg-white/10 p-3 shadow-2xl backdrop-blur-xl md:flex-row">
-
-                {/* SEARCH INPUT */}
-
-                <div className="relative flex-1">
-
-                  <span className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-xl text-gray-400">
-                    🔍
-                  </span>
-
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) =>
-                      setSearch(e.target.value)
-                    }
-                    placeholder="Search phones, cars, laptops, furniture..."
-                    className="w-full rounded-xl border border-white/20 bg-white px-12 py-4 text-gray-900 shadow-lg outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:ring-4 focus:ring-[#8A2638]/20"
-                  />
-
+                <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl">
+                  🔍
                 </div>
 
-                {/* SEARCH BUTTON */}
-
-                <button
-                  type="button"
-                  className="rounded-xl bg-[#8A2638] px-8 py-4 font-bold text-white shadow-lg transition duration-200 hover:bg-[#701F30] hover:shadow-xl active:scale-[0.98]"
-                >
-                  Search
-                </button>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) =>
+                    setSearch(e.target.value)
+                  }
+                  placeholder="Search phones, cars, laptops, furniture..."
+                  className="w-full rounded-xl border border-white/10 bg-white px-12 py-4 text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:ring-4 focus:ring-[#8A2638]/20"
+                />
 
               </div>
 
-            </div>
-
-            {/* POPULAR SEARCHES */}
-
-            <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
-
-              <span className="font-medium text-white/50">
-                Popular:
-              </span>
-
-              {[
-                "iPhone",
-                "Laptop",
-                "Car",
-                "Furniture",
-              ].map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setSearch(item)}
-                  className="rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-white/75 backdrop-blur-sm transition hover:border-white/30 hover:bg-white/20 hover:text-white"
-                >
-                  {item}
-                </button>
-              ))}
+              <button
+                type="button"
+                className="rounded-xl bg-[#8A2638] px-8 py-4 font-bold text-white shadow-lg transition hover:bg-[#701F30] hover:shadow-xl"
+              >
+                Search
+              </button>
 
             </div>
 
           </div>
 
+          {/* POPULAR SEARCHES */}
+          <div className="mt-6 flex flex-wrap items-center gap-3 text-sm">
+
+            <span className="text-white/50">
+              Popular:
+            </span>
+
+            {[
+              "iPhone",
+              "Laptop",
+              "Car",
+              "Furniture",
+            ].map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setSearch(item)}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-white/70 backdrop-blur transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+              >
+                {item}
+              </button>
+            ))}
+
+          </div>
+
         </div>
 
-        {/* HERO BOTTOM CURVE */}
+      </div>
 
-        <div className="absolute bottom-0 left-0 right-0 h-8 rounded-t-[50%] bg-[#F8F5F3]" />
+      {/* BOTTOM CURVE */}
+      <div className="absolute bottom-0 left-0 right-0 h-10 rounded-t-[50%] bg-[#F8F5F3]" />
 
-      </section>
+    </section>
 
       {/* ======================================================
           MAIN

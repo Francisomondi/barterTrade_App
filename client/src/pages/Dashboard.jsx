@@ -1,6 +1,9 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+
 
 const Dashboard = () => {
+
+  const navigate = useNavigate();
   return (
     <div className="min-h-screen bg-gray-50 p-6">
 
@@ -57,6 +60,31 @@ const Dashboard = () => {
           </Link>
 
         </div>
+
+      
+    <div
+      onClick={() => navigate("/offers")}
+      className="group cursor-pointer rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+    >
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5E8EB] text-2xl transition group-hover:scale-110">
+        🤝
+      </div>
+
+      <h3 className="mt-4 text-lg font-black text-[#21191B]">
+        My Trade Offers
+      </h3>
+
+      <p className="mt-2 text-sm leading-6 text-gray-500">
+        View offers you've received and offers you've
+        sent to other traders.
+      </p>
+
+      <div className="mt-4 font-bold text-[#5B1725]">
+        Manage Offers →
+      </div>
+    </div>
+
+
 
       </div>
 

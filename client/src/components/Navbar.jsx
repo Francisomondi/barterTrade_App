@@ -49,6 +49,13 @@ const Navbar = () => {
             Marketplace
           </Link>
 
+          <Link
+            to="/offers"
+            className="font-semibold text-[#5B1725] transition hover:text-[#8A2638]"
+          >
+            My Offers
+          </Link>
+
           {user && (
             <>
               <Link
