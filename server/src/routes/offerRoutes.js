@@ -1,6 +1,6 @@
 
 import express from "express";
-import {createOffer,getSentOffers,getReceivedOffers,getOfferById,acceptOffer,rejectOffer,cancelOffer} from "../controllers/offerController.js";
+import {createOffer,getSentOffers,getReceivedOffers,acceptOffer,rejectOffer,cancelOffer, getOffer} from "../controllers/offerController.js";
 import {protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
@@ -21,7 +21,7 @@ router.get("/sent",protect,getSentOffers);
 router.get("/received",protect,getReceivedOffers);
 
 // Single offer
-router.get("/:id",protect,getOfferById);
+router.get("/:id",protect,getOffer);
 
 // Accept
 router.patch( "/:id/accept",protect,acceptOffer);
