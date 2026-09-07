@@ -224,22 +224,38 @@ model Offer {
 }
 
 model Trade {
-  id               String      @id @default(uuid())
-  tradeNumber      String      @unique
-  offerId          String      @unique
-  traderAId        String
-  traderBId        String
-  status           TradeStatus @default(PENDING)
-  agreedValueA     Float?
-  agreedValueB     Float?
-  handoverLocation String?
-  completedAt      DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  id          String @id @default(uuid())
+  tradeNumber String @unique
+  offerId     String @unique
 
-  offer   Offer       @relation(fields: [offerId], references: [id])
-  traderA User        @relation("TraderA", fields: [traderAId], references: [id])
-  traderB User        @relation("TraderB", fields: [traderBId], references: [id])
+  traderAId String
+  traderBId String
+
+  status TradeStatus @default(PENDING)
+
+  // Two-party confirmation
+  traderAConfirmed Boolean @default(false)
+  traderBConfirmed Boolean @default(false)
+
+  // Confirmation timestamps
+  traderAConfirmedAt DateTime?
+  traderBConfirmedAt DateTime?
+
+  agreedValueA Float?
+  agreedValueB Float?
+
+  handoverLocation String?
+
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offer Offer @relation(fields: [offerId], references: [id])
+
+  traderA User @relation("TraderA", fields: [traderAId], references: [id])
+  traderB User @relation("TraderB", fields: [traderBId], references: [id])
+
   items   TradeItem[]
   ratings Rating[]
   dispute Dispute?

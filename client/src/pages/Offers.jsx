@@ -1,5 +1,7 @@
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 import {
   getSentOffers,
   getReceivedOffers,
@@ -9,11 +11,10 @@ import {
 } from "../api/offerApi";
 
 const Offers = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("received");
-
   const [receivedOffers, setReceivedOffers] = useState([]);
   const [sentOffers, setSentOffers] = useState([]);
-
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [error, setError] = useState("");
@@ -82,7 +83,8 @@ const Offers = () => {
       const response = await rejectOffer(offerId);
 
       setSuccess(
-        response.message || "Offer rejected successfully."
+        response.message ||
+          "Offer rejected successfully."
       );
 
       await loadOffers();
@@ -107,7 +109,8 @@ const Offers = () => {
       const response = await cancelOffer(offerId);
 
       setSuccess(
-        response.message || "Offer cancelled successfully."
+        response.message ||
+          "Offer cancelled successfully."
       );
 
       await loadOffers();
@@ -188,10 +191,7 @@ const Offers = () => {
     return null;
   };
 
-  const OfferItem = ({
-    offer,
-    type,
-  }) => {
+  const OfferItem = ({ offer, type }) => {
     const isReceived = type === "received";
 
     const offeredItem = offer.offeredListing;
@@ -242,7 +242,10 @@ const Offers = () => {
                 {offeredImage ? (
                   <img
                     src={offeredImage}
-                    alt={offeredItem?.title || "Offered item"}
+                    alt={
+                      offeredItem?.title ||
+                      "Offered item"
+                    }
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -258,7 +261,8 @@ const Offers = () => {
                 </h3>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  {offeredItem?.condition || "Condition not specified"}
+                  {offeredItem?.condition ||
+                    "Condition not specified"}
                 </p>
 
                 <p className="mt-2 font-bold text-[#5B1725]">
@@ -334,23 +338,48 @@ const Offers = () => {
           </div>
         )}
 
-        {/* Trade */}
+        {/* Trade Created */}
         {offer.trade && (
-          <div className="mx-5 mb-5 rounded-xl border border-green-200 bg-green-50 p-4">
-            <p className="text-sm font-bold text-green-800">
-              ✓ Trade created
-            </p>
+          <div className="mx-5 mb-5 rounded-2xl border border-green-200 bg-green-50 p-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
+                    ✓
+                  </div>
 
-            <p className="mt-1 text-sm text-green-700">
-              Trade Number:{" "}
-              <span className="font-bold">
-                {offer.trade.tradeNumber}
-              </span>
-            </p>
+                  <p className="text-sm font-bold text-green-800">
+                    Trade Created Successfully
+                  </p>
+                </div>
 
-            <p className="mt-1 text-xs text-green-600">
-              Status: {offer.trade.status}
-            </p>
+                <p className="mt-3 text-sm text-green-700">
+                  Trade Number:{" "}
+                  <span className="font-bold">
+                    {offer.trade.tradeNumber}
+                  </span>
+                </p>
+
+                <p className="mt-1 text-xs text-green-600">
+                  Current Status:{" "}
+                  <span className="font-bold">
+                    {offer.trade.status}
+                  </span>
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/trades/${offer.trade.id}`
+                  )
+                }
+                className="rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#3D0F18]"
+              >
+                View Trade →
+              </button>
+            </div>
           </div>
         )}
 
@@ -361,8 +390,12 @@ const Offers = () => {
               <>
                 <button
                   type="button"
-                  onClick={() => handleAccept(offer.id)}
-                  disabled={actionLoading === offer.id}
+                  onClick={() =>
+                    handleAccept(offer.id)
+                  }
+                  disabled={
+                    actionLoading === offer.id
+                  }
                   className="rounded-xl bg-[#5B1725] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {actionLoading === offer.id
@@ -372,8 +405,12 @@ const Offers = () => {
 
                 <button
                   type="button"
-                  onClick={() => handleReject(offer.id)}
-                  disabled={actionLoading === offer.id}
+                  onClick={() =>
+                    handleReject(offer.id)
+                  }
+                  disabled={
+                    actionLoading === offer.id
+                  }
                   className="rounded-xl border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Reject
@@ -382,8 +419,12 @@ const Offers = () => {
             ) : (
               <button
                 type="button"
-                onClick={() => handleCancel(offer.id)}
-                disabled={actionLoading === offer.id}
+                onClick={() =>
+                  handleCancel(offer.id)
+                }
+                disabled={
+                  actionLoading === offer.id
+                }
                 className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {actionLoading === offer.id
@@ -445,7 +486,9 @@ const Offers = () => {
         <div className="mb-8 flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => setActiveTab("received")}
+            onClick={() =>
+              setActiveTab("received")
+            }
             className={`rounded-xl px-6 py-3 text-sm font-bold transition ${
               activeTab === "received"
                 ? "bg-[#5B1725] text-white shadow-lg"
@@ -453,6 +496,7 @@ const Offers = () => {
             }`}
           >
             Received Offers
+
             {receivedOffers.length > 0 && (
               <span
                 className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
@@ -468,7 +512,9 @@ const Offers = () => {
 
           <button
             type="button"
-            onClick={() => setActiveTab("sent")}
+            onClick={() =>
+              setActiveTab("sent")
+            }
             className={`rounded-xl px-6 py-3 text-sm font-bold transition ${
               activeTab === "sent"
                 ? "bg-[#5B1725] text-white shadow-lg"
@@ -476,6 +522,7 @@ const Offers = () => {
             }`}
           >
             Sent Offers
+
             {sentOffers.length > 0 && (
               <span
                 className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
@@ -542,4 +589,3 @@ const Offers = () => {
 };
 
 export default Offers;
-

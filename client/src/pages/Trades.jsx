@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
 import { getTrades } from "../api/tradeApi";
 
 const statusStyles = {

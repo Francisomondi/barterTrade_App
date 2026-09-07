@@ -3,16 +3,12 @@ import { Link } from "react-router-dom";
 import { getMyListings, removeListing} from "../api/listingApi";
 
 const MyListings = () => {
-  const [listings, setListings] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
+  const [listings, setListings] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const loadListings = async () => {
     try {
-      const data =
-        await getMyListings();
+      const data = await getMyListings();
 
       setListings(data.listings || []);
     } catch (error) {
@@ -27,11 +23,8 @@ const MyListings = () => {
   }, []);
 
   const handleRemove = async (id) => {
-    const confirmed =
-      window.confirm(
-        "Remove this listing?"
-      );
-
+    const confirmed = window.confirm("Remove this listing?");
+    
     if (!confirmed) return;
 
     try {
