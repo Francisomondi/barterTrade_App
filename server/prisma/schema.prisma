@@ -110,22 +110,23 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  listings         Listing[]
-  sentOffers       Offer[]        @relation("SentOffers")
-  receivedOffers   Offer[]        @relation("ReceivedOffers")
-  tradesAsA        Trade[]        @relation("TraderA")
-  tradesAsB        Trade[]        @relation("TraderB")
-  ratingsGiven     Rating[]       @relation("RatingsGiven")
-  ratingsReceived  Rating[]       @relation("RatingsReceived")
-  verifications    Verification[]
-  disputes         Dispute[]
-  messagesSent     Message[]      @relation("MessagesSent")
-  messagesReceived Message[]      @relation("MessagesReceived")
-  notifications    Notification[]
-  payments         Payment[]
-  promotions       Promotion[]
-  subscriptions    Subscription[]
-  matches          Match[]
+  listings           Listing[]
+  sentOffers         Offer[]             @relation("SentOffers")
+  receivedOffers     Offer[]             @relation("ReceivedOffers")
+  tradesAsA          Trade[]             @relation("TraderA")
+  tradesAsB          Trade[]             @relation("TraderB")
+  ratingsGiven       Rating[]            @relation("RatingsGiven")
+  ratingsReceived    Rating[]            @relation("RatingsReceived")
+  verifications      Verification[]
+  disputes           Dispute[]
+  messagesSent       Message[]           @relation("MessagesSent")
+  messagesReceived   Message[]           @relation("MessagesReceived")
+  notifications      Notification[]
+  payments           Payment[]
+  promotions         Promotion[]
+  subscriptions      Subscription[]
+  matches            Match[]
+  tradeConfirmations TradeConfirmation[]
 }
 
 model Category {
@@ -253,8 +254,9 @@ model Trade {
 
   offer Offer @relation(fields: [offerId], references: [id])
 
-  traderA User @relation("TraderA", fields: [traderAId], references: [id])
-  traderB User @relation("TraderB", fields: [traderBId], references: [id])
+  traderA       User                @relation("TraderA", fields: [traderAId], references: [id])
+  traderB       User                @relation("TraderB", fields: [traderBId], references: [id])
+  confirmations TradeConfirmation[]
 
   items   TradeItem[]
   ratings Rating[]
@@ -270,6 +272,21 @@ model TradeItem {
 
   trade   Trade   @relation(fields: [tradeId], references: [id], onDelete: Cascade)
   listing Listing @relation(fields: [listingId], references: [id])
+}
+
+model TradeConfirmation {
+  id          String   @id @default(uuid())
+  tradeId     String
+  userId      String
+  stage       String
+  confirmedAt DateTime @default(now())
+
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tradeId, userId, stage])
+  @@index([tradeId])
+  @@index([userId])
 }
 
 model Rating {
