@@ -1,97 +1,129 @@
-import {createContext,useContext,useEffect,useState} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import api from "../api/axios";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+const [user, setUser] = useState(null);
+const [loading, setLoading] = useState(true);
 
-  const loadUser = async () => {
-    const token = localStorage.getItem("barter_token");
+const loadUser = async () => {
+const token = localStorage.getItem("barter_token");
 
-    if (!token) {
-      setLoading(false);
-      return;
-    }
 
-    try {
-      const response = await api.get("/auth/me");
+if (!token) {
+  setUser(null);
+  setLoading(false);
+  return;
+}
 
-      setUser(response.data.user);
-    } catch (error) {
-      localStorage.removeItem("barter_token");
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+try {
+  const response = await api.get("/auth/me");
 
-  useEffect(() => {
-    loadUser();
-  }, []);
+  setUser(response.data.user);
+} catch (error) {
+  localStorage.removeItem("barter_token");
+  localStorage.removeItem("barter_user");
+  setUser(null);
+} finally {
+  setLoading(false);
+}
 
-  const register = async (data) => {
-    const response = await api.post(
-      "/auth/register",
-      data
-    );
 
-    localStorage.setItem(
-      "barter_token",
-      response.data.token
-    );
+};
 
-    setUser(response.data.user);
+useEffect(() => {
+loadUser();
+}, []);
 
-    return response.data;
-  };
+const register = async (data) => {
+const response = await api.post("/auth/register", data);
 
-  const login = async (data) => {
-    const response = await api.post(
-      "/auth/login",
-      data
-    );
 
-    localStorage.setItem(
-      "barter_token",
-      response.data.token
-    );
+localStorage.setItem(
+  "barter_token",
+  response.data.token
+);
 
-    setUser(response.data.user);
+localStorage.setItem(
+  "barter_user",
+  JSON.stringify(response.data.user)
+);
 
-    return response.data;
-  };
+setUser(response.data.user);
 
-  const logout = () => {
-    localStorage.removeItem("barter_token");
-    setUser(null);
-  };
+return response.data;
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        register,
-        login,
-        logout,
-        loadUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+
+};
+
+const login = async (data) => {
+const response = await api.post("/auth/login", data);
+
+
+localStorage.setItem(
+  "barter_token",
+  response.data.token
+);
+
+localStorage.setItem(
+  "barter_user",
+  JSON.stringify(response.data.user)
+);
+
+setUser(response.data.user);
+
+return response.data;
+
+
+};
+
+const logout = () => {
+// Remove authentication token
+localStorage.removeItem("barter_token");
+
+
+// Remove stored user information
+localStorage.removeItem("barter_user");
+
+// Clear any other old authentication keys
+localStorage.removeItem("token");
+localStorage.removeItem("user");
+localStorage.removeItem("userId");
+
+// Clear session data
+sessionStorage.clear();
+
+// Immediately update React authentication state
+setUser(null);
+
+
+};
+
+return (
+<AuthContext.Provider
+value={{
+user,
+loading,
+register,
+login,
+logout,
+loadUser,
+}}
+>
+{children}
+</AuthContext.Provider>
+);
 };
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+const context = useContext(AuthContext);
 
-  if (!context) {
-    throw new Error(
-      "useAuth must be used inside AuthProvider"
-    );
-  }
+if (!context) {
+throw new Error(
+"useAuth must be used inside AuthProvider"
+);
+}
 
-  return context;
+return context;
 };
