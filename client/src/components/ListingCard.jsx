@@ -25,7 +25,7 @@ const ListingCard = ({
 
         <div className="flex items-center justify-between">
 
-          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
+          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-[#5c1726]">
             {listing.category?.name ||
               "Other"}
           </span>
@@ -65,7 +65,7 @@ const ListingCard = ({
 
           </div>
 
-          <span className="text-sm font-semibold text-green-600">
+          <span className="text-sm font-semibold text-[#5c1726]">
             View →
           </span>
 

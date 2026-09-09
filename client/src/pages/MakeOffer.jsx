@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -99,48 +100,45 @@ const MakeOffer = () => {
     setError("");
 
     if (!selectedListing) {
-      setError(
-        "Please select an item to offer."
-      );
-
-      return;
+    setError("Please select an item to offer.");
+    return;
     }
 
     try {
-      setSubmitting(true);
+    setSubmitting(true);
 
-      await createOffer({
-        receiverId:
-          requestedListing.userId,
+    
+    const offerData = {
+      receiverId: requestedListing.userId,
+      offeredListingId: selectedListing,
+      requestedListingId: requestedListing.id,
+      ...(message.trim() && {
+        message: message.trim(),
+      }),
+    };
 
-        offeredListingId:
-          selectedListing,
+    await createOffer(offerData);
 
-        requestedListingId:
-          requestedListing.id,
-
+    navigate("/dashboard", {
+      state: {
         message:
-          message.trim() || undefined,
-      });
+          "Your barter offer has been sent successfully.",
+      },
+    });
+    
 
-      navigate("/dashboard", {
-        state: {
-          message:
-            "Your barter offer has been sent successfully.",
-        },
-      });
     } catch (error) {
-      console.error(
-        "Offer submission error:",
-        error
-      );
+    console.error("Offer submission error:", error);
 
-      setError(
-        error.response?.data?.message ||
-          "Unable to submit your offer."
-      );
+    
+    setError(
+      error.response?.data?.message ||
+        "Unable to submit your offer."
+    );
+    
+
     } finally {
-      setSubmitting(false);
+    setSubmitting(false);
     }
   };
 
@@ -576,6 +574,7 @@ const MakeOffer = () => {
                   className="block text-sm font-bold text-[#21191B]"
                 >
                   Message to the owner
+
                   <span className="ml-1 font-normal text-gray-400">
                     (optional)
                   </span>

@@ -3,9 +3,9 @@ import api from "./axios";
 
 // Create a new barter offer
 export const createOffer = async (offerData) => {
-  const response = await api.post("/offers", offerData);
+const response = await api.post("/offers", offerData);
 
-  return response.data;
+return response.data;
 };
 
 // Get offers sent by the logged-in user

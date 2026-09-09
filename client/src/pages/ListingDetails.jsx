@@ -202,7 +202,7 @@ const ListingDetails = () => {
             <button
               type="button"
               onClick={() => navigate(`/make-offer/${listing.id}`)}
-              className="rounded-xl bg-[#5B1725] px-6 py-3 font-bold text-white shadow-lg transition hover:bg-[#3D0F18]"
+              className="rounded-xl bg-[#5B1725] px-6 py-3 mt-2 font-bold text-white shadow-lg transition hover:bg-[#3D0F18]"
             >
               Make Trade Offer
             </button>

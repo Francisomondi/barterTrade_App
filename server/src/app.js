@@ -7,6 +7,8 @@ import listingRoutes from "./routes/listingRoutes.js";
 import offerRoutes from "./routes/offerRoutes.js";
 import tradeRoutes from "./routes/tradeRoutes.js";
 
+import uploadRoutes from "./routes/uploadRoutes.js";
+
 const app = express();
 
 app.use(
@@ -17,6 +19,8 @@ app.use(
 );
 
 app.use(express.json());
+
+app.use(express.urlencoded({ extended: true }));
 
 app.use(passport.initialize());
 
@@ -32,5 +36,7 @@ app.use( "/api/categories", categoryRoutes);
 app.use( "/api/listings", listingRoutes);
 app.use("/api/offers",offerRoutes)
 app.use("/api/trades", tradeRoutes);
+
+app.use("/api/uploads", uploadRoutes);
 
 export default app;
