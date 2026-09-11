@@ -317,9 +317,18 @@ const [listings, total] =
       include: {
         category: true,
 
-        images: {
-          take: 1,
+      images: {
+        take: 1,
+        orderBy: [
+        {
+        isPrimary: "desc",
         },
+        {
+        sortOrder: "asc",
+        },
+        ],
+      },
+
 
         user: {
           select: {
@@ -383,7 +392,17 @@ const listing =
     include: {
       category: true,
 
-      images: true,
+      images: {
+        orderBy: [
+        {
+        isPrimary: "desc",
+        },
+        {
+        sortOrder: "asc",
+        },
+        ],
+      },
+
 
       user: {
         select: {
@@ -444,7 +463,17 @@ userId: req.user.id,
 
     include: {
       category: true,
-      images: true,
+      images: {
+      orderBy: [
+      {
+      isPrimary: "desc",
+      },
+      {
+      sortOrder: "asc",
+      },
+      ],
+      },
+
     },
   });
 
@@ -667,20 +696,28 @@ if (newImageCount > 8) {
   });
 }
 
-const uploadedImages = await Promise.all(
-  files.map(async (file) => {
-    const result = await uploadToCloudinary(
-      file.buffer,
-      "barter-trade/listings"
-    );
 
-    return {
-      listingId: id,
-      url: result.secure_url,
-      publicId: result.public_id,
-    };
-  })
+const uploadedImages = await Promise.all(
+req.files.map(async (file, index) => {
+const result = await uploadToCloudinary(
+file.buffer,
+"barter-trade/listings"
 );
+
+return {
+  listingId: id,
+  url: result.secure_url,
+  publicId: result.public_id,
+  isPrimary: currentImageCount === 0 && index === 0,
+  sortOrder: currentImageCount + index,
+};
+
+
+})
+);
+
+
+
 
 await prisma.listingImage.createMany({
   data: uploadedImages,
