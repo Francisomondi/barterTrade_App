@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+
 import {
 getListingById,
 deleteListingImage,
 addListingImages,
+setPrimaryListingImage,
 } from "../api/listingApi";
 
 const ManageListing = () => {
@@ -12,7 +14,9 @@ const navigate = useNavigate();
 
 const [listing, setListing] = useState(null);
 const [loading, setLoading] = useState(true);
+
 const [deletingImageId, setDeletingImageId] = useState(null);
+const [settingPrimaryId, setSettingPrimaryId] = useState(null);
 
 const [selectedImages, setSelectedImages] = useState([]);
 const [uploadingImages, setUploadingImages] = useState(false);
@@ -173,6 +177,37 @@ try {
 
 };
 
+const handleSetPrimary = async (imageId) => {
+if (!listing?.id || !imageId) return;
+
+
+try {
+  setSettingPrimaryId(imageId);
+  setError("");
+
+  const data = await setPrimaryListingImage(
+    listing.id,
+    imageId
+  );
+
+  setListing((prev) => ({
+    ...prev,
+    images: data.images,
+  }));
+} catch (error) {
+  console.error("SET PRIMARY IMAGE ERROR:", error);
+
+  setError(
+    error.response?.data?.message ||
+      "Failed to set main image. Please try again."
+  );
+} finally {
+  setSettingPrimaryId(null);
+}
+
+
+};
+
 if (loading) {
 return ( <div className="min-h-screen bg-gray-50 px-6 py-20 text-center"> <p className="text-gray-500">
 Loading listing... </p> </div>
@@ -243,6 +278,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
     {/* Listing summary */}
     <div className="mb-8 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
       <div className="grid gap-4 sm:grid-cols-3">
+
         <div>
           <p className="text-sm text-gray-500">
             Status
@@ -275,6 +311,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
             {images.length} / 8
           </p>
         </div>
+
       </div>
     </div>
 
@@ -358,6 +395,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
             </div>
 
             <div className="mt-4 flex flex-wrap gap-3">
+
               <button
                 type="button"
                 onClick={handleUploadImages}
@@ -388,6 +426,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
               >
                 Cancel
               </button>
+
             </div>
           </div>
         )}
@@ -396,6 +435,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
       {/* Existing Images */}
       {images.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[#DCAEB7] bg-[#FBF5F6] px-6 py-12 text-center">
+
           <p className="font-medium text-[#3D0F18]">
             No images available.
           </p>
@@ -404,15 +444,20 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
             Choose images above to add photos to
             this listing.
           </p>
+
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+
           {images.map((image, index) => (
             <div
               key={image.id}
               className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
             >
+
+              {/* Image */}
               <div className="relative">
+
                 <img
                   src={image.url}
                   alt={`${listing.title} ${
@@ -421,41 +466,80 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
                   className="h-52 w-full object-cover"
                 />
 
-                {index === 0 && (
+                {/* Main image badge */}
+                {image.isPrimary && (
                   <span className="absolute left-3 top-3 rounded-full bg-[#3D0F18] px-3 py-1 text-xs font-semibold text-white">
                     Main Image
                   </span>
                 )}
+
               </div>
 
+              {/* Image controls */}
               <div className="p-4">
+
                 <p className="mb-3 text-sm text-gray-500">
                   Image {index + 1}
                 </p>
 
-                <button
-                  type="button"
-                  disabled={
-                    deletingImageId === image.id
-                  }
-                  onClick={() =>
-                    handleDeleteImage(image.id)
-                  }
-                  className="w-full rounded-lg bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {deletingImageId === image.id
-                    ? "Deleting..."
-                    : "Delete Image"}
-                </button>
+                <div className="flex flex-col gap-2">
+
+                  {/* Set as Main */}
+                  {!image.isPrimary && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSetPrimary(image.id)
+                      }
+                      disabled={
+                        settingPrimaryId === image.id ||
+                        deletingImageId === image.id
+                      }
+                      className="w-full rounded-lg border border-[#DCAEB7] bg-white px-4 py-2.5 text-sm font-semibold text-[#8A2638] transition hover:bg-[#F5E8EB] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {settingPrimaryId === image.id
+                        ? "Setting as Main..."
+                        : "Set as Main Image"}
+                    </button>
+                  )}
+
+                  {/* Main image status */}
+                  {image.isPrimary && (
+                    <div className="w-full rounded-lg bg-[#F5E8EB] px-4 py-2.5 text-center text-sm font-semibold text-[#8A2638]">
+                      ✓ Current Main Image
+                    </div>
+                  )}
+
+                  {/* Delete */}
+                  <button
+                    type="button"
+                    disabled={
+                      deletingImageId === image.id ||
+                      settingPrimaryId === image.id
+                    }
+                    onClick={() =>
+                      handleDeleteImage(image.id)
+                    }
+                    className="w-full rounded-lg bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deletingImageId === image.id
+                      ? "Deleting..."
+                      : "Delete Image"}
+                  </button>
+
+                </div>
               </div>
+
             </div>
           ))}
+
         </div>
       )}
     </div>
 
     {/* Bottom actions */}
     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+
       <Link
         to={`/listings/${listing.id}`}
         className="rounded-xl bg-[#3D0F18] px-5 py-3 text-center font-semibold text-white transition hover:bg-[#5B1725]"
@@ -470,7 +554,9 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
       >
         Done
       </button>
+
     </div>
+
   </div>
 </div>
 

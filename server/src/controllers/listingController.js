@@ -714,4 +714,103 @@ return res.status(500).json({
 }
 };
 
+export const setPrimaryListingImage = async (req, res) => {
+try {
+const { id, imageId } = req.params;
+const userId = req.user.id;
+
+
+// Check that the listing exists and belongs to the logged-in user
+const listing = await prisma.listing.findUnique({
+  where: { id },
+  include: {
+    images: {
+      orderBy: {
+        sortOrder: "asc",
+      },
+    },
+  },
+});
+
+if (!listing) {
+  return res.status(404).json({
+    message: "Listing not found",
+  });
+}
+
+if (listing.userId !== userId) {
+  return res.status(403).json({
+    message: "You are not authorized to modify this listing",
+  });
+}
+
+// Check that the selected image belongs to this listing
+const selectedImage = listing.images.find(
+  (image) => image.id === imageId
+);
+
+if (!selectedImage) {
+  return res.status(404).json({
+    message: "Image not found for this listing",
+  });
+}
+
+// Already primary
+if (selectedImage.isPrimary && selectedImage.sortOrder === 0) {
+  return res.status(200).json({
+    message: "Image is already the main image",
+    images: listing.images,
+  });
+}
+
+// Move selected image to the front
+const reorderedImages = [
+  selectedImage,
+  ...listing.images.filter((image) => image.id !== imageId),
+];
+
+// Update all images in a transaction
+await prisma.$transaction(
+  reorderedImages.map((image, index) =>
+    prisma.listingImage.update({
+      where: {
+        id: image.id,
+      },
+      data: {
+        isPrimary: index === 0,
+        sortOrder: index,
+      },
+    })
+  )
+);
+
+// Get the final image list
+const updatedImages = await prisma.listingImage.findMany({
+  where: {
+    listingId: id,
+  },
+  orderBy: {
+    sortOrder: "asc",
+  },
+});
+
+return res.status(200).json({
+  message: "Main image updated successfully",
+  images: updatedImages,
+});
+
+
+} catch (error) {
+console.error("SET PRIMARY IMAGE ERROR:", error);
+
+
+return res.status(500).json({
+  message: "Failed to set main image",
+  error: error.message,
+});
+
+}
+};
+
+
 

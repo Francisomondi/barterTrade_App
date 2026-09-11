@@ -169,16 +169,26 @@ model Listing {
 }
 
 model ListingImage {
-  id        String   @id @default(uuid())
-  listingId String
-  url       String
-  publicId  String?
-  createdAt DateTime @default(now())
+id        String   @id @default(uuid())
+listingId String
+url       String
+publicId  String?
 
-  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  
-   @@index([listingId])
+isPrimary Boolean  @default(false)
+sortOrder Int      @default(0)
+
+createdAt DateTime @default(now())
+
+listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+@@index([listingId])
+@@index([listingId, sortOrder])
+@@index([listingId, isPrimary])
 }
+
+
+
+
 
 model ValueEstimate {
   id             String   @id @default(uuid())

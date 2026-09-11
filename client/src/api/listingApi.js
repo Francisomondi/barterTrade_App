@@ -49,3 +49,11 @@ formData
 return response.data;
 };
 
+export const setPrimaryListingImage = async (listingId, imageId) => {
+const response = await api.patch(
+`/listings/${listingId}/images/${imageId}/primary`
+);
+
+return response.data;
+};
+

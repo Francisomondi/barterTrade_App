@@ -8,6 +8,7 @@ getMyListings,
 removeListing,
 deleteListingImage,
 addListingImages,
+setPrimaryListingImage,
 } from "../controllers/listingController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -23,6 +24,9 @@ router.post("/",protect,upload.array("images", 8),createListing);
 
 // Get current user's listings
 router.get("/user/me",protect,getMyListings);
+
+router.patch("/:id/images/:imageId/primary",protect,setPrimaryListingImage);
+
 
 // Add more images to an existing listing
 router.post("/:id/images",protect,upload.array("images", 8),addListingImages);
