@@ -46,12 +46,7 @@ return ( <header className="sticky top-0 z-50 border-b border-[#e7dddf] bg-white
         Marketplace
       </Link>
 
-      <Link
-        to="/offers"
-        className="font-semibold text-[#5B1725] transition hover:text-[#8A2638]"
-      >
-        My Offers
-      </Link>
+     
 
       {user && (
         <>
@@ -60,6 +55,13 @@ return ( <header className="sticky top-0 z-50 border-b border-[#e7dddf] bg-white
             className="text-sm font-medium text-gray-700 transition hover:text-[#5b1725]"
           >
             Dashboard
+          </Link>
+
+          <Link
+            to="/offers"
+            className="font-semibold text-[#5B1725] transition hover:text-[#8A2638]"
+          >
+              My Offers
           </Link>
 
           <Link

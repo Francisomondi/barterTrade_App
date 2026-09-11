@@ -134,20 +134,24 @@ const MyListings = () => {
                         View
                       </Link>
 
-                      {listing.status !==
-                        "TRADED" && (
-                        <button
-                          onClick={() =>
-                            handleRemove(
-                              listing.id
-                            )
-                          }
-                          className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"
-                        >
-                          Remove
-                        </button>
-                      )}
+                        
+                      <Link
+                        to={`/listings/${listing.id}/manage`}
+                        className="flex-1 rounded-lg bg-[#3D0F18] py-2 text-center text-sm font-semibold text-white"
+                      >
+                        Manage
+                      </Link>
+
+                    {listing.status !== "TRADED" && (
+                    <button
+                    onClick={() => handleRemove(listing.id)}
+                    className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"
+                    >
+                    Remove </button>
+                    )}
+
                     </div>
+
                   </div>
                 </div>
               );

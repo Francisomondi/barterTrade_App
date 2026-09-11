@@ -83,8 +83,7 @@ const Offers = () => {
       const response = await rejectOffer(offerId);
 
       setSuccess(
-        response.message ||
-          "Offer rejected successfully."
+        response.message || "Offer rejected successfully."
       );
 
       await loadOffers();
@@ -92,8 +91,7 @@ const Offers = () => {
       console.error("Reject offer error:", err);
 
       setError(
-        err.response?.data?.message ||
-          "Failed to reject the offer."
+        err.response?.data?.message || "Failed to reject the offer."
       );
     } finally {
       setActionLoading(null);
@@ -109,8 +107,7 @@ const Offers = () => {
       const response = await cancelOffer(offerId);
 
       setSuccess(
-        response.message ||
-          "Offer cancelled successfully."
+        response.message || "Offer cancelled successfully."
       );
 
       await loadOffers();
@@ -118,8 +115,7 @@ const Offers = () => {
       console.error("Cancel offer error:", err);
 
       setError(
-        err.response?.data?.message ||
-          "Failed to cancel the offer."
+        err.response?.data?.message || "Failed to cancel the offer."
       );
     } finally {
       setActionLoading(null);

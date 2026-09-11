@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
+import cloudinary from "../config/cloudinary.js";
 
 const validConditions = [
 "NEW",
@@ -86,8 +87,7 @@ if (
 ) {
   return res.status(400).json({
     success: false,
-    message:
-      "Minimum value cannot exceed maximum value",
+    message: "Minimum value cannot exceed maximum value",
   });
 }
 
@@ -541,3 +541,177 @@ return res.status(500).json({
 
 }
 };
+
+export const deleteListingImage = async (req, res) => {
+try {
+const { id, imageId } = req.params;
+const userId = req.user.id;
+
+const image = await prisma.listingImage.findUnique({
+  where: {
+    id: imageId,
+  },
+  include: {
+    listing: {
+      select: {
+        id: true,
+        userId: true,
+      },
+    },
+  },
+});
+
+if (!image) {
+  return res.status(404).json({
+    message: "Listing image not found",
+  });
+}
+
+if (image.listing.id !== id) {
+  return res.status(400).json({
+    message: "Image does not belong to this listing",
+  });
+}
+
+if (image.listing.userId !== userId) {
+  return res.status(403).json({
+    message: "You are not authorized to delete this image",
+  });
+}
+
+// Delete from Cloudinary if a publicId exists
+if (image.publicId) {
+  try {
+    await cloudinary.uploader.destroy(image.publicId, {
+      resource_type: "image",
+    });
+  } catch (cloudinaryError) {
+    console.error(
+      "CLOUDINARY DELETE ERROR:",
+      cloudinaryError
+    );
+
+    return res.status(500).json({
+      message: "Failed to delete image from Cloudinary",
+    });
+  }
+}
+
+// Delete from database
+await prisma.listingImage.delete({
+  where: {
+    id: imageId,
+  },
+});
+
+return res.status(200).json({
+  message: "Listing image deleted successfully",
+  imageId,
+});
+
+
+} catch (error) {
+console.error("DELETE LISTING IMAGE ERROR:", error);
+
+
+return res.status(500).json({
+  message: "Failed to delete listing image",
+  error: error.message,
+});
+
+}
+};
+
+
+export const addListingImages = async (req, res) => {
+try {
+const { id } = req.params;
+const userId = req.user.id;
+
+
+const listing = await prisma.listing.findUnique({
+  where: {
+    id,
+  },
+  include: {
+    images: true,
+  },
+});
+
+if (!listing) {
+  return res.status(404).json({
+    message: "Listing not found",
+  });
+}
+
+if (listing.userId !== userId) {
+  return res.status(403).json({
+    message: "You are not authorized to modify this listing",
+  });
+}
+
+const files = req.files || [];
+
+if (files.length === 0) {
+  return res.status(400).json({
+    message: "Please select at least one image",
+  });
+}
+
+const currentImageCount = listing.images.length;
+const newImageCount = currentImageCount + files.length;
+
+if (newImageCount > 8) {
+  return res.status(400).json({
+    message: `A listing can have a maximum of 8 images. You currently have ${currentImageCount} image(s).`,
+  });
+}
+
+const uploadedImages = await Promise.all(
+  files.map(async (file) => {
+    const result = await uploadToCloudinary(
+      file.buffer,
+      "barter-trade/listings"
+    );
+
+    return {
+      listingId: id,
+      url: result.secure_url,
+      publicId: result.public_id,
+    };
+  })
+);
+
+await prisma.listingImage.createMany({
+  data: uploadedImages,
+});
+
+const updatedListing = await prisma.listing.findUnique({
+  where: {
+    id,
+  },
+  include: {
+    images: true,
+  },
+});
+
+return res.status(201).json({
+  message: "Images added successfully",
+  listing: updatedListing,
+});
+
+
+} catch (error) {
+console.error("ADD LISTING IMAGES ERROR:", error);
+
+
+return res.status(500).json({
+  message: "Failed to add listing images",
+  error: error.message,
+});
+
+
+}
+};
+
+

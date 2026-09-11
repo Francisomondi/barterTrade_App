@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-
-import {
-confirmTrade,
-completeTrade,
-getTradeById,
-updateTradeStatus,
-} from "../api/tradeApi";
-
+import {confirmTrade,completeTrade,getTradeById,updateTradeStatus} from "../api/tradeApi";
 import { useAuth } from "../context/AuthContext";
 
 const TradeDetails = () => {
@@ -37,8 +30,7 @@ setError("");
   console.error("Load trade error:", err);
 
   setError(
-    err.response?.data?.message ||
-      "Failed to load trade."
+    err.response?.data?.message || "Failed to load trade."
   );
 } finally {
   setLoading(false);
@@ -114,30 +106,14 @@ return trade.items.find(
 const theirTradeItem = useMemo(() => {
 if (!trade?.items || !user) return null;
 
-
-return trade.items.find(
-  (item) =>
-    item.ownerId !== user.id
-);
-
+return trade.items.find((item) => item.ownerId !== user.id);
 
 }, [trade, user]);
 
-const yourListing =
-yourTradeItem?.listing || null;
-
-const theirListing =
-theirTradeItem?.listing || null;
-
-const yourAgreedValue =
-yourTradeItem?.agreedValue ??
-yourListing?.estimatedValue ??
-null;
-
-const theirAgreedValue =
-theirTradeItem?.agreedValue ??
-theirListing?.estimatedValue ??
-null;
+const yourListing = yourTradeItem?.listing || null;
+const theirListing = theirTradeItem?.listing || null;
+const yourAgreedValue = yourTradeItem?.agreedValue ?? yourListing?.estimatedValue ?? null;
+const theirAgreedValue = theirTradeItem?.agreedValue ?? theirListing?.estimatedValue ?? null;
 
 const yourTrader = isTraderA
 ? trade?.traderA
@@ -303,19 +279,16 @@ try {
 
   
 
-  const refreshed =
-    await getTradeById(trade.id);
+  const refreshed = await getTradeById(trade.id);
 
   setTrade(refreshed.trade);
 } catch (err) {
-  console.error(
-    "Confirm trade error:",
+  console.error( "Confirm trade error:",
     err
   );
 
   setError(
-    err.response?.data?.message ||
-      "Failed to confirm the trade."
+    err.response?.data?.message || "Failed to confirm the trade."
   );
 } finally {
   setActionLoading(false);
@@ -401,15 +374,11 @@ try {
 
   setTrade(refreshed.trade);
 } catch (err) {
-  console.error(
-    "Complete trade error:",
+  console.error("Complete trade error:",
     err
   );
 
-  setError(
-    err.response?.data?.message ||
-      "Failed to complete trade."
-  );
+  setError( err.response?.data?.message || "Failed to complete trade." );
 } finally {
   setActionLoading(false);
 }
@@ -802,8 +771,8 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-4 py-8"> <div className="m
         <div className="mt-3 flex items-center gap-4">
           {yourTrader?.avatar ? (
             <img
-              src={yourTrader.avatar}
-              alt={yourTrader.name}
+              src={yourTrader?.avatar}
+              alt={yourTrader?.name}
               className="h-14 w-14 rounded-full object-cover"
             />
           ) : (

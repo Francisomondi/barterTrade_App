@@ -31,3 +31,21 @@ const response = await api.delete(`/listings/${id}`);
 
 return response.data;
 };
+
+export const deleteListingImage = async (listingId, imageId) => {
+const response = await api.delete(
+`/listings/${listingId}/images/${imageId}`
+);
+
+return response.data;
+};
+
+export const addListingImages = async (listingId, formData) => {
+const response = await api.post(
+`/listings/${listingId}/images`,
+formData
+);
+
+return response.data;
+};
+

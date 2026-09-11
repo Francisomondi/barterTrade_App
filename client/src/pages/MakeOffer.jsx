@@ -10,19 +10,12 @@ const MakeOffer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [requestedListing, setRequestedListing] =
-    useState(null);
-
+  const [requestedListing, setRequestedListing] = useState(null);
   const [myListings, setMyListings] = useState([]);
-
-  const [selectedListing, setSelectedListing] =
-    useState("");
-
+  const [selectedListing, setSelectedListing] = useState("");
   const [message, setMessage] = useState("");
-
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
   const [error, setError] = useState("");
 
   useEffect(() => {

@@ -1,14 +1,39 @@
 import express from "express";
-import { createListing, getListings, getListingById, getMyListings, removeListing} from "../controllers/listingController.js";
-import {protect} from "../middleware/authMiddleware.js";
+
+import {
+createListing,
+getListings,
+getListingById,
+getMyListings,
+removeListing,
+deleteListingImage,
+addListingImages,
+} from "../controllers/listingController.js";
+
+import { protect } from "../middleware/authMiddleware.js";
 import upload from "../middleware/upload.js";
 
 const router = express.Router();
 
+// Get all listings
 router.get("/", getListings);
-router.post( "/", protect,upload.array("images", 8), createListing);
-router.get( "/user/me", protect, getMyListings);
-router.get( "/:id", getListingById);
-router.delete("/:id", protect, removeListing);
+
+// Create listing with up to 8 images
+router.post("/",protect,upload.array("images", 8),createListing);
+
+// Get current user's listings
+router.get("/user/me",protect,getMyListings);
+
+// Add more images to an existing listing
+router.post("/:id/images",protect,upload.array("images", 8),addListingImages);
+
+// Delete a specific image from a listing
+router.delete("/:id/images/:imageId", protect, deleteListingImage, );
+
+// Get listing by ID
+router.get("/:id", getListingById);
+
+// Delete/remove listing
+router.delete("/:id",protect,removeListing);
 
 export default router;

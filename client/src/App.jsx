@@ -16,6 +16,7 @@ import Marketplace from "./pages/Marketplace";
 import CreateListing from "./pages/CreateListing";
 import ListingDetails from "./pages/ListingDetails";
 import MyListings from "./pages/MyListings";
+import ManageListing from "./pages/ManageListing.jsx";
 
 import MakeOffer from "./pages/MakeOffer";
 import Offers from "./pages/Offers";
@@ -34,57 +35,20 @@ const App = () => {
 
         <Routes>
 
-          <Route
-            path="/"
-            element={
-              <Navigate
-                to="/marketplace"
-                replace
-              />
-            }
-          />
-
-          <Route
-            path="/marketplace"
-            element={<Marketplace />}
-          />
-
-          <Route
-            path="/listings/:id"
-            element={<ListingDetails />}
-          />
-
-          <Route
-            path="/login"
-            element={<Login />}
-          />
-
-          <Route
-            path="/register"
-            element={<Register />}
-          />
-
-          <Route
-            path="/auth/callback"
-            element={<AuthCallback />}
-          />
+          <Route path="/" element={<Navigate  to="/marketplace" replace />}/>
+          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/listings/:id" element={<ListingDetails />}/>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />}/>
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
           <Route element={<ProtectedRoute />}>
 
-            <Route
-              path="/dashboard"
-              element={<Dashboard />}
-            />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/listings/create" element={<CreateListing />} />
+            <Route path="/my-listings" element={<MyListings />}/>
+            <Route path="/listings/:id/manage" element={<ManageListing /> }/>
 
-            <Route
-              path="/listings/create"
-              element={<CreateListing />}
-            />
-
-            <Route
-              path="/my-listings"
-              element={<MyListings />}
-            />
 
             <Route path="/make-offer/:id" element={<MakeOffer />} />
             <Route path="/offers" element={<Offers />} />
@@ -94,15 +58,7 @@ const App = () => {
 
           </Route>
 
-          <Route
-            path="*"
-            element={
-              <Navigate
-                to="/marketplace"
-                replace
-              />
-            }
-          />
+          <Route path="*" element={<Navigate to="/marketplace" replace/> }/>
 
         </Routes>
 
