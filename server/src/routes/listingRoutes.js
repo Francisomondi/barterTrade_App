@@ -9,6 +9,7 @@ removeListing,
 deleteListingImage,
 addListingImages,
 setPrimaryListingImage,
+reorderListingImages,
 } from "../controllers/listingController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -33,6 +34,8 @@ router.post("/:id/images",protect,upload.array("images", 8),addListingImages);
 
 // Delete a specific image from a listing
 router.delete("/:id/images/:imageId", protect, deleteListingImage, );
+
+router.patch("/:id/images/reorder",protect,reorderListingImages);
 
 // Get listing by ID
 router.get("/:id", getListingById);

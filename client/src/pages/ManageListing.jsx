@@ -6,6 +6,7 @@ getListingById,
 deleteListingImage,
 addListingImages,
 setPrimaryListingImage,
+reorderListingImages,
 } from "../api/listingApi";
 
 const ManageListing = () => {
@@ -17,6 +18,7 @@ const [loading, setLoading] = useState(true);
 
 const [deletingImageId, setDeletingImageId] = useState(null);
 const [settingPrimaryId, setSettingPrimaryId] = useState(null);
+const [reorderingImages, setReorderingImages] = useState(false);
 
 const [selectedImages, setSelectedImages] = useState([]);
 const [uploadingImages, setUploadingImages] = useState(false);
@@ -207,6 +209,75 @@ try {
 
 
 };
+
+const handleMoveImage = async (imageId, direction) => {
+if (!listing?.images?.length) return;
+
+const currentImages = [...listing.images];
+
+const currentIndex = currentImages.findIndex(
+(image) => image.id === imageId
+);
+
+if (currentIndex === -1) return;
+
+const newIndex =
+direction === "left"
+? currentIndex - 1
+: currentIndex + 1;
+
+// Already at the edge
+if (
+newIndex < 0 ||
+newIndex >= currentImages.length
+) {
+return;
+}
+
+// Swap images
+[
+currentImages[currentIndex],
+currentImages[newIndex],
+] = [
+currentImages[newIndex],
+currentImages[currentIndex],
+];
+
+const imageIds = currentImages.map(
+(image) => image.id
+);
+
+try {
+setReorderingImages(true);
+setError("");
+
+
+const data = await reorderListingImages(
+  listing.id,
+  imageIds
+);
+
+setListing((prev) => ({
+  ...prev,
+  images: data.images,
+}));
+
+
+} catch (error) {
+console.error("REORDER IMAGES ERROR:", error);
+
+
+setError(
+  error.response?.data?.message ||
+    "Failed to reorder images. Please try again."
+);
+
+
+} finally {
+setReorderingImages(false);
+}
+};
+
 
 if (loading) {
 return ( <div className="min-h-screen bg-gray-50 px-6 py-20 text-center"> <p className="text-gray-500">
@@ -475,7 +546,8 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
 
               </div>
 
-              {/* Image controls */}
+             {/* Image controls */}
+
               <div className="p-4">
 
                 <p className="mb-3 text-sm text-gray-500">
@@ -484,51 +556,94 @@ return ( <div className="min-h-screen bg-[#F8F5F3] px-6 py-10"> <div className="
 
                 <div className="flex flex-col gap-2">
 
-                  {/* Set as Main */}
-                  {!image.isPrimary && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSetPrimary(image.id)
-                      }
-                      disabled={
-                        settingPrimaryId === image.id ||
-                        deletingImageId === image.id
-                      }
-                      className="w-full rounded-lg border border-[#DCAEB7] bg-white px-4 py-2.5 text-sm font-semibold text-[#8A2638] transition hover:bg-[#F5E8EB] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {settingPrimaryId === image.id
-                        ? "Setting as Main..."
-                        : "Set as Main Image"}
-                    </button>
-                  )}
+          
+              {/* Reorder Controls */}
+              <div className="grid grid-cols-2 gap-2">
 
-                  {/* Main image status */}
-                  {image.isPrimary && (
-                    <div className="w-full rounded-lg bg-[#F5E8EB] px-4 py-2.5 text-center text-sm font-semibold text-[#8A2638]">
-                      ✓ Current Main Image
-                    </div>
-                  )}
+                {/* Move Left */}
+                <button
+                  type="button"
+                  onClick={() => handleMoveImage(image.id, "left")}
+                  disabled={
+                    index === 0 ||
+                    reorderingImages ||
+                    deletingImageId === image.id ||
+                    settingPrimaryId === image.id
+                  }
+                  className="rounded-lg border border-[#DCAEB7] bg-white px-3 py-2.5 text-sm font-semibold text-[#3D0F18] transition hover:bg-[#F5E8EB] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ← Move Left
+                </button>
 
-                  {/* Delete */}
-                  <button
-                    type="button"
-                    disabled={
-                      deletingImageId === image.id ||
-                      settingPrimaryId === image.id
-                    }
-                    onClick={() =>
-                      handleDeleteImage(image.id)
-                    }
-                    className="w-full rounded-lg bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {deletingImageId === image.id
-                      ? "Deleting..."
-                      : "Delete Image"}
-                  </button>
+                {/* Move Right */}
+                <button
+                  type="button"
+                  onClick={() => handleMoveImage(image.id, "right")}
+                  disabled={
+                    index === images.length - 1 ||
+                    reorderingImages ||
+                    deletingImageId === image.id ||
+                    settingPrimaryId === image.id
+                  }
+                  className="rounded-lg border border-[#DCAEB7] bg-white px-3 py-2.5 text-sm font-semibold text-[#3D0F18] transition hover:bg-[#F5E8EB] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Move Right →
+                </button>
+
+              </div>
+
+              {/* Reordering status */}
+              {reorderingImages && (
+                <div className="rounded-lg bg-[#F5E8EB] px-3 py-2 text-center text-xs font-medium text-[#8A2638]">
+                  Saving image order...
+                </div>
+              )}
+
+              {/* Set as Main */}
+              {!image.isPrimary && (
+                <button
+                  type="button"
+                  onClick={() => handleSetPrimary(image.id)}
+                  disabled={
+                    settingPrimaryId === image.id ||
+                    deletingImageId === image.id ||
+                    reorderingImages
+                  }
+                  className="w-full rounded-lg border border-[#DCAEB7] bg-white px-4 py-2.5 text-sm font-semibold text-[#8A2638] transition hover:bg-[#F5E8EB] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {settingPrimaryId === image.id
+                    ? "Setting as Main..."
+                    : "Set as Main Image"}
+                </button>
+              )}
+
+              {/* Main image status */}
+              {image.isPrimary && (
+                <div className="w-full rounded-lg bg-[#F5E8EB] px-4 py-2.5 text-center text-sm font-semibold text-[#8A2638]">
+                  ✓ Current Main Image
+                </div>
+              )}
+
+              {/* Delete */}
+              <button
+                type="button"
+                disabled={
+                  deletingImageId === image.id ||
+                  settingPrimaryId === image.id ||
+                  reorderingImages
+                }
+                onClick={() => handleDeleteImage(image.id)}
+                className="w-full rounded-lg bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {deletingImageId === image.id
+                  ? "Deleting..."
+                  : "Delete Image"}
+              </button>
+              
 
                 </div>
               </div>
+
 
             </div>
           ))}

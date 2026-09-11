@@ -57,3 +57,18 @@ const response = await api.patch(
 return response.data;
 };
 
+export const reorderListingImages = async (
+listingId,
+imageIds
+) => {
+const response = await api.patch(
+`/listings/${listingId}/images/reorder`,
+{
+imageIds,
+}
+);
+
+return response.data;
+};
+
+

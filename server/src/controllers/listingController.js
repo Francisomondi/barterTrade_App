@@ -812,5 +812,113 @@ return res.status(500).json({
 }
 };
 
+export const reorderListingImages = async (req, res) => {
+try {
+const { id } = req.params;
+const userId = req.user.id;
+const { imageIds } = req.body;
+
+// Validate imageIds
+if (!Array.isArray(imageIds) || imageIds.length === 0) {
+  return res.status(400).json({
+    message: "imageIds must be a non-empty array",
+  });
+}
+
+// Find listing
+const listing = await prisma.listing.findUnique({
+  where: { id },
+  include: {
+    images: true,
+  },
+});
+
+if (!listing) {
+  return res.status(404).json({
+    message: "Listing not found",
+  });
+}
+
+// Check ownership
+if (listing.userId !== userId) {
+  return res.status(403).json({
+    message: "You are not authorized to modify this listing",
+  });
+}
+
+// Ensure every existing image is included
+const existingImageIds = listing.images.map(
+  (image) => image.id
+);
+
+if (imageIds.length !== existingImageIds.length) {
+  return res.status(400).json({
+    message: "All listing images must be included when reordering",
+  });
+}
+
+const allImagesIncluded = existingImageIds.every(
+  (imageId) => imageIds.includes(imageId)
+);
+
+if (!allImagesIncluded) {
+  return res.status(400).json({
+    message: "Invalid image list",
+  });
+}
+
+// Prevent duplicate image IDs
+const uniqueImageIds = new Set(imageIds);
+
+if (uniqueImageIds.size !== imageIds.length) {
+  return res.status(400).json({
+    message: "Duplicate image IDs are not allowed",
+  });
+}
+
+// Update image order
+await prisma.$transaction(
+  imageIds.map((imageId, index) =>
+    prisma.listingImage.update({
+      where: {
+        id: imageId,
+      },
+      data: {
+        sortOrder: index,
+        isPrimary: index === 0,
+      },
+    })
+  )
+);
+
+// Return updated images
+const updatedImages = await prisma.listingImage.findMany({
+  where: {
+    listingId: id,
+  },
+  orderBy: {
+    sortOrder: "asc",
+  },
+});
+
+return res.status(200).json({
+  message: "Listing images reordered successfully",
+  images: updatedImages,
+});
+
+
+} catch (error) {
+console.error("REORDER LISTING IMAGES ERROR:", error);
+
+
+return res.status(500).json({
+  message: "Failed to reorder listing images",
+  error: error.message,
+});
+
+}
+};
+
+
 
 
