@@ -112,9 +112,9 @@ const Navbar = () => {
               <div className="flex items-center gap-2">
 
                 <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#f4e7ea] font-semibold text-[#5b1725]">
-                  {user.avatar ? (
+                  {user?.avatar?  (
                     <img
-                      src={user.avatar}
+                      src={user?.avatar}
                       alt={user.name}
                       className="h-full w-full object-cover"
                     />
@@ -166,9 +166,9 @@ const Navbar = () => {
           {/* Mobile Avatar */}
           {user && (
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#f4e7ea] font-semibold text-[#5b1725]">
-              {user.avatar ? (
+              {user?.avatar ? (
                 <img
-                  src={user.avatar}
+                  src={user?.avatar}
                   alt={user.name}
                   className="h-full w-full object-cover"
                 />
