@@ -9,7 +9,11 @@ import tradeRoutes from "./routes/tradeRoutes.js";
 
 import uploadRoutes from "./routes/uploadRoutes.js";
 
+
+import { verifyEmailTransporter } from "./utils/sendEmail.js";
 const app = express();
+
+verifyEmailTransporter();
 
 app.use(
   cors({

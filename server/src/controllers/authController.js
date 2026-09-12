@@ -1,3 +1,4 @@
+import "dotenv/config";
 import bcrypt from "bcryptjs";
 import prisma from "../config/prisma.js";
 import { generateToken } from "../utils/auth.js";
