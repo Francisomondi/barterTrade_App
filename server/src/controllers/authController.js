@@ -289,18 +289,11 @@ export const forgotPassword = async (req, res) => {
     /*
      * Build frontend reset URL.
      */
-    const frontendUrl = (
-      process.env.FRONTEND_URL ||
-      "http://localhost:5173"
-    ).replace(/\/$/, "");
+   const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
 
-    const resetUrl =
-      `${frontendUrl}/reset-password/${resetToken}`;
+   const resetUrl =`${frontendUrl}/reset-password/${encodeURIComponent(resetToken)}`;
 
-    console.log(
-      "PASSWORD RESET URL:",
-      resetUrl
-    );
+   console.log("PASSWORD RESET URL:", resetUrl);
 
     /*
      * Tell the user whether this is a Google-only
@@ -311,241 +304,191 @@ export const forgotPassword = async (req, res) => {
       : "Google";
 
     await sendEmail({
-      to: user.email,
+        to: user.email,
+        subject: "Reset your Barter Trade password",
+        html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Reset your Barter Trade password</title>
+      </head>
 
-      subject:
-        "Reset your Barter Trade password",
+      <body style="
+        margin: 0;
+        padding: 0;
+        background-color: #f8f5f3;
+        font-family: Arial, Helvetica, sans-serif;
+      ">
 
-      html: `
-        <!DOCTYPE html>
+        <div style="
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 30px 15px;
+        ">
 
-        <html>
-          <head>
-            <meta charset="UTF-8" />
+          <!-- Header -->
+          <div style="
+            background-color: #3d0f18;
+            padding: 28px;
+            border-radius: 16px 16px 0 0;
+            color: #ffffff;
+          ">
 
-            <meta
-              name="viewport"
-              content="width=device-width, initial-scale=1.0"
-            />
-
-            <title>
-              Reset your Barter Trade password
-            </title>
-          </head>
-
-          <body
-            style="
+            <h1 style="
               margin: 0;
-              padding: 0;
-              background: #f8f5f3;
-              font-family: Arial, Helvetica, sans-serif;
+              font-size: 26px;
+              line-height: 1.2;
+            ">
+              Barter Trade
+            </h1>
+
+            <p style="
+              margin: 8px 0 0;
+              color: #dcaeb7;
+              font-size: 14px;
+            ">
+              Trade smarter
+            </p>
+
+          </div>
+
+          <!-- Content -->
+          <div style="
+            background-color: #ffffff;
+            border: 1px solid #e7dddf;
+            border-top: none;
+            padding: 32px;
+            border-radius: 0 0 16px 16px;
+          ">
+
+            <h2 style="
+              margin: 0 0 20px;
               color: #21191b;
-            "
-          >
+              font-size: 24px;
+            ">
+              Create a new password
+            </h2>
 
-            <div
-              style="
-                max-width: 600px;
-                margin: 0 auto;
-                padding: 30px 20px;
-              "
-            >
+            <p style="
+              color: #555555;
+              font-size: 15px;
+              line-height: 1.7;
+            ">
+              Hello ${user.name || "there"},
+            </p>
 
-              <!-- HEADER -->
+            <p style="
+              color: #555555;
+              font-size: 15px;
+              line-height: 1.7;
+            ">
+              We received a request to reset your Barter Trade password.
+            </p>
 
-              <div
+            <p style="
+              color: #555555;
+              font-size: 15px;
+              line-height: 1.7;
+            ">
+              Click the button below to create a new password.
+            </p>
+
+            <!-- Button -->
+            <div style="
+              margin: 30px 0;
+              text-align: center;
+            ">
+
+              <a
+                href="${resetUrl}"
+                target="_blank"
+                rel="noopener noreferrer"
                 style="
-                  background: #3d0f18;
-                  color: white;
-                  padding: 28px;
-                  border-radius: 18px 18px 0 0;
+                  display: inline-block;
+                  background-color: #5b1725;
+                  color: #ffffff !important;
+                  text-decoration: none;
+                  padding: 15px 28px;
+                  border-radius: 10px;
+                  font-size: 15px;
+                  font-weight: bold;
                 "
               >
-
-                <h1
-                  style="
-                    margin: 0;
-                    font-size: 26px;
-                  "
-                >
-                  Barter Trade
-                </h1>
-
-                <p
-                  style="
-                    margin: 8px 0 0;
-                    color: #dcaeb7;
-                    font-size: 14px;
-                  "
-                >
-                  Trade smarter
-                </p>
-
-              </div>
-
-              <!-- CONTENT -->
-
-              <div
-                style="
-                  background: #ffffff;
-                  border: 1px solid #e7dddf;
-                  border-top: none;
-                  padding: 32px;
-                  border-radius: 0 0 18px 18px;
-                "
-              >
-
-                <h2
-                  style="
-                    margin-top: 0;
-                    font-size: 24px;
-                  "
-                >
-                  Reset your password
-                </h2>
-
-                <p
-                  style="
-                    font-size: 15px;
-                    line-height: 1.7;
-                  "
-                >
-                  Hello ${user.name || "there"},
-                </p>
-
-                <p
-                  style="
-                    font-size: 15px;
-                    line-height: 1.7;
-                  "
-                >
-                  We received a request to create or reset
-                  the password for your Barter Trade account.
-                </p>
-
-                ${
-                  accountType === "Google"
-                    ? `
-                      <div
-                        style="
-                          background: #fbf5f6;
-                          border: 1px solid #e7dddf;
-                          border-radius: 12px;
-                          padding: 16px;
-                          margin: 20px 0;
-                        "
-                      >
-                        <strong>
-                          Google account
-                        </strong>
-
-                        <p
-                          style="
-                            margin: 8px 0 0;
-                            font-size: 14px;
-                            line-height: 1.6;
-                            color: #666;
-                          "
-                        >
-                          Your account was originally created
-                          with Google. After setting a password,
-                          you will be able to sign in using either
-                          Google or your email and password.
-                        </p>
-                      </div>
-                    `
-                    : ""
-                }
-
-                <p
-                  style="
-                    font-size: 15px;
-                    line-height: 1.7;
-                  "
-                >
-                  Click the button below to choose a new password.
-                </p>
-
-                <!-- BUTTON -->
-
-                <div
-                  style="
-                    margin: 30px 0;
-                    text-align: center;
-                  "
-                >
-
-                  <a
-                    href="${resetUrl}"
-                    style="
-                      display: inline-block;
-                      background: #5b1725;
-                      color: #ffffff;
-                      text-decoration: none;
-                      padding: 15px 28px;
-                      border-radius: 10px;
-                      font-size: 15px;
-                      font-weight: bold;
-                    "
-                  >
-                    ${
-                      accountType === "Google"
-                        ? "Create Password"
-                        : "Reset Password"
-                    }
-                  </a>
-
-                </div>
-
-                <p
-                  style="
-                    color: #666;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  "
-                >
-                  This link expires in 1 hour.
-                </p>
-
-                <p
-                  style="
-                    color: #666;
-                    font-size: 13px;
-                    line-height: 1.6;
-                  "
-                >
-                  If you didn't request this password reset,
-                  you can safely ignore this email.
-                </p>
-
-                <hr
-                  style="
-                    border: none;
-                    border-top: 1px solid #e7dddf;
-                    margin: 28px 0;
-                  "
-                />
-
-                <p
-                  style="
-                    margin: 0;
-                    color: #999;
-                    font-size: 12px;
-                    text-align: center;
-                  "
-                >
-                  © ${new Date().getFullYear()}
-                  Barter Trade
-                </p>
-
-              </div>
+                Create New Password
+              </a>
 
             </div>
 
-          </body>
-        </html>
-      `,
-    });
+            <!-- Fallback URL -->
+            <p style="
+              margin-top: 25px;
+              color: #777777;
+              font-size: 13px;
+              line-height: 1.6;
+            ">
+              If the button above does not work, copy and paste this link into your
+              browser:
+            </p>
+
+            <p style="
+              word-break: break-all;
+              background-color: #f8f5f3;
+              border: 1px solid #e7dddf;
+              padding: 12px;
+              border-radius: 8px;
+              font-size: 12px;
+            ">
+              <a
+                href="${resetUrl}"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="
+                  color: #5b1725;
+                  text-decoration: underline;
+                "
+              >
+                ${resetUrl}
+              </a>
+            </p>
+
+            <p style="
+              margin-top: 25px;
+              color: #777777;
+              font-size: 13px;
+              line-height: 1.6;
+            ">
+              This password reset link expires in 1 hour.
+            </p>
+
+            <p style="
+              color: #777777;
+              font-size: 13px;
+              line-height: 1.6;
+            ">
+              If you did not request a password reset, you can safely ignore this
+              email.
+            </p>
+
+          </div>
+
+          <!-- Footer -->
+          <div style="
+            text-align: center;
+            padding: 20px;
+            color: #999999;
+            font-size: 12px;
+          ">
+            © ${new Date().getFullYear()} Barter Trade
+          </div>
+
+        </div>
+
+      </body>
+      </html>
+        `,
+      });
 
     console.log(
       "PASSWORD RESET EMAIL SENT:",
