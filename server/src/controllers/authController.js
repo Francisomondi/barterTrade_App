@@ -186,9 +186,16 @@ export const getMe = async (req, res) => {
 };
 
 
+
 export const forgotPassword = async (req, res) => {
   try {
+    console.log("=================================");
+    console.log("FORGOT PASSWORD REQUEST");
+
     const email = req.body.email?.toLowerCase().trim();
+
+    console.log("Email:", email);
+    console.log("=================================");
 
     if (!email) {
       return res.status(400).json({
@@ -204,10 +211,14 @@ export const forgotPassword = async (req, res) => {
     });
 
     /*
-     * Always return the same response whether the account
-     * exists or not. This prevents email enumeration.
+     * Always return the same response.
+     *
+     * This prevents attackers from discovering
+     * which email addresses have accounts.
      */
     if (!user) {
+      console.log("PASSWORD RESET: User not found");
+
       return res.json({
         success: true,
         message:
@@ -216,18 +227,26 @@ export const forgotPassword = async (req, res) => {
     }
 
     /*
-     * Google-only accounts don't have a local password.
+     * IMPORTANT:
+     *
+     * We intentionally DO NOT stop when user.password
+     * is null.
+     *
+     * Google users can now create a local password
+     * through this reset flow.
      */
-    if (!user.password) {
-      return res.json({
-        success: true,
-        message:
-          "If an account exists with this email, a password reset link has been sent.",
-      });
-    }
+    console.log(
+      "PASSWORD RESET: Account provider:",
+      user.authProvider
+    );
+
+    console.log(
+      "PASSWORD RESET: Has local password:",
+      Boolean(user.password)
+    );
 
     /*
-     * Delete previous reset tokens.
+     * Remove any previous reset tokens.
      */
     await prisma.passwordResetToken.deleteMany({
       where: {
@@ -236,12 +255,16 @@ export const forgotPassword = async (req, res) => {
     });
 
     /*
-     * Generate a random token.
+     * Generate secure random token.
      */
-    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
 
     /*
-     * Store only the hash in the database.
+     * Store only the SHA-256 hash.
+     *
+     * The raw token is only sent to the user's email.
      */
     const tokenHash = crypto
       .createHash("sha256")
@@ -263,107 +286,280 @@ export const forgotPassword = async (req, res) => {
       },
     });
 
+    /*
+     * Build frontend reset URL.
+     */
+    const frontendUrl = (
+      process.env.FRONTEND_URL ||
+      "http://localhost:5173"
+    ).replace(/\/$/, "");
+
     const resetUrl =
-      `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+      `${frontendUrl}/reset-password/${resetToken}`;
+
+    console.log(
+      "PASSWORD RESET URL:",
+      resetUrl
+    );
+
+    /*
+     * Tell the user whether this is a Google-only
+     * account or an existing local-password account.
+     */
+    const accountType = user.password
+      ? "password"
+      : "Google";
 
     await sendEmail({
       to: user.email,
-      subject: "Reset your Barter Trade password",
+
+      subject:
+        "Reset your Barter Trade password",
+
       html: `
-        <div style="
-          font-family: Arial, sans-serif;
-          max-width: 600px;
-          margin: 0 auto;
-          padding: 30px;
-          color: #21191B;
-        ">
+        <!DOCTYPE html>
 
-          <div style="
-            background: #3D0F18;
-            color: white;
-            padding: 25px;
-            border-radius: 16px 16px 0 0;
-          ">
-            <h1 style="margin: 0;">
-              Barter Trade
-            </h1>
+        <html>
+          <head>
+            <meta charset="UTF-8" />
 
-            <p style="
-              margin: 8px 0 0;
-              color: #DCAEB7;
-            ">
-              Trade smarter
-            </p>
-          </div>
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1.0"
+            />
 
-          <div style="
-            border: 1px solid #E7DDDF;
-            border-top: none;
-            padding: 30px;
-            border-radius: 0 0 16px 16px;
-          ">
+            <title>
+              Reset your Barter Trade password
+            </title>
+          </head>
 
-            <h2>
-              Reset your password
-            </h2>
+          <body
+            style="
+              margin: 0;
+              padding: 0;
+              background: #f8f5f3;
+              font-family: Arial, Helvetica, sans-serif;
+              color: #21191b;
+            "
+          >
 
-            <p>
-              Hello ${user.name || "there"},
-            </p>
+            <div
+              style="
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 30px 20px;
+              "
+            >
 
-            <p>
-              We received a request to reset your
-              Barter Trade password.
-            </p>
+              <!-- HEADER -->
 
-            <p>
-              Click the button below to create a new password.
-            </p>
-
-            <div style="margin: 30px 0;">
-              <a
-                href="${resetUrl}"
+              <div
                 style="
-                  display: inline-block;
-                  background: #5B1725;
+                  background: #3d0f18;
                   color: white;
-                  text-decoration: none;
-                  padding: 14px 24px;
-                  border-radius: 10px;
-                  font-weight: bold;
+                  padding: 28px;
+                  border-radius: 18px 18px 0 0;
                 "
               >
-                Reset Password
-              </a>
+
+                <h1
+                  style="
+                    margin: 0;
+                    font-size: 26px;
+                  "
+                >
+                  Barter Trade
+                </h1>
+
+                <p
+                  style="
+                    margin: 8px 0 0;
+                    color: #dcaeb7;
+                    font-size: 14px;
+                  "
+                >
+                  Trade smarter
+                </p>
+
+              </div>
+
+              <!-- CONTENT -->
+
+              <div
+                style="
+                  background: #ffffff;
+                  border: 1px solid #e7dddf;
+                  border-top: none;
+                  padding: 32px;
+                  border-radius: 0 0 18px 18px;
+                "
+              >
+
+                <h2
+                  style="
+                    margin-top: 0;
+                    font-size: 24px;
+                  "
+                >
+                  Reset your password
+                </h2>
+
+                <p
+                  style="
+                    font-size: 15px;
+                    line-height: 1.7;
+                  "
+                >
+                  Hello ${user.name || "there"},
+                </p>
+
+                <p
+                  style="
+                    font-size: 15px;
+                    line-height: 1.7;
+                  "
+                >
+                  We received a request to create or reset
+                  the password for your Barter Trade account.
+                </p>
+
+                ${
+                  accountType === "Google"
+                    ? `
+                      <div
+                        style="
+                          background: #fbf5f6;
+                          border: 1px solid #e7dddf;
+                          border-radius: 12px;
+                          padding: 16px;
+                          margin: 20px 0;
+                        "
+                      >
+                        <strong>
+                          Google account
+                        </strong>
+
+                        <p
+                          style="
+                            margin: 8px 0 0;
+                            font-size: 14px;
+                            line-height: 1.6;
+                            color: #666;
+                          "
+                        >
+                          Your account was originally created
+                          with Google. After setting a password,
+                          you will be able to sign in using either
+                          Google or your email and password.
+                        </p>
+                      </div>
+                    `
+                    : ""
+                }
+
+                <p
+                  style="
+                    font-size: 15px;
+                    line-height: 1.7;
+                  "
+                >
+                  Click the button below to choose a new password.
+                </p>
+
+                <!-- BUTTON -->
+
+                <div
+                  style="
+                    margin: 30px 0;
+                    text-align: center;
+                  "
+                >
+
+                  <a
+                    href="${resetUrl}"
+                    style="
+                      display: inline-block;
+                      background: #5b1725;
+                      color: #ffffff;
+                      text-decoration: none;
+                      padding: 15px 28px;
+                      border-radius: 10px;
+                      font-size: 15px;
+                      font-weight: bold;
+                    "
+                  >
+                    ${
+                      accountType === "Google"
+                        ? "Create Password"
+                        : "Reset Password"
+                    }
+                  </a>
+
+                </div>
+
+                <p
+                  style="
+                    color: #666;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  "
+                >
+                  This link expires in 1 hour.
+                </p>
+
+                <p
+                  style="
+                    color: #666;
+                    font-size: 13px;
+                    line-height: 1.6;
+                  "
+                >
+                  If you didn't request this password reset,
+                  you can safely ignore this email.
+                </p>
+
+                <hr
+                  style="
+                    border: none;
+                    border-top: 1px solid #e7dddf;
+                    margin: 28px 0;
+                  "
+                />
+
+                <p
+                  style="
+                    margin: 0;
+                    color: #999;
+                    font-size: 12px;
+                    text-align: center;
+                  "
+                >
+                  © ${new Date().getFullYear()}
+                  Barter Trade
+                </p>
+
+              </div>
+
             </div>
 
-            <p style="
-              color: #666;
-              font-size: 14px;
-            ">
-              This link expires in 1 hour.
-            </p>
-
-            <p style="
-              color: #666;
-              font-size: 14px;
-            ">
-              If you didn't request a password reset,
-              you can safely ignore this email.
-            </p>
-
-          </div>
-
-        </div>
+          </body>
+        </html>
       `,
     });
+
+    console.log(
+      "PASSWORD RESET EMAIL SENT:",
+      user.email
+    );
 
     return res.json({
       success: true,
       message:
         "If an account exists with this email, a password reset link has been sent.",
     });
+
   } catch (error) {
+
     console.error(
       "FORGOT PASSWORD ERROR:",
       error
@@ -376,6 +572,9 @@ export const forgotPassword = async (req, res) => {
     });
   }
 };
+
+
+
 
 export const resetPassword = async (req, res) => {
   try {
@@ -405,8 +604,8 @@ export const resetPassword = async (req, res) => {
     }
 
     /*
-     * Hash the token so the raw token never needs
-     * to be stored in the database.
+     * Hash the token so we can compare it with
+     * the hashed token stored in the database.
      */
     const tokenHash = crypto
       .createHash("sha256")
@@ -431,8 +630,11 @@ export const resetPassword = async (req, res) => {
       });
     }
 
+    /*
+     * Check expiration.
+     */
     if (
-      resetRecord.expiresAt.getTime() <
+      resetRecord.expiresAt.getTime() <=
       Date.now()
     ) {
       await prisma.passwordResetToken.delete({
@@ -448,36 +650,41 @@ export const resetPassword = async (req, res) => {
       });
     }
 
+    /*
+     * Hash the new password.
+     */
     const hashedPassword = await bcrypt.hash(
       password,
       12
     );
 
+    /*
+     * Update password and delete reset tokens
+     * atomically.
+     *
+     * IMPORTANT:
+     * We do NOT change authProvider.
+     *
+     * A Google user keeps:
+     *
+     * authProvider = "GOOGLE"
+     * googleId = existing Google ID
+     *
+     * while also getting:
+     *
+     * password = hashed password
+     */
     await prisma.$transaction([
       prisma.user.update({
         where: {
           id: resetRecord.userId,
         },
+
         data: {
           password: hashedPassword,
-          authProvider: "LOCAL",
         },
       }),
 
-      /*
-       * Delete the token immediately so it cannot
-       * be reused.
-       */
-      prisma.passwordResetToken.delete({
-        where: {
-          id: resetRecord.id,
-        },
-      }),
-
-      /*
-       * Remove any other outstanding reset tokens
-       * belonging to this account.
-       */
       prisma.passwordResetToken.deleteMany({
         where: {
           userId: resetRecord.userId,
@@ -485,12 +692,19 @@ export const resetPassword = async (req, res) => {
       }),
     ]);
 
+    console.log(
+      "PASSWORD RESET SUCCESS:",
+      resetRecord.user.email
+    );
+
     return res.json({
       success: true,
       message:
-        "Password reset successfully. You can now log in.",
+        "Password created successfully. You can now sign in with your email and password or Google.",
     });
+
   } catch (error) {
+
     console.error(
       "RESET PASSWORD ERROR:",
       error
@@ -503,3 +717,4 @@ export const resetPassword = async (req, res) => {
     });
   }
 };
+
