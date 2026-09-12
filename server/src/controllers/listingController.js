@@ -1,6 +1,8 @@
 import prisma from "../config/prisma.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 import cloudinary from "../config/cloudinary.js";
+import { getCache, setCache } from "../utils/redisCache.js";
+import { invalidateListingCache, invalidateAllListingsCache,} from "../utils/listingCache.js";
 
 const validConditions = [
 "NEW",
@@ -201,6 +203,9 @@ const listing = await prisma.listing.create({
   },
 });
 
+await invalidateAllListingsCache();
+
+
 return res.status(201).json({
   success: true,
   message: "Listing created successfully",
@@ -247,6 +252,55 @@ const limitNumber = Math.min(
   Math.max(Number(limit) || 12, 1),
   50
 );
+
+/*
+ * --------------------------------------------------
+ * REDIS CACHE KEY
+ * --------------------------------------------------
+ *
+ * Every different combination of filters gets
+ * its own cache entry.
+ *
+ * Examples:
+ *
+ * listings:all:{"page":1,"limit":12}
+ * listings:all:{"search":"iphone","page":1,"limit":12}
+ * listings:all:{"categoryId":"abc","page":1,"limit":12}
+ *
+ */
+
+const cacheKey = `listings:all:${JSON.stringify({
+  search: search || "",
+  categoryId: categoryId || "",
+  condition: condition || "",
+  minValue: minValue || "",
+  maxValue: maxValue || "",
+  location: location || "",
+  page: pageNumber,
+  limit: limitNumber,
+})}`;
+
+/*
+ * --------------------------------------------------
+ * CHECK REDIS CACHE
+ * --------------------------------------------------
+ */
+
+const cachedListings = await getCache(cacheKey);
+
+if (cachedListings) {
+  console.log(`REDIS CACHE HIT: ${cacheKey}`);
+
+  return res.json(cachedListings);
+}
+
+console.log(`REDIS CACHE MISS: ${cacheKey}`);
+
+/*
+ * --------------------------------------------------
+ * BUILD DATABASE FILTER
+ * --------------------------------------------------
+ */
 
 const skip =
   (pageNumber - 1) * limitNumber;
@@ -301,6 +355,12 @@ if (minValue || maxValue) {
   }
 }
 
+/*
+ * --------------------------------------------------
+ * FETCH FROM DATABASE
+ * --------------------------------------------------
+ */
+
 const [listings, total] =
   await prisma.$transaction([
     prisma.listing.findMany({
@@ -317,18 +377,18 @@ const [listings, total] =
       include: {
         category: true,
 
-      images: {
-        take: 1,
-        orderBy: [
-        {
-        isPrimary: "desc",
-        },
-        {
-        sortOrder: "asc",
-        },
-        ],
-      },
+        images: {
+          take: 1,
 
+          orderBy: [
+            {
+              isPrimary: "desc",
+            },
+            {
+              sortOrder: "asc",
+            },
+          ],
+        },
 
         user: {
           select: {
@@ -347,8 +407,15 @@ const [listings, total] =
     }),
   ]);
 
-return res.json({
+/*
+ * --------------------------------------------------
+ * BUILD RESPONSE
+ * --------------------------------------------------
+ */
+
+const responseData = {
   success: true,
+
   listings,
 
   pagination: {
@@ -359,7 +426,30 @@ return res.json({
       total / limitNumber
     ),
   },
-});
+};
+
+/*
+ * --------------------------------------------------
+ * SAVE TO REDIS
+ * --------------------------------------------------
+ *
+ * Cache for 5 minutes.
+ *
+ */
+
+await setCache(
+  cacheKey,
+  responseData,
+  300
+);
+
+/*
+ * --------------------------------------------------
+ * RETURN RESPONSE
+ * --------------------------------------------------
+ */
+
+return res.json(responseData);
 
 
 } catch (error) {
@@ -378,46 +468,81 @@ return res.status(500).json({
 }
 };
 
+
 export const getListingById = async (req, res) => {
 try {
 const { id } = req.params;
 
 
-const listing =
-  await prisma.listing.findUnique({
-    where: {
-      id,
+/*
+ * --------------------------------------------------
+ * REDIS CACHE KEY
+ * --------------------------------------------------
+ */
+
+const cacheKey = `listing:${id}`;
+
+/*
+ * --------------------------------------------------
+ * CHECK REDIS CACHE
+ * --------------------------------------------------
+ */
+
+const cachedListing = await getCache(cacheKey);
+
+if (cachedListing) {
+  console.log(`REDIS CACHE HIT: ${cacheKey}`);
+
+  return res.json(cachedListing);
+}
+
+console.log(`REDIS CACHE MISS: ${cacheKey}`);
+
+/*
+ * --------------------------------------------------
+ * FETCH LISTING FROM DATABASE
+ * --------------------------------------------------
+ */
+
+const listing = await prisma.listing.findUnique({
+  where: {
+    id,
+  },
+
+  include: {
+    category: true,
+
+    images: {
+      orderBy: [
+        {
+          isPrimary: "desc",
+        },
+        {
+          sortOrder: "asc",
+        },
+      ],
     },
 
-    include: {
-      category: true,
-
-      images: {
-        orderBy: [
-        {
-        isPrimary: "desc",
-        },
-        {
-        sortOrder: "asc",
-        },
-        ],
-      },
-
-
-      user: {
-        select: {
-          id: true,
-          name: true,
-          avatar: true,
-          bio: true,
-          location: true,
-          barterScore: true,
-          completedTrades: true,
-          createdAt: true,
-        },
+    user: {
+      select: {
+        id: true,
+        name: true,
+        avatar: true,
+        bio: true,
+        location: true,
+        barterScore: true,
+        completedTrades: true,
+        createdAt: true,
       },
     },
-  });
+  },
+});
+
+/*
+ * --------------------------------------------------
+ * LISTING NOT FOUND
+ * --------------------------------------------------
+ */
 
 if (!listing) {
   return res.status(404).json({
@@ -426,10 +551,38 @@ if (!listing) {
   });
 }
 
-return res.json({
+/*
+ * --------------------------------------------------
+ * BUILD RESPONSE
+ * --------------------------------------------------
+ */
+
+const responseData = {
   success: true,
   listing,
-});
+};
+
+/*
+ * --------------------------------------------------
+ * SAVE TO REDIS
+ * --------------------------------------------------
+ *
+ * Cache for 5 minutes.
+ */
+
+await setCache(
+  cacheKey,
+  responseData,
+  300
+);
+
+/*
+ * --------------------------------------------------
+ * RETURN RESPONSE
+ * --------------------------------------------------
+ */
+
+return res.json(responseData);
 
 
 } catch (error) {
@@ -447,6 +600,7 @@ return res.status(500).json({
 
 }
 };
+
 
 export const getMyListings = async (req, res) => {
 try {
@@ -537,8 +691,7 @@ if (listing.status === "TRADED") {
   });
 }
 
-const updatedListing =
-  await prisma.listing.update({
+const updatedListing =  await prisma.listing.update({
     where: {
       id,
     },
@@ -547,6 +700,7 @@ const updatedListing =
       status: "REMOVED",
     },
   });
+  await invalidateListingCache(id);
 
 return res.json({
   success: true,
@@ -676,7 +830,7 @@ const updatedImages = await prisma.listingImage.findMany({
     },
   ],
 });
-
+await invalidateListingCache(id);
 return res.status(200).json({
   message: "Image deleted successfully.",
   images: updatedImages,
@@ -768,6 +922,8 @@ await prisma.listingImage.createMany({
 });
 
 const updatedListing = await prisma.listing.findUnique({
+
+  
   where: {
     id,
   },
@@ -775,7 +931,7 @@ const updatedListing = await prisma.listing.findUnique({
     images: true,
   },
 });
-
+await invalidateListingCache(id);
 return res.status(201).json({
   message: "Images added successfully",
   listing: updatedListing,
@@ -874,7 +1030,7 @@ const updatedImages = await prisma.listingImage.findMany({
     sortOrder: "asc",
   },
 });
-
+await invalidateListingCache(id);
 return res.status(200).json({
   message: "Main image updated successfully",
   images: updatedImages,
@@ -981,7 +1137,7 @@ const updatedImages = await prisma.listingImage.findMany({
     sortOrder: "asc",
   },
 });
-
+await invalidateListingCache(id);
 return res.status(200).json({
   message: "Listing images reordered successfully",
   images: updatedImages,
