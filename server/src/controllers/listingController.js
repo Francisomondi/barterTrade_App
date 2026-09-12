@@ -576,6 +576,7 @@ try {
 const { id, imageId } = req.params;
 const userId = req.user.id;
 
+
 const image = await prisma.listingImage.findUnique({
   where: {
     id: imageId,
@@ -592,50 +593,93 @@ const image = await prisma.listingImage.findUnique({
 
 if (!image) {
   return res.status(404).json({
-    message: "Listing image not found",
+    message: "Image not found.",
   });
 }
 
-if (image.listing.id !== id) {
+if (image.listingId !== id) {
   return res.status(400).json({
-    message: "Image does not belong to this listing",
+    message: "Image does not belong to this listing.",
   });
 }
 
 if (image.listing.userId !== userId) {
   return res.status(403).json({
-    message: "You are not authorized to delete this image",
+    message: "You are not authorized to delete this image.",
   });
 }
 
-// Delete from Cloudinary if a publicId exists
+// Delete image from Cloudinary first
 if (image.publicId) {
   try {
-    await cloudinary.uploader.destroy(image.publicId, {
-      resource_type: "image",
-    });
+    await cloudinary.uploader.destroy(image.publicId);
   } catch (cloudinaryError) {
     console.error(
       "CLOUDINARY DELETE ERROR:",
       cloudinaryError
     );
-
-    return res.status(500).json({
-      message: "Failed to delete image from Cloudinary",
-    });
   }
 }
 
-// Delete from database
-await prisma.listingImage.delete({
+// Delete image and normalize the remaining images
+await prisma.$transaction(async (tx) => {
+  await tx.listingImage.delete({
+    where: {
+      id: imageId,
+    },
+  });
+
+  const remainingImages = await tx.listingImage.findMany({
+    where: {
+      listingId: id,
+    },
+    orderBy: [
+      {
+        sortOrder: "asc",
+      },
+      {
+        createdAt: "asc",
+      },
+    ],
+  });
+
+  // No images left
+  if (remainingImages.length === 0) {
+    return;
+  }
+
+  // Always normalize the remaining images.
+  // The first image becomes the new Main Image.
+  for (let index = 0; index < remainingImages.length; index++) {
+    await tx.listingImage.update({
+      where: {
+        id: remainingImages[index].id,
+      },
+      data: {
+        sortOrder: index,
+        isPrimary: index === 0,
+      },
+    });
+  }
+});
+
+const updatedImages = await prisma.listingImage.findMany({
   where: {
-    id: imageId,
+    listingId: id,
   },
+  orderBy: [
+    {
+      isPrimary: "desc",
+    },
+    {
+      sortOrder: "asc",
+    },
+  ],
 });
 
 return res.status(200).json({
-  message: "Listing image deleted successfully",
-  imageId,
+  message: "Image deleted successfully.",
+  images: updatedImages,
 });
 
 
@@ -644,13 +688,13 @@ console.error("DELETE LISTING IMAGE ERROR:", error);
 
 
 return res.status(500).json({
-  message: "Failed to delete listing image",
+  message: "Unable to delete image.",
   error: error.message,
 });
 
+
 }
 };
-
 
 export const addListingImages = async (req, res) => {
 try {
