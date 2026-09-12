@@ -1,4 +1,5 @@
 import "dotenv/config";
+import redisClient from "./config/redis.js";
 
 import app from "./app.js";
 

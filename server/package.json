@@ -25,7 +25,8 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.23.0",
-    "prisma": "^7.10.0"
+    "prisma": "^7.10.0",
+    "redis": "^6.2.1"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.10",
