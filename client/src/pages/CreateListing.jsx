@@ -217,6 +217,36 @@ try {
 
 
 };
+if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8F5F3] px-6 py-12">
+        <div className="mx-auto max-w-6xl">
+          <div className="animate-pulse">
+            <div className="h-10 w-48 rounded-lg bg-[#E7DDDF]" />
+
+            <div className="mt-3 h-5 w-72 rounded bg-[#E7DDDF]" />
+
+            <div className="mt-10 grid gap-6 md:grid-cols-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
+                >
+                  <div className="h-52 bg-[#E7DDDF]" />
+
+                  <div className="space-y-3 p-6">
+                    <div className="h-5 w-32 rounded bg-[#E7DDDF]" />
+                    <div className="h-4 w-48 rounded bg-[#E7DDDF]" />
+                    <div className="h-10 w-full rounded bg-[#E7DDDF]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
 return ( 
   <div className="min-h-screen bg-gray-50 px-6 py-10"> <div className="mx-auto max-w-4xl">

@@ -118,31 +118,32 @@ const MakeOffer = () => {
    * ============================================================
    */
 
-  if (loading) {
+ if (loading) {
     return (
-      <div className="min-h-screen bg-[#F8F5F3] px-4 py-12 sm:px-6 sm:py-16">
-        <div className="mx-auto max-w-5xl">
-
+      <div className="min-h-screen bg-[#F8F5F3] px-6 py-12">
+        <div className="mx-auto max-w-6xl">
           <div className="animate-pulse">
+            <div className="h-10 w-48 rounded-lg bg-[#E7DDDF]" />
 
-            <div className="h-4 w-32 rounded bg-gray-200" />
+            <div className="mt-3 h-5 w-72 rounded bg-[#E7DDDF]" />
 
-            <div className="mt-5 h-9 w-64 rounded bg-gray-200 sm:h-11 sm:w-80" />
+            <div className="mt-10 grid gap-6 md:grid-cols-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
+                >
+                  <div className="h-52 bg-[#E7DDDF]" />
 
-            <div className="mt-3 h-4 w-96 max-w-full rounded bg-gray-200" />
-
-            <div className="mt-8 grid gap-5 lg:grid-cols-2">
-
-              <div className="h-80 rounded-2xl bg-gray-200" />
-
-              <div className="h-80 rounded-2xl bg-gray-200" />
-
+                  <div className="space-y-3 p-6">
+                    <div className="h-5 w-32 rounded bg-[#E7DDDF]" />
+                    <div className="h-4 w-48 rounded bg-[#E7DDDF]" />
+                    <div className="h-10 w-full rounded bg-[#E7DDDF]" />
+                  </div>
+                </div>
+              ))}
             </div>
-
-            <div className="mt-5 h-40 rounded-2xl bg-gray-200" />
-
           </div>
-
         </div>
       </div>
     );
