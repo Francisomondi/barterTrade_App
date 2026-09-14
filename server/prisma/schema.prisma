@@ -217,21 +217,29 @@ model ValueEstimate {
 }
 
 model Match {
-  id            String   @id @default(uuid())
-  userId        String
-  listingAId    String
-  listingBId    String
-  score         Float
-  valueScore    Float?
-  locationScore Float?
-  trustScore    Float?
-  status        String   @default("ACTIVE")
-  createdAt     DateTime @default(now())
+id            String   @id @default(uuid())
+userId        String
+listingAId    String
+listingBId    String
+score         Float
+valueScore    Float?
+locationScore Float?
+trustScore    Float?
+status        String   @default("ACTIVE")
+createdAt     DateTime @default(now())
 
-  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listingA Listing @relation("ListingA", fields: [listingAId], references: [id], onDelete: Cascade)
-  listingB Listing @relation("ListingB", fields: [listingBId], references: [id], onDelete: Cascade)
+user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+listingA Listing @relation("ListingA", fields: [listingAId], references: [id], onDelete: Cascade)
+listingB Listing @relation("ListingB", fields: [listingBId], references: [id], onDelete: Cascade)
+
+@@unique([listingAId, listingBId])
+@@index([userId])
+@@index([listingAId])
+@@index([listingBId])
+@@index([status])
+@@index([score])
 }
+
 
 model Offer {
   id                 String      @id @default(uuid())

@@ -6,17 +6,13 @@ findMatchesForListing,
 
 const runTest = async () => {
 try {
-/*
-* Get one active listing.
-*/
-
-
 const listing =
-  await prisma.listing.findFirst({
-    where: {
-      status: "ACTIVE",
-    },
-  });
+await prisma.listing.findFirst({
+where: {
+status: "ACTIVE",
+},
+});
+
 
 if (!listing) {
   console.log(
@@ -27,12 +23,14 @@ if (!listing) {
 }
 
 console.log(
-  `Testing matches for listing: ${listing.id}`
+  "Testing listing:",
+  listing.id
 );
 
 const matches =
   await findMatchesForListing(
-    listing.id
+    listing.id,
+    listing.userId
   );
 
 console.log(
