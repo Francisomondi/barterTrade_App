@@ -1,6 +1,5 @@
 
 import { useEffect, useState } from "react";
-
 import { getListings } from "../api/listingApi";
 import { getCategories } from "../api/categoryApi";
 import ListingCard from "../components/ListingCard";
@@ -26,7 +25,6 @@ const Marketplace = () => {
     const loadCategories = async () => {
       try {
         const data = await getCategories();
-
         setCategories(data.categories || []);
       } catch (error) {
         console.error("Category error:", error);
@@ -67,7 +65,6 @@ const Marketplace = () => {
         setListings(data.listings || []);
       } catch (error) {
         console.error("Listing error:", error);
-
         setError("Unable to load listings.");
       } finally {
         setLoading(false);
@@ -100,77 +97,73 @@ const Marketplace = () => {
   return (
     <div className="min-h-screen bg-[#F8F5F3] text-[#21191B]">
 
-      {/* ======================================================
+      {/* ========================================================
           HERO
-      ======================================================= */}
+      ========================================================= */}
 
       <section className="relative isolate overflow-hidden bg-[#3D0F18]">
 
-        {/* HERO BACKGROUND */}
+        {/* Background image */}
         <div
-          className="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat"
+          className="absolute inset-0 -z-20 bg-cover bg-center"
           style={{
             backgroundImage: "url('/images/hero.jpeg')",
           }}
         />
 
-        {/* DARK OVERLAY */}
-        <div className="absolute inset-0 -z-10 bg-[#3D0F18]/80" />
+        {/* Overlay */}
+        <div className="absolute inset-0 -z-10 bg-[#3D0F18]/85" />
 
-        {/* DECORATIVE GLOW */}
-        <div className="pointer-events-none absolute -right-40 -top-40 -z-10 h-[420px] w-[420px] rounded-full bg-[#A83A50]/20 blur-[100px]" />
+        {/* Gold glow */}
+        <div className="pointer-events-none absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#D6B15E]/15 blur-[90px]" />
 
-        <div className="pointer-events-none absolute -bottom-40 -left-40 -z-10 h-[420px] w-[420px] rounded-full bg-[#701F30]/30 blur-[100px]" />
+        <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#8A2638]/30 blur-[90px]" />
 
-        {/* HERO CONTENT */}
-        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-16 md:px-8 md:py-20">
+        {/* Hero content */}
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
 
           <div className="max-w-4xl">
 
-            {/* BADGE */}
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-md sm:text-sm">
+            {/* Badge */}
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D6B15E]/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
 
-              <span className="h-1.5 w-1.5 rounded-full bg-[#DCAEB7]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#D6B15E]" />
 
               Kenya&apos;s Barter Marketplace
 
             </div>
 
-            {/* TITLE */}
-            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
+            {/* Heading */}
+            <h1 className="max-w-3xl text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl">
 
               Trade what you have
 
               <br />
 
-              <span className="text-[#DCAEB7]">
+              <span className="text-[#D6B15E]">
                 for what you need.
               </span>
 
             </h1>
 
-            {/* DESCRIPTION */}
-            <p className="mt-5 max-w-xl text-sm leading-6 text-white/80 sm:text-base sm:leading-7 md:text-lg">
+            {/* Description */}
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">
 
               Exchange items of similar value with people around you.
-
-              <br className="hidden sm:block" />
-
-              No complicated buying process. Just find an item, make an offer
-              and trade.
+              Find something you need, make an offer and trade.
 
             </p>
 
-            {/* SEARCH */}
-            <div className="mt-7 max-w-4xl sm:mt-8">
+            {/* Search */}
+            <div className="mt-6 max-w-4xl">
 
               <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 shadow-2xl backdrop-blur-xl sm:flex-row">
 
                 <div className="relative flex-1">
 
-                  <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg">
+                  <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base text-gray-500">
                     🔍
-                  </div>
+                  </span>
 
                   <input
                     type="text"
@@ -178,18 +171,21 @@ const Marketplace = () => {
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search phones, cars, laptops, furniture..."
                     className="
-                      h-12 w-full rounded-xl
-                      border border-white/10
+                      h-12
+                      w-full
+                      rounded-xl
+                      border
+                      border-transparent
                       bg-white
                       px-11
-                      text-sm text-gray-900
+                      text-sm
+                      text-[#21191B]
                       outline-none
                       transition
                       placeholder:text-gray-400
-                      focus:border-[#8A2638]
+                      focus:border-[#D6B15E]
                       focus:ring-4
-                      focus:ring-[#8A2638]/20
-                      sm:h-13
+                      focus:ring-[#D6B15E]/15
                     "
                   />
 
@@ -198,16 +194,17 @@ const Marketplace = () => {
                 <button
                   type="button"
                   className="
-                    h-12 rounded-xl
-                    bg-[#8A2638]
+                    h-12
+                    rounded-xl
+                    bg-[#D6B15E]
                     px-7
-                    text-sm font-bold
-                    text-white
+                    text-sm
+                    font-black
+                    text-[#3D0F18]
                     shadow-md
                     transition
-                    hover:bg-[#701F30]
+                    hover:bg-[#E3C878]
                     hover:shadow-lg
-                    sm:h-13
                   "
                 >
                   Search
@@ -217,35 +214,32 @@ const Marketplace = () => {
 
             </div>
 
-            {/* POPULAR SEARCHES */}
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+            {/* Popular searches */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
 
-              <span className="mr-1 text-white/50">
+              <span className="mr-1 text-white/45">
                 Popular:
               </span>
 
-              {[
-                "iPhone",
-                "Laptop",
-                "Car",
-                "Furniture",
-              ].map((item) => (
+              {["iPhone", "Laptop", "Car", "Furniture"].map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => setSearch(item)}
                   className="
                     rounded-full
-                    border border-white/10
+                    border
+                    border-white/10
                     bg-white/5
-                    px-3 py-1.5
+                    px-3
+                    py-1.5
                     font-medium
-                    text-white/75
+                    text-white/70
                     backdrop-blur
                     transition
-                    hover:border-white/25
-                    hover:bg-white/10
-                    hover:text-white
+                    hover:border-[#D6B15E]/40
+                    hover:bg-[#D6B15E]/10
+                    hover:text-[#D6B15E]
                   "
                 >
                   {item}
@@ -258,39 +252,38 @@ const Marketplace = () => {
 
         </div>
 
-        {/* BOTTOM CURVE */}
-        <div className="absolute bottom-0 left-0 right-0 h-6 rounded-t-[50%] bg-[#F8F5F3] sm:h-8" />
+        {/* Bottom curve */}
+        <div className="absolute bottom-0 left-0 right-0 h-4 rounded-t-[50%] bg-[#F8F5F3] sm:h-5" />
 
       </section>
 
 
-      {/* ======================================================
-          MAIN
-      ======================================================= */}
+      {/* ========================================================
+          MAIN CONTENT
+      ========================================================= */}
 
-      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-9 md:px-8 md:py-10">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
 
-
-        {/* ====================================================
-            CATEGORIES
-        ===================================================== */}
+        {/* ======================================================
+            CATEGORY SECTION
+        ======================================================= */}
 
         <section>
 
-          <div className="mb-4 flex items-end justify-between gap-4">
+          <div className="mb-3 flex items-end justify-between gap-3">
 
             <div>
 
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8A2638]">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8A2638]">
                 Explore
               </p>
 
-              <h2 className="mt-1 text-xl font-black text-[#21191B] sm:text-2xl">
+              <h2 className="mt-0.5 text-xl font-black text-[#21191B] sm:text-2xl">
                 Browse categories
               </h2>
 
               <p className="mt-1 text-xs text-gray-500 sm:text-sm">
-                Discover things people are willing to exchange.
+                Find items people are willing to exchange.
               </p>
 
             </div>
@@ -301,11 +294,11 @@ const Marketplace = () => {
                 onClick={() => setCategoryId("")}
                 className="
                   shrink-0
-                  text-xs font-semibold
+                  text-xs
+                  font-bold
                   text-[#8A2638]
                   transition
                   hover:text-[#3D0F18]
-                  sm:text-sm
                 "
               >
                 Clear
@@ -314,12 +307,8 @@ const Marketplace = () => {
 
           </div>
 
-
-          {/* CATEGORY BUTTONS */}
-
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
-
-            {/* ALL */}
+          {/* Category buttons */}
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
 
             <button
               type="button"
@@ -328,23 +317,21 @@ const Marketplace = () => {
                 flex-shrink-0
                 rounded-lg
                 border
-                px-3.5 py-2
-                text-xs font-bold
-                shadow-sm
+                px-3
+                py-2
+                text-xs
+                font-bold
                 transition
-                sm:px-4 sm:py-2.5 sm:text-sm
+                sm:px-4
                 ${
                   !categoryId
-                    ? "border-[#5B1725] bg-[#5B1725] text-white shadow-[#5B1725]/20"
-                    : "border-[#E7DDDF] bg-white text-gray-700 hover:border-[#8A2638] hover:text-[#5B1725]"
+                    ? "border-[#5B1725] bg-[#5B1725] text-white shadow-sm"
+                    : "border-[#E7DDDF] bg-white text-gray-700 hover:border-[#D6B15E] hover:text-[#5B1725]"
                 }
               `}
             >
               All Items
             </button>
-
-
-            {/* DYNAMIC CATEGORIES */}
 
             {categories.map((category) => (
               <button
@@ -355,15 +342,16 @@ const Marketplace = () => {
                   flex-shrink-0
                   rounded-lg
                   border
-                  px-3.5 py-2
-                  text-xs font-bold
-                  shadow-sm
+                  px-3
+                  py-2
+                  text-xs
+                  font-bold
                   transition
-                  sm:px-4 sm:py-2.5 sm:text-sm
+                  sm:px-4
                   ${
                     categoryId === category.id
-                      ? "border-[#5B1725] bg-[#5B1725] text-white shadow-[#5B1725]/20"
-                      : "border-[#E7DDDF] bg-white text-gray-700 hover:border-[#8A2638] hover:text-[#5B1725]"
+                      ? "border-[#5B1725] bg-[#5B1725] text-white shadow-sm"
+                      : "border-[#E7DDDF] bg-white text-gray-700 hover:border-[#D6B15E] hover:text-[#5B1725]"
                   }
                 `}
               >
@@ -376,30 +364,27 @@ const Marketplace = () => {
         </section>
 
 
-        {/* ====================================================
+        {/* ======================================================
             FILTERS
-        ===================================================== */}
+        ======================================================= */}
 
-        <section className="mt-5 rounded-xl border border-[#E7DDDF] bg-white p-3.5 shadow-sm sm:mt-6 sm:p-4">
+        <section className="mt-4 rounded-xl border border-[#E7DDDF] bg-white p-3 shadow-sm sm:p-4">
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-            <div className="min-w-0">
+            <div>
 
-              <p className="text-sm font-bold text-[#21191B]">
-                Refine your search
+              <p className="text-sm font-black text-[#21191B]">
+                Refine results
               </p>
 
-              <p className="mt-0.5 text-xs text-gray-500">
-                Filter by item condition.
+              <p className="text-xs text-gray-500">
+                Filter listings by condition.
               </p>
 
             </div>
 
-
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-
-              {/* CONDITION */}
+            <div className="flex w-full gap-2 sm:w-auto">
 
               <select
                 value={condition}
@@ -407,19 +392,22 @@ const Marketplace = () => {
                 className="
                   h-10
                   min-w-0
+                  flex-1
                   rounded-lg
-                  border border-[#E7DDDF]
-                  bg-[#FBF5F6]
+                  border
+                  border-[#E7DDDF]
+                  bg-[#FBF8F8]
                   px-3
-                  text-xs font-medium
+                  text-xs
+                  font-semibold
                   text-gray-700
                   outline-none
                   transition
-                  focus:border-[#8A2638]
+                  focus:border-[#D6B15E]
                   focus:ring-2
-                  focus:ring-[#8A2638]/10
+                  focus:ring-[#D6B15E]/10
                   sm:min-w-[170px]
-                  sm:text-sm
+                  sm:flex-none
                 "
               >
 
@@ -449,28 +437,27 @@ const Marketplace = () => {
 
               </select>
 
-
-              {/* CLEAR */}
-
               <button
                 type="button"
                 onClick={clearFilters}
                 className="
                   h-10
+                  shrink-0
                   rounded-lg
-                  border border-[#E7DDDF]
+                  border
+                  border-[#E7DDDF]
                   bg-white
                   px-4
-                  text-xs font-semibold
+                  text-xs
+                  font-bold
                   text-gray-600
                   transition
-                  hover:border-[#8A2638]
+                  hover:border-[#D6B15E]
                   hover:bg-[#FBF5F6]
                   hover:text-[#5B1725]
-                  sm:text-sm
                 "
               >
-                Clear filters
+                Clear
               </button>
 
             </div>
@@ -480,24 +467,22 @@ const Marketplace = () => {
         </section>
 
 
-        {/* ====================================================
+        {/* ======================================================
             LISTINGS
-        ===================================================== */}
+        ======================================================= */}
 
-        <section className="mt-8 sm:mt-10">
+        <section className="mt-6 sm:mt-8">
 
-
-          {/* HEADER */}
-
-          <div className="mb-4 flex items-end justify-between gap-4 sm:mb-5">
+          {/* Section header */}
+          <div className="mb-4 flex items-end justify-between gap-3">
 
             <div>
 
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#8A2638]">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#8A2638]">
                 Marketplace
               </p>
 
-              <h2 className="mt-1 text-xl font-black text-[#21191B] sm:text-2xl">
+              <h2 className="mt-0.5 text-xl font-black text-[#21191B] sm:text-2xl">
                 Available for barter
               </h2>
 
@@ -507,9 +492,8 @@ const Marketplace = () => {
 
             </div>
 
-
-            <div className="shrink-0 rounded-full bg-[#F5E8EB] px-3 py-1.5 text-xs font-bold text-[#5B1725] sm:px-4 sm:py-2 sm:text-sm">
-              {listings.length} items
+            <div className="shrink-0 rounded-full border border-[#D6B15E]/30 bg-[#F8F1DD] px-3 py-1.5 text-xs font-black text-[#5B1725]">
+              {listings.length} {listings.length === 1 ? "item" : "items"}
             </div>
 
           </div>
@@ -520,7 +504,7 @@ const Marketplace = () => {
           =================================================== */}
 
           {loading && (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
               {[1, 2, 3, 4].map((item) => (
                 <div
@@ -528,18 +512,14 @@ const Marketplace = () => {
                   className="
                     overflow-hidden
                     rounded-xl
-                    border border-[#E7DDDF]
+                    border
+                    border-[#E7DDDF]
                     bg-white
                     shadow-sm
                   "
                 >
 
-                  {/* IMAGE */}
-
                   <div className="aspect-[4/3] animate-pulse bg-gray-200" />
-
-
-                  {/* CONTENT */}
 
                   <div className="space-y-3 p-4">
 
@@ -547,9 +527,9 @@ const Marketplace = () => {
 
                     <div className="h-4 w-3/4 animate-pulse rounded bg-gray-200" />
 
-                    <div className="h-3.5 w-full animate-pulse rounded bg-gray-200" />
+                    <div className="h-3 w-full animate-pulse rounded bg-gray-200" />
 
-                    <div className="h-3.5 w-2/3 animate-pulse rounded bg-gray-200" />
+                    <div className="h-3 w-2/3 animate-pulse rounded bg-gray-200" />
 
                   </div>
 
@@ -565,33 +545,46 @@ const Marketplace = () => {
           =================================================== */}
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-red-700 sm:p-6">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-5">
 
-              <p className="text-sm font-bold">
-                Something went wrong
-              </p>
+              <div className="flex items-start gap-3">
 
-              <p className="mt-1 text-xs text-red-600 sm:text-sm">
-                {error}
-              </p>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-sm">
+                  ⚠
+                </div>
 
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="
-                  mt-4
-                  rounded-lg
-                  bg-[#8A2638]
-                  px-4 py-2
-                  text-xs font-semibold
-                  text-white
-                  transition
-                  hover:bg-[#701F30]
-                  sm:text-sm
-                "
-              >
-                Try again
-              </button>
+                <div>
+
+                  <p className="text-sm font-black text-red-800">
+                    Something went wrong
+                  </p>
+
+                  <p className="mt-1 text-xs text-red-600 sm:text-sm">
+                    {error}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="
+                      mt-3
+                      rounded-lg
+                      bg-[#5B1725]
+                      px-4
+                      py-2
+                      text-xs
+                      font-bold
+                      text-white
+                      transition
+                      hover:bg-[#3D0F18]
+                    "
+                  >
+                    Try again
+                  </button>
+
+                </div>
+
+              </div>
 
             </div>
           )}
@@ -604,17 +597,17 @@ const Marketplace = () => {
           {!loading &&
             !error &&
             listings.length === 0 && (
-              <div className="rounded-xl border border-[#E7DDDF] bg-white px-5 py-16 text-center shadow-sm sm:px-6 sm:py-20">
+              <div className="rounded-xl border border-[#E7DDDF] bg-white px-5 py-12 text-center shadow-sm sm:py-14">
 
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#F5E8EB] text-xl">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F8F1DD] text-lg">
                   🔎
                 </div>
 
-                <h3 className="mt-4 text-lg font-bold text-[#21191B] sm:text-xl">
+                <h3 className="mt-3 text-lg font-black text-[#21191B]">
                   No items found
                 </h3>
 
-                <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-gray-500 sm:text-sm sm:leading-6">
+                <p className="mx-auto mt-1.5 max-w-md text-xs leading-5 text-gray-500 sm:text-sm">
                   We couldn&apos;t find any items matching your search.
                   Try another category or search term.
                 </p>
@@ -623,16 +616,17 @@ const Marketplace = () => {
                   type="button"
                   onClick={clearFilters}
                   className="
-                    mt-5
+                    mt-4
                     rounded-lg
                     bg-[#5B1725]
-                    px-5 py-2.5
-                    text-xs font-bold
+                    px-5
+                    py-2.5
+                    text-xs
+                    font-black
                     text-white
-                    shadow-md
+                    shadow-sm
                     transition
                     hover:bg-[#3D0F18]
-                    sm:text-sm
                   "
                 >
                   Browse all items
@@ -655,10 +649,8 @@ const Marketplace = () => {
                   grid-cols-1
                   gap-4
                   sm:grid-cols-2
-                  sm:gap-4
-                  md:grid-cols-3
-                  lg:grid-cols-4
-                  xl:gap-5
+                  lg:grid-cols-3
+                  xl:grid-cols-4
                 "
               >
 
@@ -675,6 +667,9 @@ const Marketplace = () => {
         </section>
 
       </main>
+
+
+      
 
     </div>
   );
