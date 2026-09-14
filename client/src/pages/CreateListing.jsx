@@ -213,11 +213,11 @@ const CreateListing = () => {
         ====================================================== */}
         <div className="mb-6 text-center">
 
-          <div className="mx-auto flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-md">
+          <div className="mx-auto flex h-14 w-68 items-center justify-center overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-md">
             <img
               src="/images/logo4.png"
               alt="BarterConnect"
-              className="h-full w-full object-contain p-1.5"
+              className="h-[full] w-full object-contain p-1.5"
             />
           </div>
 
