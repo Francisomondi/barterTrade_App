@@ -738,157 +738,253 @@ return res.status(500).json({
 };
 
 
-export const completeTrade = async (
-req,
-res
-) => {
-try {
-const { id } = req.params;
-const userId = req.user.id;
+export const completeTrade = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
 
+    /*
+     * Get the trade first so we can verify ownership
+     * and get the trade number for notifications.
+     */
+    const trade = await prisma.trade.findUnique({
+      where: {
+        id,
+      },
+      include: {
+        items: true,
+        traderA: {
+          select: {
+            id: true,
+            name: true,
+            completedTrades: true,
+          },
+        },
+        traderB: {
+          select: {
+            id: true,
+            name: true,
+            completedTrades: true,
+          },
+        },
+      },
+    });
 
-const trade = await prisma.trade.findUnique({
-  where: {
-    id,
-  },
+    if (!trade) {
+      return res.status(404).json({
+        success: false,
+        message: "Trade not found.",
+      });
+    }
 
-  include: {
-    items: true,
-  },
-});
+    /*
+     * Only Trader A or Trader B can complete the trade.
+     */
+    const isParticipant =
+      trade.traderAId === userId ||
+      trade.traderBId === userId;
 
-if (!trade) {
-  return res.status(404).json({
-    success: false,
-    message: "Trade not found.",
-  });
-}
+    if (!isParticipant) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You are not a participant in this trade.",
+      });
+    }
 
-const isParticipant =
-  trade.traderAId === userId ||
-  trade.traderBId === userId;
+    /*
+     * Prevent completing an already completed trade.
+     */
+    if (trade.status === "COMPLETED") {
+      return res.status(400).json({
+        success: false,
+        message: "This trade has already been completed.",
+      });
+    }
 
-if (!isParticipant) {
-  return res.status(403).json({
-    success: false,
-    message: "You are not a participant in this trade.",
-  });
-}
+    /*
+     * Only IN_PROGRESS trades can be completed.
+     */
+    if (trade.status !== "IN_PROGRESS") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Only trades in progress can be completed.",
+      });
+    }
 
+    /*
+     * Everything that changes because of completion
+     * happens inside ONE transaction.
+     *
+     * Most importantly, the trade update uses:
+     *
+     *   status: "IN_PROGRESS"
+     *
+     * in the WHERE condition.
+     *
+     * This prevents two simultaneous requests from
+     * completing the same trade and incrementing the
+     * counters twice.
+     */
+    const completedTrade = await prisma.$transaction(
+      async (tx) => {
+        /*
+         * Atomically change the trade from IN_PROGRESS
+         * to COMPLETED.
+         */
+        const tradeUpdate =
+          await tx.trade.updateMany({
+            where: {
+              id,
+              status: "IN_PROGRESS",
+            },
+            data: {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            },
+          });
 
+        /*
+         * If another request completed this trade first,
+         * updateMany will affect zero rows.
+         */
+        if (tradeUpdate.count !== 1) {
+          const error = new Error(
+            "This trade has already been completed."
+          );
 
-if (trade.status !== "IN_PROGRESS") {
-  return res.status(400).json({
-    success: false,
+          error.statusCode = 400;
 
-    message:
-      "Only trades in progress can be completed.",
-  });
-}
+          throw error;
+        }
 
+        /*
+         * Mark all listings involved in this trade
+         * as TRADED.
+         */
+        for (const item of trade.items) {
+          await tx.listing.update({
+            where: {
+              id: item.listingId,
+            },
+            data: {
+              status: "TRADED",
+            },
+          });
+        }
 
+        /*
+         * Increment Trader A's completed trade count.
+         */
+        await tx.user.update({
+          where: {
+            id: trade.traderAId,
+          },
+          data: {
+            completedTrades: {
+              increment: 1,
+            },
+          },
+        });
 
-const completedTrade =
-  await prisma.$transaction(
-    async (tx) => {
-      const updatedTrade =
-        await tx.trade.update({
+        /*
+         * Increment Trader B's completed trade count.
+         */
+        await tx.user.update({
+          where: {
+            id: trade.traderBId,
+          },
+          data: {
+            completedTrades: {
+              increment: 1,
+            },
+          },
+        });
+
+        /*
+         * Return the final trade.
+         */
+        return tx.trade.findUnique({
           where: {
             id,
           },
-
-          data: {
-            status: "COMPLETED",
-            completedAt: new Date(),
-          },
-        });
-
-     
-      for (const item of trade.items) {
-        await tx.listing.update({
-          where: {
-            id: item.listingId,
-          },
-
-          data: {
-            status: "TRADED",
+          include: {
+            traderA: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                barterScore: true,
+                completedTrades: true,
+              },
+            },
+            traderB: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                avatar: true,
+                barterScore: true,
+                completedTrades: true,
+              },
+            },
+            items: {
+              include: {
+                listing: {
+                  include: {
+                    images: true,
+                    category: true,
+                  },
+                },
+              },
+            },
           },
         });
       }
+    );
 
+    /*
+     * Notify the other trader AFTER the transaction
+     * has successfully completed.
+     */
+    const otherTraderId =
+      trade.traderAId === userId
+        ? trade.traderBId
+        : trade.traderAId;
 
-      await tx.user.update({
-        where: {
-          id: trade.traderAId,
-        },
+    await prisma.notification.create({
+      data: {
+        userId: otherTraderId,
+        type: "TRADE",
+        title: "Trade Completed",
+        message:
+          `Trade ${trade.tradeNumber} has been completed successfully.`,
+      },
+    });
 
-        data: {
-          completedTrades: {
-            increment: 1,
-          },
-        },
-      });
+    return res.status(200).json({
+      success: true,
+      message:
+        "Trade completed successfully.",
+      trade: completedTrade,
+    });
+  } catch (error) {
+    console.error(
+      "Complete trade error:",
+      error
+    );
 
-      await tx.user.update({
-        where: {
-          id: trade.traderBId,
-        },
-
-        data: {
-          completedTrades: {
-            increment: 1,
-          },
-        },
-      });
-
-      return updatedTrade;
-    }
-  );
-
-
-
-const otherTraderId =
-  trade.traderAId === userId
-    ? trade.traderBId
-    : trade.traderAId;
-
-await prisma.notification.create({
-  data: {
-    userId: otherTraderId,
-
-    type: "TRADE",
-
-    title: "Trade Completed",
-
-    message:
-      `Trade ${trade.tradeNumber} has been completed successfully.`,
-  },
-});
-
-return res.status(200).json({
-  success: true,
-
-  message:
-    "Trade completed successfully.",
-
-  trade: completedTrade,
-});
-
-
-} catch (error) {
-console.error(
-"Complete trade error:",
-error
-);
-
-
-return res.status(500).json({
-  success: false,
-
-  message:
-    "Failed to complete trade.",
-});
-
-
-}
+    return res.status(
+      error.statusCode || 500
+    ).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to complete trade.",
+    });
+  }
 };
+
+

@@ -166,23 +166,49 @@ export const login = async (req, res) => {
 };
 
 export const getMe = async (req, res) => {
-  return res.json({
-    success: true,
-    user: {
-      id: req.user.id,
-      name: req.user.name,
-      email: req.user.email,
-      phone: req.user.phone,
-      avatar: req.user.avatar,
-      bio: req.user.bio,
-      location: req.user.location,
-      role: req.user.role,
-      barterScore: req.user.barterScore,
-      completedTrades: req.user.completedTrades,
-      authProvider: req.user.authProvider,
-      createdAt: req.user.createdAt,
-    },
-  });
+  try {
+    const completedTrades = await prisma.trade.count({
+      where: {
+        status: "COMPLETED",
+        OR: [
+          {
+            traderAId: req.user.id,
+          },
+          {
+            traderBId: req.user.id,
+          },
+        ],
+      },
+    });
+
+    return res.json({
+      success: true,
+      user: {
+        id: req.user.id,
+        name: req.user.name,
+        email: req.user.email,
+        phone: req.user.phone,
+        avatar: req.user.avatar,
+        bio: req.user.bio,
+        location: req.user.location,
+        role: req.user.role,
+        barterScore: req.user.barterScore,
+
+        // Always reflects the actual database trades
+        completedTrades,
+
+        authProvider: req.user.authProvider,
+        createdAt: req.user.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("GET ME ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to fetch user profile.",
+    });
+  }
 };
 
 

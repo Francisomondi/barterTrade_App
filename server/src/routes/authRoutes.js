@@ -18,20 +18,26 @@ router.get( "/google", passport.authenticate("google",
   })
 );
 
-router.get("/google/callback", passport.authenticate("google",
-  {
+router.get(
+  "/google/callback",
+  passport.authenticate("google", {
     session: false,
-    failureRedirect:
-      "http://localhost:5173/login?error=google",
+    failureRedirect: "http://localhost:5173/login",
   }),
   (req, res) => {
-    const token = generateToken(req.user);
+    try {
+      const token = generateToken(req.user);
 
-    res.redirect(
-      `http://localhost:5173/auth/callback?token=${encodeURIComponent(
-        token
-      )}`
-    );
+      res.redirect(
+        `http://localhost:5173/auth/callback?token=${encodeURIComponent(
+          token
+        )}`
+      );
+    } catch (error) {
+      console.error("GOOGLE CALLBACK ERROR:", error);
+
+      res.redirect("http://localhost:5173/login");
+    }
   }
 );
 
