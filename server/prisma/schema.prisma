@@ -379,10 +379,14 @@ model Notification {
   type      NotificationType
   title     String
   message   String
+  
+  referenceId String?
+  referenceType String?
   read      Boolean          @default(false)
   createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
 }
 
 model Payment {

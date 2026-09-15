@@ -1,9 +1,7 @@
-import prisma from "../config/prisma.js";
 
-/**
- * CREATE OFFER
- * POST /api/offers
- */
+import prisma from "../config/prisma.js";
+import { createNotification } from "../services/notificationService.js";
+
 export const createOffer = async (req, res) => {
   try {
     const senderId = req.user.id;
@@ -179,13 +177,13 @@ export const createOffer = async (req, res) => {
     });
 
     // Notify receiver
-    await prisma.notification.create({
-      data: {
-        userId: receiverId,
-        type: "OFFER",
-        title: "New barter offer",
-        message: `${offer.sender.name} has offered "${offeredListing.title}" for your "${requestedListing.title}".`,
-      },
+    await createNotification({
+      userId: receiverId,
+      type: "OFFER",
+      title: "New barter offer",
+      referenceId: offer.id,
+      referenceType: "OFFER",
+      message: `${offer.sender.name} has offered "${offeredListing.title}" for your "${requestedListing.title}".`,
     });
 
     return res.status(201).json({
@@ -203,10 +201,6 @@ export const createOffer = async (req, res) => {
   }
 };
 
-/**
- * GET SENT OFFERS
- * GET /api/offers/sent
- */
 export const getSentOffers = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -261,10 +255,6 @@ export const getSentOffers = async (req, res) => {
   }
 };
 
-/**
- * GET RECEIVED OFFERS
- * GET /api/offers/received
- */
 export const getReceivedOffers = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -320,10 +310,7 @@ export const getReceivedOffers = async (req, res) => {
   }
 };
 
-/**
- * GET SINGLE OFFER
- * GET /api/offers/:id
- */
+
 export const getOffer = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -405,206 +392,220 @@ export const getOffer = async (req, res) => {
   }
 };
 
-/**
- * ACCEPT OFFER
- * PATCH /api/offers/:id/accept
- */
+
 export const acceptOffer = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
 
-    const offer = await prisma.offer.findUnique({
-      where: {
-        id,
-      },
+    const result = await prisma.$transaction(
+      async (tx) => {
+        
+        const claimResult = await tx.offer.updateMany({
+          where: {
+            id,
+            receiverId: userId,
+            status: "PENDING",
+          },
+          data: {
+            status: "ACCEPTED",
+          },
+        });
 
-      include: {
-        offeredListing: true,
-        requestedListing: true,
-      },
-    });
+       
+        if (claimResult.count === 0) {
+          const existingOffer = await tx.offer.findUnique({
+            where: {
+              id,
+            },
+            select: {
+              id: true,
+              receiverId: true,
+              status: true,
+            },
+          });
 
-    if (!offer) {
-      return res.status(404).json({
-        success: false,
-        message: "Offer not found.",
-      });
-    }
+          if (!existingOffer) {
+            const error = new Error("OFFER_NOT_FOUND");
+            error.code = "OFFER_NOT_FOUND";
+            throw error;
+          }
 
-    // Only receiver can accept
-    if (offer.receiverId !== userId) {
-      return res.status(403).json({
-        success: false,
-        message: "Only the item owner can accept this offer.",
-      });
-    }
+          if (existingOffer.receiverId !== userId) {
+            const error = new Error("NOT_AUTHORIZED");
+            error.code = "NOT_AUTHORIZED";
+            throw error;
+          }
 
-    // Only pending offers can be accepted
-    if (offer.status !== "PENDING") {
-      return res.status(400).json({
-        success: false,
-        message: "Only pending offers can be accepted.",
-      });
-    }
+          const error = new Error("OFFER_NOT_PENDING");
+          error.code = "OFFER_NOT_PENDING";
+          throw error;
+        }
 
-    // Both listings must still be active
-    if (offer.offeredListing.status !== "ACTIVE") {
-      return res.status(400).json({
-        success: false,
-        message: "The offered item is no longer available.",
-      });
-    }
-
-    if (offer.requestedListing.status !== "ACTIVE") {
-      return res.status(400).json({
-        success: false,
-        message: "Your item is no longer available.",
-      });
-    }
-
-    // Generate unique trade number
-    const tradeNumber = `BT-${Date.now()}-${Math.floor(
-      1000 + Math.random() * 9000
-    )}`;
-
-    /**
-     * Everything below happens inside ONE transaction:
-     *
-     * 1. Accept offer
-     * 2. Reserve both listings
-     * 3. Reject competing pending offers
-     * 4. Create trade
-     * 5. Create trade items
-     */
-    const result = await prisma.$transaction(async (tx) => {
-      // Accept offer
-      const updatedOffer = await tx.offer.update({
-        where: {
-          id,
-        },
-
-        data: {
-          status: "ACCEPTED",
-        },
-      });
-
-      // Reserve offered listing
-      await tx.listing.update({
-        where: {
-          id: offer.offeredListingId,
-        },
-
-        data: {
-          status: "RESERVED",
-        },
-      });
-
-      // Reserve requested listing
-      await tx.listing.update({
-        where: {
-          id: offer.requestedListingId,
-        },
-
-        data: {
-          status: "RESERVED",
-        },
-      });
-
-      // Reject competing pending offers involving either listing
-      await tx.offer.updateMany({
-        where: {
-          status: "PENDING",
-
-          NOT: {
+        
+        const offer = await tx.offer.findUnique({
+          where: {
             id,
           },
+          include: {
+            offeredListing: true,
+            requestedListing: true,
+          },
+        });
 
-          OR: [
-            {
-              requestedListingId: offer.requestedListingId,
+        if (!offer) {
+          const error = new Error("OFFER_NOT_FOUND");
+          error.code = "OFFER_NOT_FOUND";
+          throw error;
+        }
+
+      
+        if (offer.offeredListing.status !== "ACTIVE") {
+          const error = new Error("OFFERED_LISTING_UNAVAILABLE");
+          error.code = "OFFERED_LISTING_UNAVAILABLE";
+          throw error;
+        }
+
+        if (offer.requestedListing.status !== "ACTIVE") {
+          const error = new Error("REQUESTED_LISTING_UNAVAILABLE");
+          error.code = "REQUESTED_LISTING_UNAVAILABLE";
+          throw error;
+        }
+
+        const tradeNumber = `BT-${Date.now()}-${Math.floor(
+          1000 + Math.random() * 9000
+        )}`;
+
+        const offeredListingUpdate = await tx.listing.updateMany({
+          where: {
+            id: offer.offeredListingId,
+            status: "ACTIVE",
+          },
+          data: {
+            status: "RESERVED",
+          },
+        });
+
+        if (offeredListingUpdate.count !== 1) {
+          const error = new Error("OFFERED_LISTING_UNAVAILABLE");
+          error.code = "OFFERED_LISTING_UNAVAILABLE";
+          throw error;
+        }
+
+        const requestedListingUpdate = await tx.listing.updateMany({
+          where: {
+            id: offer.requestedListingId,
+            status: "ACTIVE",
+          },
+          data: {
+            status: "RESERVED",
+          },
+        });
+
+        if (requestedListingUpdate.count !== 1) {
+          const error = new Error("REQUESTED_LISTING_UNAVAILABLE");
+          error.code = "REQUESTED_LISTING_UNAVAILABLE";
+          throw error;
+        }
+
+        await tx.offer.updateMany({
+          where: {
+            status: "PENDING",
+
+            NOT: {
+              id,
             },
-            {
-              offeredListingId: offer.requestedListingId,
-            },
-            {
-              requestedListingId: offer.offeredListingId,
-            },
-            {
-              offeredListingId: offer.offeredListingId,
-            },
-          ],
-        },
 
-        data: {
-          status: "REJECTED",
-        },
-      });
-
-      // Create trade
-      const trade = await tx.trade.create({
-        data: {
-          tradeNumber,
-          offerId: offer.id,
-
-          traderAId: offer.senderId,
-          traderBId: offer.receiverId,
-
-          status: "PENDING",
-
-          agreedValueA:
-            offer.offeredListing.estimatedValue,
-
-          agreedValueB:
-            offer.requestedListing.estimatedValue,
-
-          items: {
-            create: [
+            OR: [
               {
-                listingId: offer.offeredListingId,
-                ownerId: offer.senderId,
-                agreedValue:
-                  offer.offeredListing.estimatedValue,
+                requestedListingId: offer.requestedListingId,
               },
-
               {
-                listingId: offer.requestedListingId,
-                ownerId: offer.receiverId,
-                agreedValue:
-                  offer.requestedListing.estimatedValue,
+                offeredListingId: offer.requestedListingId,
+              },
+              {
+                requestedListingId: offer.offeredListingId,
+              },
+              {
+                offeredListingId: offer.offeredListingId,
               },
             ],
           },
-        },
 
-        include: {
-          items: {
-            include: {
-              listing: {
-                include: {
-                  images: true,
-                  category: true,
+          data: {
+            status: "REJECTED",
+          },
+        });
+
+      
+        const trade = await tx.trade.create({
+          data: {
+            tradeNumber,
+            offerId: offer.id,
+
+            traderAId: offer.senderId,
+            traderBId: offer.receiverId,
+
+            status: "PENDING",
+
+            agreedValueA:
+              offer.offeredListing.estimatedValue,
+
+            agreedValueB:
+              offer.requestedListing.estimatedValue,
+
+            items: {
+              create: [
+                {
+                  listingId: offer.offeredListingId,
+                  ownerId: offer.senderId,
+                  agreedValue:
+                    offer.offeredListing.estimatedValue,
+                },
+
+                {
+                  listingId: offer.requestedListingId,
+                  ownerId: offer.receiverId,
+                  agreedValue:
+                    offer.requestedListing.estimatedValue,
+                },
+              ],
+            },
+          },
+
+          include: {
+            items: {
+              include: {
+                listing: {
+                  include: {
+                    images: true,
+                    category: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
 
-      return {
-        offer: updatedOffer,
-        trade,
-      };
-    });
-
-    // Notify sender
-    await prisma.notification.create({
-      data: {
-        userId: offer.senderId,
-        type: "TRADE",
-        title: "Offer accepted",
-        message: `Your barter offer has been accepted. Trade ${result.trade.tradeNumber} has been created.`,
+        return {
+          offer,
+          trade,
+        };
       },
+      {
+        
+        isolationLevel: "Serializable",
+      }
+    );
+
+  
+    await createNotification({
+      userId: result.offer.senderId,
+      type: "TRADE",
+      title: "Offer accepted",
+      referenceId: result.trade.id,
+      referenceType: "TRADE",
+      message: `Your barter offer has been accepted. Trade ${result.trade.tradeNumber} has been created.`,
     });
 
     return res.status(200).json({
@@ -616,6 +617,54 @@ export const acceptOffer = async (req, res) => {
   } catch (error) {
     console.error("ACCEPT OFFER ERROR:", error);
 
+  
+    if (error.code === "OFFER_NOT_FOUND") {
+      return res.status(404).json({
+        success: false,
+        message: "Offer not found.",
+      });
+    }
+
+    if (error.code === "NOT_AUTHORIZED") {
+      return res.status(403).json({
+        success: false,
+        message: "Only the item owner can accept this offer.",
+      });
+    }
+
+  
+    if (error.code === "OFFER_NOT_PENDING") {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This offer is no longer pending. It may have already been processed.",
+      });
+    }
+
+  
+    if (
+      error.code === "OFFERED_LISTING_UNAVAILABLE" ||
+      error.code === "REQUESTED_LISTING_UNAVAILABLE"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This offer could not be accepted because one of the items is no longer available.",
+      });
+    }
+
+    if (
+      error.code === "P2034" ||
+      error.message?.includes("Serializable") ||
+      error.message?.includes("serialization")
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "The offer was being processed at the same time by another request. Please refresh and try again.",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Unable to accept offer.",
@@ -623,10 +672,6 @@ export const acceptOffer = async (req, res) => {
   }
 };
 
-/**
- * REJECT OFFER
- * PATCH /api/offers/:id/reject
- */
 export const rejectOffer = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -671,13 +716,13 @@ export const rejectOffer = async (req, res) => {
     });
 
     // Notify sender
-    await prisma.notification.create({
-      data: {
-        userId: offer.senderId,
-        type: "OFFER",
-        title: "Offer rejected",
-        message: "Your barter offer has been rejected.",
-      },
+    await createNotification({
+      userId: offer.senderId,
+      type: "OFFER",
+      title: "Offer rejected",
+      message: "Your barter offer has been rejected.",
+      referenceId: offer.id,
+      referenceType: "OFFER",
     });
 
     return res.status(200).json({
@@ -695,10 +740,7 @@ export const rejectOffer = async (req, res) => {
   }
 };
 
-/**
- * CANCEL OFFER
- * PATCH /api/offers/:id/cancel
- */
+
 export const cancelOffer = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -743,13 +785,13 @@ export const cancelOffer = async (req, res) => {
     });
 
     // Notify receiver
-    await prisma.notification.create({
-      data: {
-        userId: offer.receiverId,
-        type: "OFFER",
-        title: "Offer cancelled",
-        message: "A barter offer you received has been cancelled.",
-      },
+    await createNotification({
+      userId: offer.receiverId,
+      type: "OFFER",
+      title: "Offer cancelled",
+      referenceId: offer.id,
+      referenceType: "OFFER",
+      message: "A barter offer you received has been cancelled.",
     });
 
     return res.status(200).json({
