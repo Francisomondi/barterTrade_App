@@ -349,14 +349,16 @@ return ( <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-
       )}
 
       {/* Make Offer */}
-      {otherListing?.id && (
+      {userListing?.id && otherListing?.id && (
+
         <Link
-          to={`/make-offer/${otherListing.id}`}
-          className="rounded-xl bg-[#8A2638] px-4 py-3 text-center text-sm font-bold text-white transition hover:bg-[#5B1725]"
+            to={`/make-offer?requestedListingId=${otherListing.id}&offeredListingId=${userListing.id}`}
+            className="rounded-xl bg-[#8A2638] px-4 py-3 text-center text-sm font-bold text-white transition hover:bg-[#5B1725]"
         >
-          Make Offer
+            Make Offer
         </Link>
       )}
+
 
       {/* Hide */}
       <button

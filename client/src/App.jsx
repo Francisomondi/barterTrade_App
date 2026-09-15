@@ -60,8 +60,9 @@ const App = () => {
 
             <Route path="/profile" element={<Profile />} />
 
-
+            <Route path="/make-offer" element={<MakeOffer />} />
             <Route path="/make-offer/:id" element={<MakeOffer />} />
+            
             <Route path="/offers" element={<Offers />} />
             <Route path="/trades" element={<Trades />} />
             <Route path="/trades/:id" element={<TradeDetails />} />
