@@ -1,17 +1,9 @@
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
-
+import { BrowserRouter, Routes, Route, Navigate,} from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
-
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import AuthCallback from "./pages/AuthCallback";
-
 import Marketplace from "./pages/Marketplace";
 import CreateListing from "./pages/CreateListing";
 import ListingDetails from "./pages/ListingDetails";
@@ -32,6 +24,7 @@ import Footer from "./components/Footer";
 import Profile from "./pages/Profile";
 
 import Matches from "./pages/Matches";
+import MatchDetails from "./pages/MatchDetails";
 
 const App = () => {
   return (
@@ -61,6 +54,7 @@ const App = () => {
             <Route path="/profile" element={<Profile />} />
 
             <Route path="/make-offer" element={<MakeOffer />} />
+            
             <Route path="/make-offer/:id" element={<MakeOffer />} />
             
             <Route path="/offers" element={<Offers />} />
@@ -68,6 +62,7 @@ const App = () => {
             <Route path="/trades/:id" element={<TradeDetails />} />
 
             <Route path="/matches" element={<Matches /> }/>
+            <Route path="/matches/:id" element={<MatchDetails />} />
             
 
           </Route>
