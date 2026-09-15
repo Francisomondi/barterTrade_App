@@ -230,242 +230,198 @@ return res.status(500).json({
 };
 
 export const getListings = async (req, res) => {
-try {
-const {
-search,
-categoryId,
-condition,
-minValue,
-maxValue,
-location,
-page = 1,
-limit = 12,
-} = req.query;
+  try {
+    const {
+      search,
+      categoryId,
+      condition,
+      minValue,
+      maxValue,
+      location,
+      page = 1,
+      limit = 12,
+    } = req.query;
 
+    const pageNumber = Math.max(
+      Number(page) || 1,
+      1
+    );
 
-const pageNumber = Math.max(
-  Number(page) || 1,
-  1
-);
+    const limitNumber = Math.min(
+      Math.max(Number(limit) || 12, 1),
+      50
+    );
 
-const limitNumber = Math.min(
-  Math.max(Number(limit) || 12, 1),
-  50
-);
+    /*
+     * --------------------------------------------------
+     * PAGINATION
+     * --------------------------------------------------
+     */
 
-/*
- * --------------------------------------------------
- * REDIS CACHE KEY
- * --------------------------------------------------
- *
- * Every different combination of filters gets
- * its own cache entry.
- *
- * Examples:
- *
- * listings:all:{"page":1,"limit":12}
- * listings:all:{"search":"iphone","page":1,"limit":12}
- * listings:all:{"categoryId":"abc","page":1,"limit":12}
- *
- */
+    const skip =
+      (pageNumber - 1) * limitNumber;
 
-const cacheKey = `listings:all:${JSON.stringify({
-  search: search || "",
-  categoryId: categoryId || "",
-  condition: condition || "",
-  minValue: minValue || "",
-  maxValue: maxValue || "",
-  location: location || "",
-  page: pageNumber,
-  limit: limitNumber,
-})}`;
+    /*
+     * --------------------------------------------------
+     * DATABASE FILTER
+     * --------------------------------------------------
+     */
 
-/*
- * --------------------------------------------------
- * CHECK REDIS CACHE
- * --------------------------------------------------
- */
+    const where = {
+      status: "ACTIVE",
+    };
 
-const cachedListings = await getCache(cacheKey);
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
 
-if (cachedListings) {
-  console.log(`REDIS CACHE HIT: ${cacheKey}`);
+    if (condition) {
+      where.condition = condition;
+    }
 
-  return res.json(cachedListings);
-}
-
-console.log(`REDIS CACHE MISS: ${cacheKey}`);
-
-/*
- * --------------------------------------------------
- * BUILD DATABASE FILTER
- * --------------------------------------------------
- */
-
-const skip =
-  (pageNumber - 1) * limitNumber;
-
-const where = {
-  status: "ACTIVE",
-};
-
-if (categoryId) {
-  where.categoryId = categoryId;
-}
-
-if (condition) {
-  where.condition = condition;
-}
-
-if (location) {
-  where.location = {
-    contains: location,
-    mode: "insensitive",
-  };
-}
-
-if (search) {
-  where.OR = [
-    {
-      title: {
-        contains: search,
+    if (location) {
+      where.location = {
+        contains: location,
         mode: "insensitive",
-      },
-    },
-    {
-      description: {
-        contains: search,
-        mode: "insensitive",
-      },
-    },
-  ];
-}
+      };
+    }
 
-if (minValue || maxValue) {
-  where.estimatedValue = {};
-
-  if (minValue) {
-    where.estimatedValue.gte =
-      Number(minValue);
-  }
-
-  if (maxValue) {
-    where.estimatedValue.lte =
-      Number(maxValue);
-  }
-}
-
-/*
- * --------------------------------------------------
- * FETCH FROM DATABASE
- * --------------------------------------------------
- */
-
-const [listings, total] =
-  await prisma.$transaction([
-    prisma.listing.findMany({
-      where,
-
-      skip,
-
-      take: limitNumber,
-
-      orderBy: {
-        createdAt: "desc",
-      },
-
-      include: {
-        category: true,
-
-        images: {
-          take: 1,
-
-          orderBy: [
-            {
-              isPrimary: "desc",
-            },
-            {
-              sortOrder: "asc",
-            },
-          ],
-        },
-
-        user: {
-          select: {
-            id: true,
-            name: true,
-            avatar: true,
-            barterScore: true,
-            completedTrades: true,
+    if (search) {
+      where.OR = [
+        {
+          title: {
+            contains: search,
+            mode: "insensitive",
           },
         },
+        {
+          description: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    /*
+     * --------------------------------------------------
+     * VALUE FILTER
+     * --------------------------------------------------
+     */
+
+    if (minValue || maxValue) {
+      where.estimatedValue = {};
+
+      if (minValue) {
+        const minimum = Number(minValue);
+
+        if (Number.isFinite(minimum)) {
+          where.estimatedValue.gte = minimum;
+        }
+      }
+
+      if (maxValue) {
+        const maximum = Number(maxValue);
+
+        if (Number.isFinite(maximum)) {
+          where.estimatedValue.lte = maximum;
+        }
+      }
+    }
+
+    /*
+     * --------------------------------------------------
+     * FETCH FRESH DATA FROM DATABASE
+     * --------------------------------------------------
+     *
+     * IMPORTANT:
+     *
+     * The marketplace feed is intentionally NOT cached.
+     *
+     * This guarantees that a newly created ACTIVE listing
+     * becomes available immediately.
+     *
+     */
+
+    const [listings, total] =
+      await prisma.$transaction([
+        prisma.listing.findMany({
+          where,
+
+          skip,
+
+          take: limitNumber,
+
+          orderBy: {
+            createdAt: "desc",
+          },
+
+          include: {
+            category: true,
+
+            images: {
+              take: 1,
+
+              orderBy: [
+                {
+                  isPrimary: "desc",
+                },
+                {
+                  sortOrder: "asc",
+                },
+              ],
+            },
+
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+                barterScore: true,
+                completedTrades: true,
+              },
+            },
+          },
+        }),
+
+        prisma.listing.count({
+          where,
+        }),
+      ]);
+
+    /*
+     * --------------------------------------------------
+     * RESPONSE
+     * --------------------------------------------------
+     */
+
+    return res.json({
+      success: true,
+
+      listings,
+
+      pagination: {
+        page: pageNumber,
+        limit: limitNumber,
+        total,
+
+        pages: Math.ceil(
+          total / limitNumber
+        ),
       },
-    }),
+    });
 
-    prisma.listing.count({
-      where,
-    }),
-  ]);
+  } catch (error) {
+    console.error(
+      "GET LISTINGS ERROR:",
+      error
+    );
 
-/*
- * --------------------------------------------------
- * BUILD RESPONSE
- * --------------------------------------------------
- */
-
-const responseData = {
-  success: true,
-
-  listings,
-
-  pagination: {
-    page: pageNumber,
-    limit: limitNumber,
-    total,
-    pages: Math.ceil(
-      total / limitNumber
-    ),
-  },
-};
-
-/*
- * --------------------------------------------------
- * SAVE TO REDIS
- * --------------------------------------------------
- *
- * Cache for 5 minutes.
- *
- */
-
-await setCache(
-  cacheKey,
-  responseData,
-  300
-);
-
-/*
- * --------------------------------------------------
- * RETURN RESPONSE
- * --------------------------------------------------
- */
-
-return res.json(responseData);
-
-
-} catch (error) {
-console.error(
-"GET LISTINGS ERROR:",
-error
-);
-
-
-return res.status(500).json({
-  success: false,
-  message: "Unable to fetch listings",
-});
-
-
-}
+    return res.status(500).json({
+      success: false,
+      message: "Unable to fetch listings",
+    });
+  }
 };
 
 
@@ -491,12 +447,11 @@ const cacheKey = `listing:${id}`;
 const cachedListing = await getCache(cacheKey);
 
 if (cachedListing) {
-  console.log(`REDIS CACHE HIT: ${cacheKey}`);
 
   return res.json(cachedListing);
 }
 
-console.log(`REDIS CACHE MISS: ${cacheKey}`);
+
 
 /*
  * --------------------------------------------------

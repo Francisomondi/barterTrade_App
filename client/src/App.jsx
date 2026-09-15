@@ -29,6 +29,7 @@ import ResetPassword from "./pages/ResetPassword";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+import Profile from "./pages/Profile";
 
 const App = () => {
   return (
@@ -54,6 +55,8 @@ const App = () => {
             <Route path="/listings/create" element={<CreateListing />} />
             <Route path="/my-listings" element={<MyListings />}/>
             <Route path="/listings/:id/manage" element={<ManageListing /> }/>
+
+            <Route path="/profile" element={<Profile />} />
 
 
             <Route path="/make-offer/:id" element={<MakeOffer />} />

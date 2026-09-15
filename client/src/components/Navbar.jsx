@@ -109,25 +109,32 @@ const Navbar = () => {
 
               <div className="hidden h-8 w-px bg-gray-200 sm:block" />
 
-              <div className="flex items-center gap-2">
+              <Link
+                to="/profile"
+                className="text-sm font-medium text-gray-700 transition hover:text-[#5b1725]"
+              >
+                  <div className="flex items-center gap-2">
 
-                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#f4e7ea] font-semibold text-[#5b1725]">
-                  {user?.avatar?  (
-                    <img
-                      src={user?.avatar}
-                      alt={user.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    user.name?.charAt(0)?.toUpperCase()
-                  )}
-                </div>
+                    <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#f4e7ea] font-semibold text-[#5b1725]">
+                      {user?.avatar?  (
+                        <img
+                          src={user?.avatar}
+                          alt={user.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        user.name?.charAt(0)?.toUpperCase()
+                      )}
+                    </div>
 
-                <span className="hidden max-w-28 truncate text-sm font-medium sm:block">
-                  {user.name}
-                </span>
+                    <span className="hidden max-w-28 truncate text-sm font-medium sm:block">
+                      {user.name}
+                    </span>
 
-              </div>
+                  </div>
+            </Link>
+
+              
 
               <button
                 type="button"
@@ -163,10 +170,16 @@ const Navbar = () => {
 
         <div className="flex items-center gap-2 md:hidden">
 
+
+
+
           {/* Mobile Avatar */}
           {user && (
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#f4e7ea] font-semibold text-[#5b1725]">
-              {user?.avatar ? (
+              <Link
+                to="/profile"
+              >
+                {user?.avatar ? (
                 <img
                   src={user?.avatar}
                   alt={user.name}
@@ -175,6 +188,8 @@ const Navbar = () => {
               ) : (
                 user.name?.charAt(0)?.toUpperCase()
               )}
+              </Link>
+              
             </div>
           )}
 
@@ -256,7 +271,11 @@ const Navbar = () => {
             <div className="mb-3 flex items-center gap-3 rounded-xl bg-[#f9f1f3] p-3">
 
               <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e9d3d8] font-bold text-[#5b1725]">
-                {user.avatar ? (
+                <Link
+                  to="/profile"
+                  
+                >
+                  {user.avatar ? (
                   <img
                     src={user.avatar}
                     alt={user.name}
@@ -265,6 +284,8 @@ const Navbar = () => {
                 ) : (
                   user.name?.charAt(0)?.toUpperCase()
                 )}
+                </Link>
+               
               </div>
 
               <div className="min-w-0">

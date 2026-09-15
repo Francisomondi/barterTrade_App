@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -28,13 +27,21 @@ const CreateListing = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  /*
+   * ============================================================
+   * LOAD CATEGORIES
+   * ============================================================
+   */
+
   useEffect(() => {
     const loadCategories = async () => {
       try {
         const data = await getCategories();
+
         setCategories(data.categories || []);
       } catch (error) {
         console.error(error);
+
         setError("Unable to load categories.");
       }
     };
@@ -42,23 +49,44 @@ const CreateListing = () => {
     loadCategories();
   }, []);
 
+  /*
+   * ============================================================
+   * FORM CHANGE
+   * ============================================================
+   */
+
   const handleChange = (e) => {
-    setForm({
-      ...form,
+    setForm((previousForm) => ({
+      ...previousForm,
       [e.target.name]: e.target.value,
-    });
+    }));
   };
+
+  /*
+   * ============================================================
+   * IMAGE SELECTION
+   * ============================================================
+   */
 
   const handleImageChange = (e) => {
     const selectedFiles = Array.from(e.target.files || []);
 
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0) {
+      return;
+    }
 
     setError("");
 
-    if (images.length + selectedFiles.length > MAX_IMAGES) {
-      setError(`You can upload a maximum of ${MAX_IMAGES} images.`);
+    if (
+      images.length + selectedFiles.length >
+      MAX_IMAGES
+    ) {
+      setError(
+        `You can upload a maximum of ${MAX_IMAGES} images.`
+      );
+
       e.target.value = "";
+
       return;
     }
 
@@ -68,7 +96,9 @@ const CreateListing = () => {
 
     if (invalidFile) {
       setError("Only image files are allowed.");
+
       e.target.value = "";
+
       return;
     }
 
@@ -78,7 +108,9 @@ const CreateListing = () => {
 
     if (oversizedFile) {
       setError("Each image must be smaller than 10 MB.");
+
       e.target.value = "";
+
       return;
     }
 
@@ -90,11 +122,25 @@ const CreateListing = () => {
     e.target.value = "";
   };
 
+  /*
+   * ============================================================
+   * REMOVE IMAGE
+   * ============================================================
+   */
+
   const removeImage = (index) => {
     setImages((previousImages) =>
-      previousImages.filter((_, imageIndex) => imageIndex !== index)
+      previousImages.filter(
+        (_, imageIndex) => imageIndex !== index
+      )
     );
   };
+
+  /*
+   * ============================================================
+   * SUBMIT
+   * ============================================================
+   */
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -117,16 +163,23 @@ const CreateListing = () => {
     }
 
     if (Number(form.estimatedValue) <= 0) {
-      setError("Estimated value must be greater than zero.");
+      setError(
+        "Estimated value must be greater than zero."
+      );
+
       return;
     }
 
     if (
       form.minimumValue &&
       form.maximumValue &&
-      Number(form.minimumValue) > Number(form.maximumValue)
+      Number(form.minimumValue) >
+        Number(form.maximumValue)
     ) {
-      setError("Minimum value cannot exceed maximum value.");
+      setError(
+        "Minimum value cannot exceed maximum value."
+      );
+
       return;
     }
 
@@ -135,47 +188,119 @@ const CreateListing = () => {
 
       const formData = new FormData();
 
-      formData.append("title", form.title);
-      formData.append("description", form.description);
-      formData.append("categoryId", form.categoryId);
-      formData.append("condition", form.condition);
-      formData.append("estimatedValue", form.estimatedValue);
+      formData.append("title", form.title.trim());
+
+      formData.append(
+        "description",
+        form.description.trim()
+      );
+
+      formData.append(
+        "categoryId",
+        form.categoryId
+      );
+
+      formData.append(
+        "condition",
+        form.condition
+      );
+
+      formData.append(
+        "estimatedValue",
+        form.estimatedValue
+      );
 
       if (form.minimumValue) {
-        formData.append("minimumValue", form.minimumValue);
+        formData.append(
+          "minimumValue",
+          form.minimumValue
+        );
       }
 
       if (form.maximumValue) {
-        formData.append("maximumValue", form.maximumValue);
+        formData.append(
+          "maximumValue",
+          form.maximumValue
+        );
       }
 
-      if (form.location) {
-        formData.append("location", form.location);
+      if (form.location.trim()) {
+        formData.append(
+          "location",
+          form.location.trim()
+        );
       }
 
       images.forEach((image) => {
         formData.append("images", image);
       });
 
+      /*
+       * CREATE LISTING
+       */
+
       const data = await createListing(formData);
 
-      navigate(`/listings/${data.listing.id}`);
+      /*
+       * Make sure the API actually returned the created listing.
+       */
+
+      if (!data?.listing?.id) {
+        throw new Error(
+          "Listing was created but the server did not return the listing."
+        );
+      }
+
+      /*
+       * ========================================================
+       * IMPORTANT
+       * ========================================================
+       *
+       * Send the newly created listing directly to Marketplace.
+       *
+       * Marketplace will:
+       *
+       * 1. Display it immediately.
+       * 2. Refresh from the backend.
+       * 3. Prevent duplicates.
+       */
+
+      navigate("/marketplace", {
+        replace: true,
+        state: {
+          newListing: data.listing,
+        },
+      });
+
     } catch (error) {
-      console.error("CREATE LISTING ERROR:", error);
+      console.error(
+        "CREATE LISTING ERROR:",
+        error
+      );
 
       setError(
-        error.response?.data?.message || "Unable to create listing."
+        error.response?.data?.message ||
+          error.message ||
+          "Unable to create listing."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  /*
+   * ============================================================
+   * LOADING SCREEN
+   * ============================================================
+   */
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8F5F3] px-4 py-6 sm:px-6">
         <div className="mx-auto max-w-6xl">
+
           <div className="animate-pulse">
+
             <div className="mx-auto h-12 w-12 rounded-xl bg-[#E7DDDF]" />
 
             <div className="mx-auto mt-4 h-7 w-56 rounded bg-[#E7DDDF]" />
@@ -183,42 +308,60 @@ const CreateListing = () => {
             <div className="mx-auto mt-2 h-4 w-72 rounded bg-[#E7DDDF]" />
 
             <div className="mt-7 grid gap-5 lg:grid-cols-2">
+
               {[1, 2, 3, 4].map((item) => (
                 <div
                   key={item}
                   className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
                 >
+
                   <div className="h-4 bg-[#E7DDDF]" />
 
                   <div className="space-y-3 p-5">
+
                     <div className="h-4 w-32 rounded bg-[#E7DDDF]" />
+
                     <div className="h-10 w-full rounded bg-[#E7DDDF]" />
+
                     <div className="h-10 w-full rounded bg-[#E7DDDF]" />
+
                   </div>
+
                 </div>
               ))}
+
             </div>
+
           </div>
+
         </div>
       </div>
     );
   }
 
+  /*
+   * ============================================================
+   * UI
+   * ============================================================
+   */
+
   return (
     <div className="min-h-screen bg-[#F8F5F3] px-4 py-5 sm:px-6 lg:py-7">
+
       <div className="mx-auto max-w-6xl">
 
-        {/* =====================================================
-            HEADER + LOGO
-        ====================================================== */}
+        {/* HEADER */}
+
         <div className="mb-6 text-center">
 
           <div className="mx-auto flex h-14 w-68 items-center justify-center overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-md">
+
             <img
               src="/images/logo4.png"
               alt="BarterConnect"
-              className="h-[full] w-full object-contain p-1.5"
+              className="h-full w-full object-contain p-1.5"
             />
+
           </div>
 
           <p className="mt-3 text-[11px] font-extrabold uppercase tracking-[0.25em] text-[#A47C19]">
@@ -233,35 +376,39 @@ const CreateListing = () => {
             Add the details below so people can understand what you have
             and find a fair trade.
           </p>
+
         </div>
 
-        {/* =====================================================
-            ERROR
-        ====================================================== */}
+        {/* ERROR */}
+
         {error && (
           <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-            <span className="mt-0.5 text-base">⚠</span>
+
+            <span className="mt-0.5 text-base">
+              ⚠
+            </span>
+
             <p>{error}</p>
+
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
 
-          {/* ===================================================
-              MAIN FORM GRID
-          ==================================================== */}
           <div className="grid gap-5 lg:grid-cols-2">
 
-            {/* =================================================
-                ITEM INFORMATION
-            ================================================== */}
+            {/* ITEM INFORMATION */}
+
             <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm sm:p-6">
+
               <div className="mb-5 flex items-center gap-3">
+
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]">
                   ✦
                 </div>
 
                 <div>
+
                   <h2 className="text-base font-extrabold text-[#3D0F18]">
                     Item information
                   </h2>
@@ -269,13 +416,15 @@ const CreateListing = () => {
                   <p className="text-xs text-gray-500">
                     Describe what you are offering.
                   </p>
+
                 </div>
+
               </div>
 
               <div className="space-y-4">
 
-                {/* TITLE */}
                 <div>
+
                   <label
                     htmlFor="title"
                     className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -292,12 +441,13 @@ const CreateListing = () => {
                     required
                     className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] px-4 py-3 text-sm text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                   />
+
                 </div>
 
-                {/* CATEGORY + CONDITION */}
                 <div className="grid gap-4 sm:grid-cols-2">
 
                   <div>
+
                     <label
                       htmlFor="categoryId"
                       className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -313,17 +463,26 @@ const CreateListing = () => {
                       required
                       className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] px-4 py-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                     >
-                      <option value="">Select category</option>
+
+                      <option value="">
+                        Select category
+                      </option>
 
                       {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
+                        <option
+                          key={category.id}
+                          value={category.id}
+                        >
                           {category.name}
                         </option>
                       ))}
+
                     </select>
+
                   </div>
 
                   <div>
+
                     <label
                       htmlFor="condition"
                       className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -338,18 +497,37 @@ const CreateListing = () => {
                       onChange={handleChange}
                       className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] px-4 py-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                     >
-                      <option value="NEW">New</option>
-                      <option value="LIKE_NEW">Like New</option>
-                      <option value="GOOD">Good</option>
-                      <option value="FAIR">Fair</option>
-                      <option value="POOR">Poor</option>
+
+                      <option value="NEW">
+                        New
+                      </option>
+
+                      <option value="LIKE_NEW">
+                        Like New
+                      </option>
+
+                      <option value="GOOD">
+                        Good
+                      </option>
+
+                      <option value="FAIR">
+                        Fair
+                      </option>
+
+                      <option value="POOR">
+                        Poor
+                      </option>
+
                     </select>
+
                   </div>
+
                 </div>
 
-                {/* DESCRIPTION */}
                 <div>
+
                   <div className="mb-1.5 flex items-center justify-between">
+
                     <label
                       htmlFor="description"
                       className="block text-xs font-bold text-[#21191B]"
@@ -360,6 +538,7 @@ const CreateListing = () => {
                     <span className="text-[11px] text-gray-400">
                       Be clear & specific
                     </span>
+
                   </div>
 
                   <textarea
@@ -372,20 +551,25 @@ const CreateListing = () => {
                     required
                     className="w-full resize-none rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] px-4 py-3 text-sm leading-5 text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                   />
+
                 </div>
+
               </div>
+
             </section>
 
-            {/* =================================================
-                BARTER VALUE
-            ================================================== */}
+            {/* BARTER VALUE */}
+
             <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm sm:p-6">
+
               <div className="mb-5 flex items-center gap-3">
+
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F8F0D8] text-[#A47C19]">
                   KES
                 </div>
 
                 <div>
+
                   <h2 className="text-base font-extrabold text-[#3D0F18]">
                     Barter value
                   </h2>
@@ -393,13 +577,15 @@ const CreateListing = () => {
                   <p className="text-xs text-gray-500">
                     Help traders find items of similar value.
                   </p>
+
                 </div>
+
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
 
-                {/* ESTIMATED */}
                 <div>
+
                   <label
                     htmlFor="estimatedValue"
                     className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -408,6 +594,7 @@ const CreateListing = () => {
                   </label>
 
                   <div className="relative">
+
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[#A47C19]">
                       KES
                     </span>
@@ -423,11 +610,13 @@ const CreateListing = () => {
                       required
                       className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] py-3 pl-12 pr-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                     />
+
                   </div>
+
                 </div>
 
-                {/* MINIMUM */}
                 <div>
+
                   <label
                     htmlFor="minimumValue"
                     className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -436,6 +625,7 @@ const CreateListing = () => {
                   </label>
 
                   <div className="relative">
+
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
                       KES
                     </span>
@@ -450,11 +640,13 @@ const CreateListing = () => {
                       placeholder="75000"
                       className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] py-3 pl-12 pr-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                     />
+
                   </div>
+
                 </div>
 
-                {/* MAXIMUM */}
                 <div>
+
                   <label
                     htmlFor="maximumValue"
                     className="mb-1.5 block text-xs font-bold text-[#21191B]"
@@ -463,6 +655,7 @@ const CreateListing = () => {
                   </label>
 
                   <div className="relative">
+
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
                       KES
                     </span>
@@ -477,28 +670,40 @@ const CreateListing = () => {
                       placeholder="95000"
                       className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] py-3 pl-12 pr-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
                     />
+
                   </div>
+
                 </div>
+
               </div>
 
               <div className="mt-5 rounded-xl border border-[#E8D9A8] bg-[#FFF9E8] px-4 py-3">
+
                 <p className="text-xs leading-5 text-[#765A13]">
-                  <span className="font-bold">Tip:</span> A realistic value
-                  range makes it easier to find fair barter matches.
+
+                  <span className="font-bold">
+                    Tip:
+                  </span>{" "}
+                  A realistic value range makes it easier to find fair barter matches.
+
                 </p>
+
               </div>
+
             </section>
 
-            {/* =================================================
-                LOCATION
-            ================================================== */}
+            {/* LOCATION */}
+
             <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm sm:p-6">
+
               <div className="mb-5 flex items-center gap-3">
+
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F5E8EB] text-lg text-[#5B1725]">
                   ⌖
                 </div>
 
                 <div>
+
                   <h2 className="text-base font-extrabold text-[#3D0F18]">
                     Location
                   </h2>
@@ -506,7 +711,9 @@ const CreateListing = () => {
                   <p className="text-xs text-gray-500">
                     Let nearby traders know where the item is.
                   </p>
+
                 </div>
+
               </div>
 
               <label
@@ -524,20 +731,23 @@ const CreateListing = () => {
                 placeholder="e.g. Nairobi, Westlands"
                 className="w-full rounded-xl border border-[#E7DDDF] bg-[#FBF8F8] px-4 py-3 text-sm text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:bg-white focus:ring-4 focus:ring-[#8A2638]/10"
               />
+
             </section>
 
-            {/* =================================================
-                IMAGES
-            ================================================== */}
+            {/* IMAGES */}
+
             <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm sm:p-6">
+
               <div className="mb-4 flex items-center justify-between gap-3">
 
                 <div className="flex items-center gap-3">
+
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F8F0D8] text-lg">
                     📷
                   </div>
 
                   <div>
+
                     <h2 className="text-base font-extrabold text-[#3D0F18]">
                       Item images
                     </h2>
@@ -545,12 +755,15 @@ const CreateListing = () => {
                     <p className="text-xs text-gray-500">
                       Add clear photos of your item.
                     </p>
+
                   </div>
+
                 </div>
 
                 <span className="shrink-0 rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-extrabold text-[#5B1725]">
                   {images.length}/{MAX_IMAGES}
                 </span>
+
               </div>
 
               <label
@@ -561,21 +774,27 @@ const CreateListing = () => {
                     : "border-[#DCAEB7] bg-[#FBF5F6] hover:border-[#8A2638] hover:bg-[#F5E8EB]"
                 }`}
               >
+
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-xl shadow-sm">
                   📷
                 </div>
 
                 <div className="text-left">
+
                   <p className="text-sm font-bold text-[#3D0F18]">
+
                     {images.length >= MAX_IMAGES
                       ? "Maximum images reached"
                       : "Add item photos"}
+
                   </p>
 
                   <p className="mt-0.5 text-[11px] text-gray-500">
                     PNG, JPG, JPEG or WEBP • Up to 10 MB each
                   </p>
+
                 </div>
+
               </label>
 
               <input
@@ -590,11 +809,13 @@ const CreateListing = () => {
 
               {images.length > 0 ? (
                 <div className="mt-4 grid grid-cols-4 gap-2">
+
                   {images.map((image, index) => (
                     <div
                       key={`${image.name}-${index}`}
                       className="group relative aspect-square overflow-hidden rounded-xl border border-[#E7DDDF] bg-gray-100"
                     >
+
                       <img
                         src={URL.createObjectURL(image)}
                         alt={`Listing image ${index + 1}`}
@@ -614,23 +835,27 @@ const CreateListing = () => {
                       >
                         Remove
                       </button>
+
                     </div>
                   ))}
+
                 </div>
               ) : (
                 <p className="mt-3 text-center text-[11px] text-gray-400">
                   No images selected yet.
                 </p>
               )}
+
             </section>
+
           </div>
 
-          {/* ===================================================
-              SUBMIT BAR
-          ==================================================== */}
+          {/* SUBMIT BAR */}
+
           <div className="mt-5 rounded-2xl border border-[#E7DDDF] bg-white p-4 shadow-sm sm:flex sm:items-center sm:justify-between sm:gap-5">
 
             <div className="mb-3 sm:mb-0">
+
               <p className="text-sm font-bold text-[#3D0F18]">
                 Ready to list your item?
               </p>
@@ -638,6 +863,7 @@ const CreateListing = () => {
               <p className="mt-0.5 text-xs text-gray-500">
                 Review your details before publishing.
               </p>
+
             </div>
 
             <button
@@ -645,22 +871,29 @@ const CreateListing = () => {
               disabled={loading}
               className="w-full rounded-xl bg-[#5B1725] px-6 py-3.5 text-sm font-extrabold text-white shadow-lg shadow-[#5B1725]/20 transition duration-200 hover:bg-[#3D0F18] hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[230px]"
             >
+
               {loading ? (
                 <span className="flex items-center justify-center gap-3">
+
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+
                   Creating listing...
+
                 </span>
               ) : (
                 "Publish item for barter"
               )}
+
             </button>
+
           </div>
 
         </form>
+
       </div>
+
     </div>
   );
 };
 
 export default CreateListing;
-

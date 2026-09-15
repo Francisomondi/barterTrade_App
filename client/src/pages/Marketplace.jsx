@@ -1,10 +1,13 @@
+import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
-import { useEffect, useState } from "react";
 import { getListings } from "../api/listingApi";
 import { getCategories } from "../api/categoryApi";
 import ListingCard from "../components/ListingCard";
 
 const Marketplace = () => {
+  const location = useLocation();
+
   const [listings, setListings] = useState([]);
   const [categories, setCategories] = useState([]);
 
@@ -22,16 +25,25 @@ const Marketplace = () => {
    */
 
   useEffect(() => {
+    let mounted = true;
+
     const loadCategories = async () => {
       try {
         const data = await getCategories();
-        setCategories(data.categories || []);
+
+        if (mounted) {
+          setCategories(data.categories || []);
+        }
       } catch (error) {
-        console.error("Category error:", error);
+        console.error("CATEGORY ERROR:", error);
       }
     };
 
     loadCategories();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   /*
@@ -40,41 +52,123 @@ const Marketplace = () => {
    * ============================================================
    */
 
+  const loadListings = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const params = {};
+
+      if (search.trim()) {
+        params.search = search.trim();
+      }
+
+      if (categoryId) {
+        params.categoryId = categoryId;
+      }
+
+      if (condition) {
+        params.condition = condition;
+      }
+
+      /*
+       * The backend listings endpoint is intentionally uncached.
+       * This ensures newly created listings appear immediately.
+       */
+      const data = await getListings(params);
+
+      setListings(data.listings || []);
+    } catch (error) {
+      console.error("LISTING ERROR:", error);
+
+      setError(
+        error.response?.data?.message ||
+          "Unable to load listings."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [search, categoryId, condition]);
+
+  /*
+   * ============================================================
+   * LOAD WHEN FILTERS CHANGE
+   * ============================================================
+   */
+
   useEffect(() => {
-    const loadListings = async () => {
-      try {
-        setLoading(true);
-        setError("");
+    const timer = setTimeout(() => {
+      loadListings();
+    }, 300);
 
-        const params = {};
+    return () => clearTimeout(timer);
+  }, [loadListings]);
 
-        if (search.trim()) {
-          params.search = search.trim();
-        }
+  /*
+   * ============================================================
+   * REFRESH WHEN MARKETPLACE BECOMES ACTIVE
+   * ============================================================
+   *
+   * This handles cases where Marketplace stays mounted while
+   * navigating to another page and then coming back.
+   */
 
-        if (categoryId) {
-          params.categoryId = categoryId;
-        }
+  useEffect(() => {
+    if (location.pathname !== "/marketplace") {
+      return;
+    }
 
-        if (condition) {
-          params.condition = condition;
-        }
+    loadListings();
+  }, [location.pathname, loadListings]);
 
-        const data = await getListings(params);
+  /*
+   * ============================================================
+   * REFRESH WHEN BROWSER TAB BECOMES VISIBLE
+   * ============================================================
+   */
 
-        setListings(data.listings || []);
-      } catch (error) {
-        console.error("Listing error:", error);
-        setError("Unable to load listings.");
-      } finally {
-        setLoading(false);
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        location.pathname === "/marketplace"
+      ) {
+        loadListings();
       }
     };
 
-    const timer = setTimeout(loadListings, 300);
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibilityChange
+    );
 
-    return () => clearTimeout(timer);
-  }, [search, categoryId, condition]);
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
+    };
+  }, [location.pathname, loadListings]);
+
+  /*
+   * ============================================================
+   * REFRESH WHEN WINDOW GETS FOCUS
+   * ============================================================
+   */
+
+  useEffect(() => {
+    const handleFocus = () => {
+      if (location.pathname === "/marketplace") {
+        loadListings();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [location.pathname, loadListings]);
 
   /*
    * ============================================================
@@ -103,7 +197,6 @@ const Marketplace = () => {
 
       <section className="relative isolate overflow-hidden bg-[#3D0F18]">
 
-        {/* Background image */}
         <div
           className="absolute inset-0 -z-20 bg-cover bg-center"
           style={{
@@ -111,20 +204,16 @@ const Marketplace = () => {
           }}
         />
 
-        {/* Overlay */}
         <div className="absolute inset-0 -z-10 bg-[#3D0F18]/85" />
 
-        {/* Gold glow */}
         <div className="pointer-events-none absolute -right-32 -top-32 h-80 w-80 rounded-full bg-[#D6B15E]/15 blur-[90px]" />
 
         <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-[#8A2638]/30 blur-[90px]" />
 
-        {/* Hero content */}
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8 lg:py-14">
 
           <div className="max-w-4xl">
 
-            {/* Badge */}
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#D6B15E]/30 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
 
               <span className="h-1.5 w-1.5 rounded-full bg-[#D6B15E]" />
@@ -133,7 +222,6 @@ const Marketplace = () => {
 
             </div>
 
-            {/* Heading */}
             <h1 className="max-w-3xl text-4xl font-black leading-[1.05] tracking-tight text-white sm:text-5xl md:text-6xl">
 
               Trade what you have
@@ -146,7 +234,6 @@ const Marketplace = () => {
 
             </h1>
 
-            {/* Description */}
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">
 
               Exchange items of similar value with people around you.
@@ -154,7 +241,6 @@ const Marketplace = () => {
 
             </p>
 
-            {/* Search */}
             <div className="mt-6 max-w-4xl">
 
               <div className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-black/20 p-2 shadow-2xl backdrop-blur-xl sm:flex-row">
@@ -193,6 +279,7 @@ const Marketplace = () => {
 
                 <button
                   type="button"
+                  onClick={loadListings}
                   className="
                     h-12
                     rounded-xl
@@ -214,7 +301,6 @@ const Marketplace = () => {
 
             </div>
 
-            {/* Popular searches */}
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
 
               <span className="mr-1 text-white/45">
@@ -252,7 +338,6 @@ const Marketplace = () => {
 
         </div>
 
-        {/* Bottom curve */}
         <div className="absolute bottom-0 left-0 right-0 h-4 rounded-t-[50%] bg-[#F8F5F3] sm:h-5" />
 
       </section>
@@ -307,7 +392,6 @@ const Marketplace = () => {
 
           </div>
 
-          {/* Category buttons */}
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
 
             <button
@@ -473,7 +557,6 @@ const Marketplace = () => {
 
         <section className="mt-6 sm:mt-8">
 
-          {/* Section header */}
           <div className="mb-4 flex items-end justify-between gap-3">
 
             <div>
@@ -493,15 +576,14 @@ const Marketplace = () => {
             </div>
 
             <div className="shrink-0 rounded-full border border-[#D6B15E]/30 bg-[#F8F1DD] px-3 py-1.5 text-xs font-black text-[#5B1725]">
-              {listings.length} {listings.length === 1 ? "item" : "items"}
+              {listings.length}{" "}
+              {listings.length === 1 ? "item" : "items"}
             </div>
 
           </div>
 
 
-          {/* ==================================================
-              LOADING
-          =================================================== */}
+          {/* LOADING */}
 
           {loading && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -540,9 +622,7 @@ const Marketplace = () => {
           )}
 
 
-          {/* ==================================================
-              ERROR
-          =================================================== */}
+          {/* ERROR */}
 
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-5">
@@ -565,7 +645,7 @@ const Marketplace = () => {
 
                   <button
                     type="button"
-                    onClick={() => window.location.reload()}
+                    onClick={loadListings}
                     className="
                       mt-3
                       rounded-lg
@@ -590,9 +670,7 @@ const Marketplace = () => {
           )}
 
 
-          {/* ==================================================
-              NO RESULTS
-          =================================================== */}
+          {/* NO RESULTS */}
 
           {!loading &&
             !error &&
@@ -636,9 +714,7 @@ const Marketplace = () => {
             )}
 
 
-          {/* ==================================================
-              LISTING GRID
-          =================================================== */}
+          {/* LISTING GRID */}
 
           {!loading &&
             !error &&
@@ -668,12 +744,8 @@ const Marketplace = () => {
 
       </main>
 
-
-      
-
     </div>
   );
 };
 
 export default Marketplace;
-
