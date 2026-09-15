@@ -1,9 +1,6 @@
 
 import prisma from "../config/prisma.js";
 
-/**
- * CREATE NOTIFICATION
- */
 export const createNotification = async ({
   userId,
   type,
@@ -14,6 +11,28 @@ export const createNotification = async ({
 }) => {
   if (!userId || !type || !title || !message) {
     throw new Error("Missing required notification fields");
+  }
+
+  if (referenceId && referenceType) {
+    return prisma.notification.upsert({
+      where: {
+        userId_type_referenceId_referenceType: {
+          userId,
+          type,
+          referenceId,
+          referenceType,
+        },
+      },
+      update: {},
+      create: {
+        userId,
+        type,
+        title,
+        message,
+        referenceId,
+        referenceType,
+      },
+    });
   }
 
   return prisma.notification.create({
@@ -37,24 +56,30 @@ export const createNotifications = async (notifications = []) => {
   }
 
   return prisma.$transaction(
-    notifications.map((notification) =>
-      prisma.notification.create({
+    notifications.map((notification) => {
+      const {
+        userId,
+        type,
+        title,
+        message,
+        referenceId = null,
+        referenceType = null,
+      } = notification;
+
+      return prisma.notification.create({
         data: {
-          userId: notification.userId,
-          type: notification.type,
-          title: notification.title,
-          message: notification.message,
-          referenceId: notification.referenceId || null,
-          referenceType: notification.referenceType || null,
+          userId,
+          type,
+          title,
+          message,
+          referenceId,
+          referenceType,
         },
-      })
-    )
+      });
+    })
   );
 };
 
-/**
- * GET USER NOTIFICATIONS
- */
 export const getUserNotifications = async (
   userId,
   { unreadOnly = false, limit = 50 } = {}
@@ -71,9 +96,7 @@ export const getUserNotifications = async (
   });
 };
 
-/**
- * GET UNREAD NOTIFICATION COUNT
- */
+
 export const getUnreadNotificationCount = async (userId) => {
   return prisma.notification.count({
     where: {
@@ -83,9 +106,6 @@ export const getUnreadNotificationCount = async (userId) => {
   });
 };
 
-/**
- * MARK ONE NOTIFICATION AS READ
- */
 export const markNotificationAsRead = async (
   notificationId,
   userId
@@ -101,9 +121,6 @@ export const markNotificationAsRead = async (
   });
 };
 
-/**
- * MARK ALL NOTIFICATIONS AS READ
- */
 export const markAllNotificationsAsRead = async (userId) => {
   return prisma.notification.updateMany({
     where: {
@@ -116,9 +133,7 @@ export const markAllNotificationsAsRead = async (userId) => {
   });
 };
 
-/**
- * DELETE NOTIFICATION
- */
+
 export const deleteNotification = async (
   notificationId,
   userId
