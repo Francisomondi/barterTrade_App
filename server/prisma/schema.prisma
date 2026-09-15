@@ -110,24 +110,24 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  listings           Listing[]
-  sentOffers         Offer[]             @relation("SentOffers")
-  receivedOffers     Offer[]             @relation("ReceivedOffers")
-  tradesAsA          Trade[]             @relation("TraderA")
-  tradesAsB          Trade[]             @relation("TraderB")
-  ratingsGiven       Rating[]            @relation("RatingsGiven")
-  ratingsReceived    Rating[]            @relation("RatingsReceived")
-  
-  verifications      Verification[]
-  disputes           Dispute[]
-  messagesSent       Message[]           @relation("MessagesSent")
-  messagesReceived   Message[]           @relation("MessagesReceived")
-  notifications      Notification[]
-  payments           Payment[]
-  promotions         Promotion[]
-  subscriptions      Subscription[]
-  matches            Match[]
-  tradeConfirmations TradeConfirmation[]
+  listings        Listing[]
+  sentOffers      Offer[]   @relation("SentOffers")
+  receivedOffers  Offer[]   @relation("ReceivedOffers")
+  tradesAsA       Trade[]   @relation("TraderA")
+  tradesAsB       Trade[]   @relation("TraderB")
+  ratingsGiven    Rating[]  @relation("RatingsGiven")
+  ratingsReceived Rating[]  @relation("RatingsReceived")
+
+  verifications       Verification[]
+  disputes            Dispute[]
+  messagesSent        Message[]            @relation("MessagesSent")
+  messagesReceived    Message[]            @relation("MessagesReceived")
+  notifications       Notification[]
+  payments            Payment[]
+  promotions          Promotion[]
+  subscriptions       Subscription[]
+  matches             Match[]
+  tradeConfirmations  TradeConfirmation[]
   passwordResetTokens PasswordResetToken[]
 }
 
@@ -184,26 +184,22 @@ model Listing {
 }
 
 model ListingImage {
-id        String   @id @default(uuid())
-listingId String
-url       String
-publicId  String?
+  id        String  @id @default(uuid())
+  listingId String
+  url       String
+  publicId  String?
 
-isPrimary Boolean  @default(false)
-sortOrder Int      @default(0)
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
 
-createdAt DateTime @default(now())
+  createdAt DateTime @default(now())
 
-listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-@@index([listingId])
-@@index([listingId, sortOrder])
-@@index([listingId, isPrimary])
+  @@index([listingId])
+  @@index([listingId, sortOrder])
+  @@index([listingId, isPrimary])
 }
-
-
-
-
 
 model ValueEstimate {
   id             String   @id @default(uuid())
@@ -217,29 +213,28 @@ model ValueEstimate {
 }
 
 model Match {
-id            String   @id @default(uuid())
-userId        String
-listingAId    String
-listingBId    String
-score         Float
-valueScore    Float?
-locationScore Float?
-trustScore    Float?
-status        String   @default("ACTIVE")
-createdAt     DateTime @default(now())
+  id            String   @id @default(uuid())
+  userId        String
+  listingAId    String
+  listingBId    String
+  score         Float
+  valueScore    Float?
+  locationScore Float?
+  trustScore    Float?
+  status        String   @default("ACTIVE")
+  createdAt     DateTime @default(now())
 
-user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-listingA Listing @relation("ListingA", fields: [listingAId], references: [id], onDelete: Cascade)
-listingB Listing @relation("ListingB", fields: [listingBId], references: [id], onDelete: Cascade)
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingA Listing @relation("ListingA", fields: [listingAId], references: [id], onDelete: Cascade)
+  listingB Listing @relation("ListingB", fields: [listingBId], references: [id], onDelete: Cascade)
 
-@@unique([listingAId, listingBId])
-@@index([userId])
-@@index([listingAId])
-@@index([listingBId])
-@@index([status])
-@@index([score])
+  @@unique([listingAId, listingBId])
+  @@index([userId])
+  @@index([listingAId])
+  @@index([listingBId])
+  @@index([status])
+  @@index([score])
 }
-
 
 model Offer {
   id                 String      @id @default(uuid())

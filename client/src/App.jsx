@@ -31,6 +31,8 @@ import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
 import Profile from "./pages/Profile";
 
+import Matches from "./pages/Matches";
+
 const App = () => {
   return (
     <BrowserRouter>
@@ -63,6 +65,8 @@ const App = () => {
             <Route path="/offers" element={<Offers />} />
             <Route path="/trades" element={<Trades />} />
             <Route path="/trades/:id" element={<TradeDetails />} />
+
+            <Route path="/matches" element={<Matches /> }/>
             
 
           </Route>

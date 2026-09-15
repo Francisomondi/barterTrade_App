@@ -8,7 +8,7 @@ import offerRoutes from "./routes/offerRoutes.js";
 import tradeRoutes from "./routes/tradeRoutes.js";
 
 import uploadRoutes from "./routes/uploadRoutes.js";
-
+import matchRoutes from "./routes/matchRoutes.js";
 
 
 const app = express();
@@ -41,5 +41,6 @@ app.use("/api/offers",offerRoutes)
 app.use("/api/trades", tradeRoutes);
 
 app.use("/api/uploads", uploadRoutes);
+app.use("/api/matches", matchRoutes);
 
 export default app;

@@ -67,6 +67,8 @@ const Navbar = () => {
                 Dashboard
               </Link>
 
+              <Link to="/matches">Matches</Link>
+
               <Link
                 to="/offers"
                 className="font-semibold text-[#5B1725] transition hover:text-[#8A2638]"
@@ -331,6 +333,7 @@ const Navbar = () => {
                 >
                   Dashboard
                 </Link>
+                <Link to="/matches">Matches</Link>
 
                 <Link
                   to="/offers"

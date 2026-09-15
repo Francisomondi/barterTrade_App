@@ -381,7 +381,7 @@ const Profile = () => {
                     </p>
 
                     <p className="mt-1 truncate text-sm font-bold text-[#21191B]">
-                      {user.phone || "Not provided"}
+                      {user?.phone || "Not provided"}
                     </p>
                   </div>
 

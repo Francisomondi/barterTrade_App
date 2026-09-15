@@ -2,31 +2,79 @@ import {
 findMatchesForListing,
 getUserMatches,
 getMatchById,
+deactivateMatch,
+cleanupStaleMatches,
 } from "../services/matchService.js";
 
 /**
 
-* GENERATE MATCHES FOR A LISTING
+* GET /api/matches
 *
-* GET /api/matches/listing/:listingId
+* Get matches belonging to the authenticated user.
 *
-* Finds active listings that may be suitable
-* barter matches for the specified listing.
+* Query parameters:
+* ?minScore=50
+* ?limit=20
   */
-  export const generateMatchesForListing = async (req, res) => {
+  export const getMatches = async (req, res) => {
   try {
-  const { listingId } = req.params;
-  const userId = req.user?.id;
+  const userId = req.user.id;
 
-  if (!userId) {
-  return res.status(401).json({
-  message: "Authentication required.",
+  const minScore = Number(req.query.minScore || 0);
+  const limit = Math.min(
+  Math.max(Number(req.query.limit || 20), 1),
+  100
+  );
+
+  if (Number.isNaN(minScore) || minScore < 0 || minScore > 100) {
+  return res.status(400).json({
+  success: false,
+  message: "minScore must be between 0 and 100",
   });
   }
 
-  if (!listingId) {
+  let matches = await getUserMatches(userId);
+
+  matches = matches
+  .filter((match) => match.score >= minScore)
+  .slice(0, limit);
+
+  return res.status(200).json({
+  success: true,
+  count: matches.length,
+  matches,
+  });
+  } catch (error) {
+  console.error("GET MATCHES ERROR:", error);
+
+  return res.status(500).json({
+  success: false,
+  message: "Failed to retrieve matches",
+  });
+  }
+  };
+
+/**
+
+* POST /api/matches/listing/:listingId
+*
+* Generate matches for one listing.
+  */
+  export const getMatchesForListing = async (req, res) => {
+  try {
+  const { listingId } = req.params;
+  const userId = req.user.id;
+
+  const minScore = Number(req.query.minScore || 0);
+  const limit = Math.min(
+  Math.max(Number(req.query.limit || 20), 1),
+  100
+  );
+
+  if (Number.isNaN(minScore) || minScore < 0 || minScore > 100) {
   return res.status(400).json({
-  message: "Listing ID is required.",
+  success: false,
+  message: "minScore must be between 0 and 100",
   });
   }
 
@@ -35,167 +83,164 @@ getMatchById,
   userId
   );
 
+  const filteredMatches = matches
+  .filter((match) => match.score >= minScore)
+  .slice(0, limit);
+
   return res.status(200).json({
-  message: "Matches generated successfully.",
-  matches: matches || [],
-  count: matches?.length || 0,
+  success: true,
+  count: filteredMatches.length,
+  matches: filteredMatches,
   });
   } catch (error) {
-  console.error(
-  "GENERATE MATCHES ERROR:",
-  error
-  );
-
-  const message =
-  error?.message ||
-  "Unable to generate matches.";
-
-  /*
-
-  * Known business-rule errors should be returned
-  * as client errors rather than 500 errors.
-    */
-    if (
-    message.toLowerCase().includes("not found")
-    ) {
-    return res.status(404).json({
-    message,
-    });
-    }
+  console.error("GET LISTING MATCHES ERROR:", error);
 
   if (
-  message.toLowerCase().includes("active")
+  error.message === "Listing not found"
   ) {
-  return res.status(400).json({
-  message,
+  return res.status(404).json({
+  success: false,
+  message: error.message,
   });
   }
 
   if (
-  message.toLowerCase().includes("owner") ||
-  message.toLowerCase().includes("permission") ||
-  message.toLowerCase().includes("authorized")
+  error.message ===
+  "You can only generate matches for your own listing" ||
+  error.message ===
+  "Only active listings can generate matches"
   ) {
   return res.status(403).json({
-  message,
+  success: false,
+  message: error.message,
   });
   }
 
   return res.status(500).json({
-  message: "Unable to generate matches.",
+  success: false,
+  message: "Failed to generate listing matches",
   });
   }
   };
 
 /**
 
-* GET USER MATCHES
+* GET /api/matches/:id
 *
-* GET /api/matches
-*
-* Returns matches associated with the
-* currently authenticated user.
+* Get one match.
   */
-  export const getMyMatches = async (req, res) => {
+  export const getMatchByIdController = async (req, res) => {
   try {
-  const userId = req.user?.id;
+  const { id } = req.params;
+  const userId = req.user.id;
 
-  if (!userId) {
-  return res.status(401).json({
-  message: "Authentication required.",
-  });
-  }
-
-  const matches = await getUserMatches(userId);
-
-  return res.status(200).json({
-  message: "Matches loaded successfully.",
-  matches: matches || [],
-  count: matches?.length || 0,
-  });
-  } catch (error) {
-  console.error(
-  "GET USER MATCHES ERROR:",
-  error
-  );
-
-  return res.status(500).json({
-  message: "Unable to load your matches.",
-  });
-  }
-  };
-
-/**
-
-* GET SINGLE MATCH
-*
-* GET /api/matches/:matchId
-*
-* Returns one match, provided that the
-* authenticated user is allowed to access it.
-  */
-  export const getSingleMatch = async (req, res) => {
-  try {
-  const { matchId } = req.params;
-  const userId = req.user?.id;
-
-  if (!userId) {
-  return res.status(401).json({
-  message: "Authentication required.",
-  });
-  }
-
-  if (!matchId) {
-  return res.status(400).json({
-  message: "Match ID is required.",
-  });
-  }
-
-  const match = await getMatchById(
-  matchId,
-  userId
-  );
+  const match = await getMatchById(id);
 
   if (!match) {
   return res.status(404).json({
-  message: "Match not found.",
+  success: false,
+  message: "Match not found",
+  });
+  }
+
+  const isParticipant =
+  match.userId === userId ||
+  match.listingA.userId === userId ||
+  match.listingB.userId === userId;
+
+  if (!isParticipant) {
+  return res.status(403).json({
+  success: false,
+  message: "You are not authorized to view this match",
   });
   }
 
   return res.status(200).json({
-  message: "Match loaded successfully.",
+  success: true,
   match,
   });
   } catch (error) {
-  console.error(
-  "GET SINGLE MATCH ERROR:",
-  error
-  );
-
-  const message =
-  error?.message ||
-  "Unable to load match.";
-
-  if (
-  message.toLowerCase().includes("not found")
-  ) {
-  return res.status(404).json({
-  message,
-  });
-  }
-
-  if (
-  message.toLowerCase().includes("permission") ||
-  message.toLowerCase().includes("authorized") ||
-  message.toLowerCase().includes("access")
-  ) {
-  return res.status(403).json({
-  message,
-  });
-  }
+  console.error("GET MATCH ERROR:", error);
 
   return res.status(500).json({
-  message: "Unable to load match.",
+  success: false,
+  message: "Failed to retrieve match",
   });
   }
   };
+
+/**
+
+* PATCH /api/matches/:id/deactivate
+*
+* Deactivate a match.
+  */
+  export const deactivateMatchController = async (req, res) => {
+  try {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  const match = await getMatchById(id);
+
+  if (!match) {
+  return res.status(404).json({
+  success: false,
+  message: "Match not found",
+  });
+  }
+
+  const isParticipant =
+  match.userId === userId ||
+  match.listingA.userId === userId ||
+  match.listingB.userId === userId;
+
+  if (!isParticipant) {
+  return res.status(403).json({
+  success: false,
+  message: "You are not authorized to deactivate this match",
+  });
+  }
+
+  const updatedMatch = await deactivateMatch(id);
+
+  return res.status(200).json({
+  success: true,
+  message: "Match deactivated successfully",
+  match: updatedMatch,
+  });
+  } catch (error) {
+  console.error("DEACTIVATE MATCH ERROR:", error);
+
+  return res.status(500).json({
+  success: false,
+  message: "Failed to deactivate match",
+  });
+  }
+  };
+
+
+  /**
+
+* PATCH /api/matches/cleanup
+*
+* Deactivate matches whose listings are no longer ACTIVE.
+  */
+  export const cleanupMatches = async (req, res) => {
+  try {
+  const count = await cleanupStaleMatches();
+
+  return res.status(200).json({
+  success: true,
+  message: "Stale matches cleaned up successfully",
+  deactivatedCount: count,
+  });
+  } catch (error) {
+  console.error("CLEANUP MATCHES ERROR:", error);
+
+  return res.status(500).json({
+  success: false,
+  message: "Failed to clean up stale matches",
+  });
+  }
+  };
+
