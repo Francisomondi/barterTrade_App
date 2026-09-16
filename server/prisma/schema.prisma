@@ -254,6 +254,7 @@ model Offer {
   trade            Trade?
 }
 
+
 model Trade {
   id          String @id @default(uuid())
   tradeNumber String @unique
@@ -284,14 +285,18 @@ model Trade {
 
   offer Offer @relation(fields: [offerId], references: [id])
 
-  traderA       User                @relation("TraderA", fields: [traderAId], references: [id])
-  traderB       User                @relation("TraderB", fields: [traderBId], references: [id])
+  traderA User @relation("TraderA", fields: [traderAId], references: [id])
+  traderB User @relation("TraderB", fields: [traderBId], references: [id])
+
   confirmations TradeConfirmation[]
 
-  items   TradeItem[]
+  items TradeItem[]
   ratings Rating[]
   dispute Dispute?
+
+  verifications Verification[]
 }
+
 
 model TradeItem {
   id          String @id @default(uuid())
@@ -333,9 +338,11 @@ model Rating {
   reviewed User  @relation("RatingsReceived", fields: [reviewedId], references: [id])
 }
 
+
 model Verification {
   id          String             @id @default(uuid())
   userId      String
+  tradeId     String
   type        String
   status      VerificationStatus @default(PENDING)
   documentUrl String?
@@ -344,7 +351,13 @@ model Verification {
   updatedAt   DateTime           @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  @@index([tradeId])
+  @@index([userId])
 }
+
+
 
 model Dispute {
   id          String        @id @default(uuid())
@@ -386,6 +399,7 @@ model Notification {
   createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, type, referenceId, referenceType])
 
 }
 
