@@ -25,11 +25,25 @@ import Profile from "./pages/Profile";
 
 import Matches from "./pages/Matches";
 import MatchDetails from "./pages/MatchDetails";
+import Notifications from "./pages/Notifications";
+
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const App = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ToastContainer
+          position="top-center"
+          autoClose={2500}
+          hideProgressBar={false}
+          newestOnTop
+          closeOnClick
+          pauseOnHover
+          draggable
+          theme="light"
+        />
 
         <Navbar />
 
@@ -63,6 +77,7 @@ const App = () => {
 
             <Route path="/matches" element={<Matches /> }/>
             <Route path="/matches/:id" element={<MatchDetails />} />
+            <Route path="/notifications" element={<Notifications />}/>
             
 
           </Route>

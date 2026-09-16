@@ -7,6 +7,7 @@ useSearchParams,
 
 import { getListingById, getListings } from "../api/listingApi";
 import { createOffer } from "../api/offerApi";
+import { toast } from "react-toastify";
 
 const MakeOffer = () => {
 const { id } = useParams();
@@ -251,14 +252,23 @@ try {
     }),
   };
 
-  await createOffer(offerData);
+  
 
-  navigate("/dashboard", {
-    state: {
-      message:
-        "Your barter offer has been sent successfully.",
-    },
+ await createOffer(offerData);
+
+  toast.success("Barter offer sent successfully!", {
+    position: "top-center",
+    autoClose: 2200,
+    hideProgressBar: false,
+    closeOnClick: true,
+    pauseOnHover: true,
+    draggable: true,
   });
+
+setTimeout(() => {
+  navigate("/dashboard");
+}, 2300);
+
 } catch (error) {
   console.error(
     "Offer submission error:",
@@ -443,7 +453,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3]">
 
         <div className="flex flex-1 flex-col p-4 sm:p-5">
 
-          <div className="aspect-[4/3] overflow-hidden rounded-xl bg-[#F3EEEF]">
+          <div className="aspect-4/3 overflow-hidden rounded-xl bg-[#F3EEEF]">
 
             {requestedListing.images?.[0]?.url ? (
               <img
@@ -545,7 +555,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3]">
           {selectedItem ? (
             <>
 
-              <div className="aspect-[4/3] overflow-hidden rounded-xl bg-[#F3EEEF]">
+              <div className="aspect-4/3 overflow-hidden rounded-xl bg-[#F3EEEF]">
 
                 {selectedItem.images?.[0]?.url ? (
                   <img
@@ -596,7 +606,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3]">
 
             </>
           ) : (
-            <div className="flex min-h-[255px] flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#DCCBD0] bg-[#FBF5F6] px-5 text-center">
+            <div className="flex min-h-64 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#DCCBD0] bg-[#FBF5F6] px-5 text-center">
 
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F5E8EB] text-2xl">
                 📦
@@ -829,7 +839,7 @@ return ( <div className="min-h-screen bg-[#F8F5F3]">
                     `}
                   >
 
-                    <div className="relative aspect-[4/3] overflow-hidden bg-[#F3EEEF]">
+                    <div className="relative aspect-4/3 overflow-hidden bg-[#F3EEEF]">
 
                       {listing.images?.[0]?.url ? (
                         <img

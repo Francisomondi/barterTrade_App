@@ -10,8 +10,143 @@ import {
   cancelOffer,
 } from "../api/offerApi";
 
+const formatDate = (date) => {
+  if (!date) return "";
+
+  return new Date(date).toLocaleDateString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const formatPrice = (value) => {
+  if (value === null || value === undefined) {
+    return "Value not specified";
+  }
+
+  const numericValue = Number(value);
+
+  if (Number.isNaN(numericValue)) {
+    return "Value not specified";
+  }
+
+  return `KES ${numericValue.toLocaleString("en-KE")}`;
+};
+
+const getImage = (listing) => {
+  if (!listing) return null;
+
+  if (listing.imageUrl) {
+    return listing.imageUrl;
+  }
+
+  if (
+    listing.images &&
+    Array.isArray(listing.images) &&
+    listing.images.length > 0
+  ) {
+    return listing.images[0]?.url || listing.images[0]?.imageUrl || null;
+  }
+
+  return null;
+};
+
+const getStatusClass = (status) => {
+  switch (status) {
+    case "PENDING":
+      return "bg-amber-50 text-amber-700 border-amber-200";
+
+    case "ACCEPTED":
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+    case "REJECTED":
+      return "bg-red-50 text-red-700 border-red-200";
+
+    case "CANCELLED":
+      return "bg-gray-100 text-gray-600 border-gray-200";
+
+    case "COUNTERED":
+      return "bg-purple-50 text-purple-700 border-purple-200";
+
+    case "EXPIRED":
+      return "bg-orange-50 text-orange-700 border-orange-200";
+
+    default:
+      return "bg-gray-100 text-gray-600 border-gray-200";
+  }
+};
+
+const getStatusDot = (status) => {
+  switch (status) {
+    case "PENDING":
+      return "bg-amber-500";
+
+    case "ACCEPTED":
+      return "bg-emerald-500";
+
+    case "REJECTED":
+      return "bg-red-500";
+
+    case "CANCELLED":
+      return "bg-gray-400";
+
+    case "COUNTERED":
+      return "bg-purple-500";
+
+    case "EXPIRED":
+      return "bg-orange-500";
+
+    default:
+      return "bg-gray-400";
+  }
+};
+
+const ItemPreview = ({ listing, label }) => {
+  const image = getImage(listing);
+
+  return (
+    <div className="min-w-0 flex-1 rounded-xl border border-[#E9DFE1] bg-[#FCF9F9] p-2.5 transition hover:border-[#D9C2C7]">
+      <p className="mb-2 truncate text-[10px] font-bold uppercase tracking-[0.12em] text-[#8A2638]">
+        {label}
+      </p>
+
+      <div className="flex min-w-0 gap-2.5">
+        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-[#F3E7E9]">
+          {image ? (
+            <img
+              src={image}
+              alt={listing?.title || "Listing"}
+              className="h-full w-full object-cover transition duration-300 hover:scale-105"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xl">
+              📦
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-xs font-bold text-[#21191B]">
+            {listing?.title || "Item"}
+          </h3>
+
+          <p className="mt-1 truncate text-[10px] text-gray-500">
+            {listing?.condition || "Condition not specified"}
+          </p>
+
+          <p className="mt-1.5 truncate text-xs font-extrabold text-[#5B1725]">
+            {formatPrice(listing?.estimatedValue)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const Offers = () => {
   const navigate = useNavigate();
+
   const [activeTab, setActiveTab] = useState("received");
   const [receivedOffers, setReceivedOffers] = useState([]);
   const [sentOffers, setSentOffers] = useState([]);
@@ -91,7 +226,8 @@ const Offers = () => {
       console.error("Reject offer error:", err);
 
       setError(
-        err.response?.data?.message || "Failed to reject the offer."
+        err.response?.data?.message ||
+          "Failed to reject the offer."
       );
     } finally {
       setActionLoading(null);
@@ -115,76 +251,12 @@ const Offers = () => {
       console.error("Cancel offer error:", err);
 
       setError(
-        err.response?.data?.message || "Failed to cancel the offer."
+        err.response?.data?.message ||
+          "Failed to cancel the offer."
       );
     } finally {
       setActionLoading(null);
     }
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "";
-
-    return new Date(date).toLocaleDateString("en-KE", {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  };
-
-  const formatPrice = (value) => {
-    if (value === null || value === undefined) {
-      return "Value not specified";
-    }
-
-    return `KES ${Number(value).toLocaleString("en-KE")}`;
-  };
-
-  const getStatusClass = (status) => {
-    switch (status) {
-      case "PENDING":
-        return "bg-yellow-100 text-yellow-800";
-
-      case "ACCEPTED":
-        return "bg-green-100 text-green-800";
-
-      case "REJECTED":
-        return "bg-red-100 text-red-800";
-
-      case "CANCELLED":
-        return "bg-gray-200 text-gray-700";
-
-      case "COUNTERED":
-        return "bg-purple-100 text-purple-800";
-
-      case "EXPIRED":
-        return "bg-orange-100 text-orange-800";
-
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  };
-
-  const getImage = (listing) => {
-    if (!listing) return null;
-
-    if (listing.imageUrl) {
-      return listing.imageUrl;
-    }
-
-    if (
-      listing.images &&
-      Array.isArray(listing.images) &&
-      listing.images.length > 0
-    ) {
-      return (
-        listing.images[0].url ||
-        listing.images[0].imageUrl ||
-        null
-      );
-    }
-
-    return null;
   };
 
   const OfferItem = ({ offer, type }) => {
@@ -193,221 +265,201 @@ const Offers = () => {
     const offeredItem = offer.offeredListing;
     const requestedItem = offer.requestedListing;
 
-    const offeredImage = getImage(offeredItem);
-    const requestedImage = getImage(requestedItem);
-
     const isPending = offer.status === "PENDING";
+    const isProcessing = actionLoading === offer.id;
 
     return (
-      <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm transition hover:shadow-lg">
-        {/* Header */}
-        <div className="flex flex-col gap-3 border-b border-[#E7DDDF] bg-[#FBF5F6] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[#5B1725]">
-              {isReceived
-                ? `${offer.sender?.name || "A user"} sent you an offer`
-                : `Offer sent to ${
-                    offer.receiver?.name || "another user"
-                  }`}
-            </p>
+      <article
+        className="
+          group overflow-hidden rounded-2xl
+          border border-[#E7DDDF]
+          bg-white
+          shadow-[0_3px_14px_rgba(61,15,24,0.05)]
+          transition duration-300
+          hover:-translate-y-0.5
+          hover:shadow-[0_8px_24px_rgba(61,15,24,0.10)]
+        "
+      >
+        {/* CARD HEADER */}
+        <div className="flex items-center justify-between gap-3 border-b border-[#EEE5E7] px-4 py-3">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F5E8EB] text-xs font-bold text-[#5B1725]">
+                {isReceived ? "↙" : "↗"}
+              </div>
 
-            <p className="mt-1 text-xs text-gray-500">
+              <p className="truncate text-xs font-bold text-[#3D0F18]">
+                {isReceived
+                  ? offer.sender?.name || "A user"
+                  : offer.receiver?.name || "Another user"}
+              </p>
+            </div>
+
+            <p className="mt-1 pl-9 text-[10px] text-gray-400">
+              {isReceived ? "Sent you an offer" : "Offer sent"} •{" "}
               {formatDate(offer.createdAt)}
             </p>
           </div>
 
           <span
-            className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${getStatusClass(
-              offer.status
-            )}`}
+            className={`
+              inline-flex shrink-0 items-center gap-1.5
+              rounded-full border px-2.5 py-1
+              text-[9px] font-extrabold uppercase tracking-wide
+              ${getStatusClass(offer.status)}
+            `}
           >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${getStatusDot(
+                offer.status
+              )}`}
+            />
+
             {offer.status}
           </span>
         </div>
 
-        {/* Trade Items */}
-        <div className="grid gap-5 p-5 md:grid-cols-[1fr_auto_1fr] md:items-center">
-          {/* Offered Item */}
-          <div className="rounded-2xl border border-[#E7DDDF] bg-[#F8F5F3] p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-[#8A2638]">
-              {isReceived ? "They offer" : "You offer"}
-            </p>
+        {/* TRADE VISUAL */}
+        <div className="px-3.5 pt-3.5">
+          <div className="flex items-stretch gap-2">
+            <ItemPreview
+              listing={offeredItem}
+              label={isReceived ? "They offer" : "You offer"}
+            />
 
-            <div className="flex gap-4">
-              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[#F5E8EB]">
-                {offeredImage ? (
-                  <img
-                    src={offeredImage}
-                    alt={
-                      offeredItem?.title ||
-                      "Offered item"
-                    }
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl">
-                    📦
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <h3 className="truncate font-bold text-[#21191B]">
-                  {offeredItem?.title || "Item"}
-                </h3>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {offeredItem?.condition ||
-                    "Condition not specified"}
-                </p>
-
-                <p className="mt-2 font-bold text-[#5B1725]">
-                  {formatPrice(
-                    offeredItem?.estimatedValue
-                  )}
-                </p>
+            <div className="flex w-7 shrink-0 items-center justify-center">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full border border-[#E2D0D4] bg-[#F8F2F3] text-sm font-bold text-[#5B1725]">
+                ⇄
               </div>
             </div>
-          </div>
 
-          {/* Exchange Icon */}
-          <div className="flex justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#5B1725] text-xl text-white shadow-md">
-              ⇄
-            </div>
-          </div>
-
-          {/* Requested Item */}
-          <div className="rounded-2xl border border-[#E7DDDF] bg-[#F8F5F3] p-4">
-            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-[#8A2638]">
-              {isReceived ? "You give" : "They offer"}
-            </p>
-
-            <div className="flex gap-4">
-              <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-[#F5E8EB]">
-                {requestedImage ? (
-                  <img
-                    src={requestedImage}
-                    alt={
-                      requestedItem?.title ||
-                      "Requested item"
-                    }
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl">
-                    📦
-                  </div>
-                )}
-              </div>
-
-              <div className="min-w-0">
-                <h3 className="truncate font-bold text-[#21191B]">
-                  {requestedItem?.title || "Item"}
-                </h3>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  {requestedItem?.condition ||
-                    "Condition not specified"}
-                </p>
-
-                <p className="mt-2 font-bold text-[#5B1725]">
-                  {formatPrice(
-                    requestedItem?.estimatedValue
-                  )}
-                </p>
-              </div>
-            </div>
+            <ItemPreview
+              listing={requestedItem}
+              label={isReceived ? "You give" : "They receive"}
+            />
           </div>
         </div>
 
-        {/* Message */}
-        {offer.message && (
-          <div className="mx-5 mb-5 rounded-xl bg-[#F5E8EB] p-4">
-            <p className="text-xs font-bold uppercase tracking-wide text-[#8A2638]">
-              Message
+        {/* VALUE SUMMARY */}
+        <div className="mx-3.5 mt-3 flex items-center justify-between rounded-xl bg-[#FBF7F7] px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-[9px] font-semibold uppercase tracking-wide text-gray-400">
+              Exchange
             </p>
 
-            <p className="mt-1 text-sm leading-6 text-[#21191B]">
-              "{offer.message}"
+            <p className="mt-0.5 truncate text-[11px] font-semibold text-[#3D0F18]">
+              {offeredItem?.title || "Item"}{" "}
+              <span className="font-normal text-gray-400">for</span>{" "}
+              {requestedItem?.title || "item"}
             </p>
+          </div>
+
+          <div className="ml-3 shrink-0 text-right">
+            <p className="text-[9px] text-gray-400">Offer value</p>
+
+            <p className="text-[11px] font-extrabold text-[#5B1725]">
+              {formatPrice(offeredItem?.estimatedValue)}
+            </p>
+          </div>
+        </div>
+
+        {/* MESSAGE */}
+        {offer.message && (
+          <div className="mx-3.5 mt-3 rounded-xl border border-[#E9DDE0] bg-[#FAF4F5] px-3 py-2.5">
+            <div className="flex gap-2">
+              <span className="text-xs">💬</span>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-bold uppercase tracking-wide text-[#8A2638]">
+                  Message
+                </p>
+
+                <p className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[#4B3A3E]">
+                  “{offer.message}”
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Trade Created */}
+        {/* TRADE CREATED */}
         {offer.trade && (
-          <div className="mx-5 mb-5 rounded-2xl border border-green-200 bg-green-50 p-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
-                    ✓
-                  </div>
-
-                  <p className="text-sm font-bold text-green-800">
-                    Trade Created Successfully
-                  </p>
+          <div className="mx-3.5 mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+                  ✓
                 </div>
 
-                <p className="mt-3 text-sm text-green-700">
-                  Trade Number:{" "}
-                  <span className="font-bold">
-                    {offer.trade.tradeNumber}
-                  </span>
-                </p>
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-bold text-emerald-800">
+                    Trade created
+                  </p>
 
-                <p className="mt-1 text-xs text-green-600">
-                  Current Status:{" "}
-                  <span className="font-bold">
-                    {offer.trade.status}
-                  </span>
-                </p>
+                  <p className="truncate text-[9px] text-emerald-700">
+                    {offer.trade.tradeNumber} • {offer.trade.status}
+                  </p>
+                </div>
               </div>
 
               <button
                 type="button"
                 onClick={() =>
-                  navigate(
-                    `/trades/${offer.trade.id}`
-                  )
+                  navigate(`/trades/${offer.trade.id}`)
                 }
-                className="rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white shadow-md transition hover:bg-[#3D0F18]"
+                className="
+                  shrink-0 rounded-lg
+                  bg-[#5B1725]
+                  px-3 py-1.5
+                  text-[10px] font-bold text-white
+                  transition hover:bg-[#3D0F18]
+                "
               >
-                View Trade →
+                View Trade
               </button>
             </div>
           </div>
         )}
 
-        {/* Actions */}
+        {/* ACTIONS */}
         {isPending && (
-          <div className="flex flex-wrap gap-3 border-t border-[#E7DDDF] px-5 py-4">
+          <div className="mt-3 flex gap-2 border-t border-[#EEE5E7] px-3.5 py-3">
             {isReceived ? (
               <>
                 <button
                   type="button"
-                  onClick={() =>
-                    handleAccept(offer.id)
-                  }
-                  disabled={
-                    actionLoading === offer.id
-                  }
-                  className="rounded-xl bg-[#5B1725] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => handleAccept(offer.id)}
+                  disabled={isProcessing}
+                  className="
+                    flex-1 rounded-lg
+                    bg-[#5B1725]
+                    px-3 py-2
+                    text-[10px] font-bold text-white
+                    shadow-sm
+                    transition
+                    hover:bg-[#3D0F18]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-60
+                  "
                 >
-                  {actionLoading === offer.id
-                    ? "Processing..."
-                    : "Accept Offer"}
+                  {isProcessing ? "Processing..." : "Accept"}
                 </button>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    handleReject(offer.id)
-                  }
-                  disabled={
-                    actionLoading === offer.id
-                  }
-                  className="rounded-xl border border-red-200 bg-white px-5 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => handleReject(offer.id)}
+                  disabled={isProcessing}
+                  className="
+                    flex-1 rounded-lg
+                    border border-red-200
+                    bg-white
+                    px-3 py-2
+                    text-[10px] font-bold text-red-600
+                    transition
+                    hover:bg-red-50
+                    disabled:cursor-not-allowed
+                    disabled:opacity-60
+                  "
                 >
                   Reject
                 </button>
@@ -415,22 +467,67 @@ const Offers = () => {
             ) : (
               <button
                 type="button"
-                onClick={() =>
-                  handleCancel(offer.id)
-                }
-                disabled={
-                  actionLoading === offer.id
-                }
-                className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => handleCancel(offer.id)}
+                disabled={isProcessing}
+                className="
+                  w-full rounded-lg
+                  border border-gray-200
+                  bg-white
+                  px-3 py-2
+                  text-[10px] font-bold text-gray-600
+                  transition
+                  hover:bg-gray-50
+                  disabled:cursor-not-allowed
+                  disabled:opacity-60
+                "
               >
-                {actionLoading === offer.id
-                  ? "Cancelling..."
-                  : "Cancel Offer"}
+                {isProcessing ? "Cancelling..." : "Cancel Offer"}
               </button>
             )}
           </div>
         )}
-      </div>
+
+        {/* VIEW ITEMS */}
+        {!isPending && !offer.trade && (
+          <div className="flex gap-2 border-t border-[#EEE5E7] px-3.5 py-3">
+            {offeredItem?.id && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(`/listings/${offeredItem.id}`)
+                }
+                className="
+                  flex-1 rounded-lg
+                  border border-[#DCCACE]
+                  px-3 py-2
+                  text-[10px] font-bold text-[#5B1725]
+                  transition hover:bg-[#FAF3F4]
+                "
+              >
+                View Offered Item
+              </button>
+            )}
+
+            {requestedItem?.id && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(`/listings/${requestedItem.id}`)
+                }
+                className="
+                  flex-1 rounded-lg
+                  border border-[#DCCACE]
+                  px-3 py-2
+                  text-[10px] font-bold text-[#5B1725]
+                  transition hover:bg-[#FAF3F4]
+                "
+              >
+                View Requested Item
+              </button>
+            )}
+          </div>
+        )}
+      </article>
     );
   };
 
@@ -439,137 +536,226 @@ const Offers = () => {
       ? receivedOffers
       : sentOffers;
 
+  const pendingReceived = receivedOffers.filter(
+    (offer) => offer.status === "PENDING"
+  ).length;
+
+  const pendingSent = sentOffers.filter(
+    (offer) => offer.status === "PENDING"
+  ).length;
+
   return (
-    <div className="min-h-screen bg-[#F8F5F3]">
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-[#3D0F18]">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#3D0F18] via-[#5B1725] to-[#8A2638]" />
+    <div className="min-h-screen bg-[#F8F5F3] text-[#21191B]">
+      {/* COMPACT HEADER */}
+      <section className="border-b border-[#E7DDDF] bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5B1725] text-sm text-white">
+                  ⇄
+                </span>
 
-        <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
-          <div className="max-w-3xl">
-            <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur">
-              Barter Trade
-            </span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+                  BarterConnect
+                </span>
+              </div>
 
-            <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-5xl">
-              Your Trade Offers
-            </h1>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-[#3D0F18] sm:text-3xl">
+                Trade Offers
+              </h1>
 
-            <p className="mt-4 max-w-2xl text-base leading-7 text-white/80 sm:text-lg">
-              Manage offers you've received and track the
-              trades you've proposed to other users.
-            </p>
+              <p className="mt-1 max-w-xl text-xs leading-5 text-gray-500">
+                Review incoming offers and keep track of the trades
+                you've proposed.
+              </p>
+            </div>
+
+            {/* SUMMARY */}
+            <div className="flex w-full gap-2 sm:w-auto">
+              <div className="flex-1 rounded-xl border border-[#E7DDDF] bg-[#FBF7F7] px-4 py-2.5 sm:min-w-28">
+                <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
+                  Received
+                </p>
+
+                <div className="mt-0.5 flex items-end justify-between gap-2">
+                  <p className="text-xl font-black text-[#5B1725]">
+                    {receivedOffers.length}
+                  </p>
+
+                  {pendingReceived > 0 && (
+                    <span className="mb-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-bold text-amber-700">
+                      {pendingReceived} pending
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 rounded-xl border border-[#E7DDDF] bg-[#FBF7F7] px-4 py-2.5 sm:min-w-28">
+                <p className="text-[9px] font-bold uppercase tracking-wide text-gray-400">
+                  Sent
+                </p>
+
+                <div className="mt-0.5 flex items-end justify-between gap-2">
+                  <p className="text-xl font-black text-[#5B1725]">
+                    {sentOffers.length}
+                  </p>
+
+                  {pendingSent > 0 && (
+                    <span className="mb-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-bold text-amber-700">
+                      {pendingSent} pending
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Main */}
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {/* Alerts */}
+      {/* MAIN */}
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+        {/* ALERTS */}
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-5 py-4 text-sm font-medium text-red-700">
-            {error}
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-700">
+            <span>⚠️</span>
+            <span>{error}</span>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm font-medium text-green-700">
-            {success}
+          <div className="mb-4 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-xs font-medium text-emerald-700">
+            <span>✓</span>
+            <span>{success}</span>
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="mb-8 flex flex-wrap gap-3">
+        {/* TABS */}
+        <div className="mb-5 flex rounded-xl border border-[#E7DDDF] bg-white p-1 shadow-sm sm:w-fit">
           <button
             type="button"
-            onClick={() =>
-              setActiveTab("received")
-            }
-            className={`rounded-xl px-6 py-3 text-sm font-bold transition ${
-              activeTab === "received"
-                ? "bg-[#5B1725] text-white shadow-lg"
-                : "border border-[#E7DDDF] bg-white text-[#5B1725] hover:bg-[#F5E8EB]"
-            }`}
+            onClick={() => setActiveTab("received")}
+            className={`
+              flex flex-1 items-center justify-center gap-2
+              rounded-lg px-4 py-2
+              text-[11px] font-bold
+              transition sm:min-w-37
+              ${
+                activeTab === "received"
+                  ? "bg-[#5B1725] text-white shadow-sm"
+                  : "text-gray-600 hover:bg-[#FAF3F4] hover:text-[#5B1725]"
+              }
+            `}
           >
-            Received Offers
+            <span>Received</span>
 
-            {receivedOffers.length > 0 && (
-              <span
-                className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+            <span
+              className={`
+                rounded-full px-1.5 py-0.5 text-[9px]
+                ${
                   activeTab === "received"
-                    ? "bg-white/20"
-                    : "bg-[#F5E8EB]"
-                }`}
-              >
-                {receivedOffers.length}
-              </span>
-            )}
+                    ? "bg-white/15 text-white"
+                    : "bg-[#F4E7E9] text-[#5B1725]"
+                }
+              `}
+            >
+              {receivedOffers.length}
+            </span>
           </button>
 
           <button
             type="button"
-            onClick={() =>
-              setActiveTab("sent")
-            }
-            className={`rounded-xl px-6 py-3 text-sm font-bold transition ${
-              activeTab === "sent"
-                ? "bg-[#5B1725] text-white shadow-lg"
-                : "border border-[#E7DDDF] bg-white text-[#5B1725] hover:bg-[#F5E8EB]"
-            }`}
+            onClick={() => setActiveTab("sent")}
+            className={`
+              flex flex-1 items-center justify-center gap-2
+              rounded-lg px-4 py-2
+              text-[11px] font-bold
+              transition sm:min-w-37
+              ${
+                activeTab === "sent"
+                  ? "bg-[#5B1725] text-white shadow-sm"
+                  : "text-gray-600 hover:bg-[#FAF3F4] hover:text-[#5B1725]"
+              }
+            `}
           >
-            Sent Offers
+            <span>Sent</span>
 
-            {sentOffers.length > 0 && (
-              <span
-                className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+            <span
+              className={`
+                rounded-full px-1.5 py-0.5 text-[9px]
+                ${
                   activeTab === "sent"
-                    ? "bg-white/20"
-                    : "bg-[#F5E8EB]"
-                }`}
-              >
-                {sentOffers.length}
-              </span>
-            )}
+                    ? "bg-white/15 text-white"
+                    : "bg-[#F4E7E9] text-[#5B1725]"
+                }
+              `}
+            >
+              {sentOffers.length}
+            </span>
           </button>
         </div>
 
-        {/* Loading */}
+        {/* LOADING */}
         {loading ? (
-          <div className="space-y-6">
-            {[1, 2].map((item) => (
+          <div className="grid gap-4 md:grid-cols-2">
+            {[1, 2, 3, 4].map((item) => (
               <div
                 key={item}
-                className="animate-pulse rounded-2xl border border-[#E7DDDF] bg-white p-6"
+                className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white p-4 shadow-sm"
               >
-                <div className="h-5 w-48 rounded bg-gray-200" />
-
-                <div className="mt-6 grid gap-5 md:grid-cols-2">
-                  <div className="h-32 rounded-xl bg-gray-200" />
-                  <div className="h-32 rounded-xl bg-gray-200" />
+                <div className="flex items-center justify-between">
+                  <div className="h-7 w-32 animate-pulse rounded-lg bg-gray-200" />
+                  <div className="h-5 w-16 animate-pulse rounded-full bg-gray-200" />
                 </div>
+
+                <div className="mt-4 grid grid-cols-[1fr_28px_1fr] gap-2">
+                  <div className="h-24 animate-pulse rounded-xl bg-gray-200" />
+                  <div />
+                  <div className="h-24 animate-pulse rounded-xl bg-gray-200" />
+                </div>
+
+                <div className="mt-3 h-10 animate-pulse rounded-xl bg-gray-200" />
+
+                <div className="mt-3 h-8 animate-pulse rounded-lg bg-gray-200" />
               </div>
             ))}
           </div>
         ) : activeOffers.length === 0 ? (
-          /* Empty */
-          <div className="rounded-3xl border border-[#E7DDDF] bg-white px-6 py-16 text-center shadow-sm">
-            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-[#F5E8EB] text-4xl">
+          /* EMPTY STATE */
+          <div className="mx-auto max-w-lg rounded-2xl border border-[#E7DDDF] bg-white px-5 py-12 text-center shadow-sm">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F5E8EB] text-2xl">
               🤝
             </div>
 
-            <h2 className="mt-6 text-2xl font-black text-[#21191B]">
-              No {activeTab} offers yet
+            <h2 className="mt-4 text-xl font-black text-[#3D0F18]">
+              No {activeTab} offers
             </h2>
 
-            <p className="mx-auto mt-3 max-w-md text-gray-500">
+            <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
               {activeTab === "received"
                 ? "When another user wants to exchange their item with yours, their offer will appear here."
-                : "Offers you make to other users will appear here so you can track their status."}
+                : "Offers you make to other users will appear here so you can track their progress."}
             </p>
+
+            {activeTab === "sent" && (
+              <button
+                type="button"
+                onClick={() => navigate("/marketplace")}
+                className="
+                  mt-5 rounded-lg
+                  bg-[#5B1725]
+                  px-4 py-2
+                  text-[11px] font-bold text-white
+                  transition hover:bg-[#3D0F18]
+                "
+              >
+                Browse Marketplace
+              </button>
+            )}
           </div>
         ) : (
-          /* Offers */
-          <div className="space-y-6">
+          /* 2-COLUMN OFFERS */
+          <div className="grid gap-4 md:grid-cols-2 xl:gap-5">
             {activeOffers.map((offer) => (
               <OfferItem
                 key={offer.id}
@@ -585,3 +771,4 @@ const Offers = () => {
 };
 
 export default Offers;
+

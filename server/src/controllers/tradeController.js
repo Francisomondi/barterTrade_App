@@ -41,6 +41,7 @@ const CONFIRMATION_STAGES = {
   AGREEMENT: "AGREEMENT",
   VERIFICATION: "VERIFICATION",
   HANDOVER: "HANDOVER",
+  HANDOVER_STARTED: "HANDOVER_STARTED",
 };
 
 /**
@@ -57,6 +58,9 @@ const getConfirmationStageForStatus = (status) => {
 
     case "VERIFICATION":
       return CONFIRMATION_STAGES.HANDOVER;
+
+    case "READY_FOR_HANDOVER":
+      return CONFIRMATION_STAGES.HANDOVER_STARTED;
 
     default:
       return null;
@@ -302,11 +306,11 @@ export const getTradeById = async (req, res) => {
 /**
  * Record a user's confirmation for a trade stage.
  *
- * The database composite unique constraint:
+ * Database constraint:
  *
  * [tradeId, userId, stage]
  *
- * prevents the same trader from confirming the same stage twice.
+ * prevents duplicate confirmation.
  */
 const confirmTradeStage = async (
   tradeId,
@@ -354,8 +358,8 @@ const confirmTradeStage = async (
     throw error;
   }
 
-  /*
-   * Prevent duplicate confirmation by the same trader.
+  /**
+   * Prevent duplicate confirmation.
    */
   const existingConfirmation =
     await prisma.tradeConfirmation.findUnique({
@@ -378,11 +382,8 @@ const confirmTradeStage = async (
     throw error;
   }
 
-  /*
-   * Create the confirmation.
-   *
-   * The database unique constraint provides the final
-   * protection against duplicate confirmations.
+  /**
+   * Create confirmation.
    */
   let confirmation;
 
@@ -396,12 +397,6 @@ const confirmTradeStage = async (
         },
       });
   } catch (error) {
-    /*
-     * Prisma unique constraint error.
-     *
-     * This can happen if two identical confirmation
-     * requests arrive at almost exactly the same time.
-     */
     if (error.code === "P2002") {
       const duplicateError = new Error(
         "You have already confirmed this stage."
@@ -415,8 +410,8 @@ const confirmTradeStage = async (
     throw error;
   }
 
-  /*
-   * Fetch all confirmations for this stage.
+  /**
+   * Fetch confirmations for current stage.
    */
   const confirmations =
     await prisma.tradeConfirmation.findMany({
@@ -459,6 +454,9 @@ const confirmTradeStage = async (
  *
  * Both traders must confirm each stage before
  * the trade can progress.
+ *
+ * Handover confirmation requires BOTH traders
+ * to have verified their items.
  */
 export const confirmTrade = async (req, res) => {
   try {
@@ -489,14 +487,9 @@ export const confirmTrade = async (req, res) => {
       });
     }
 
-    /*
-     * Determine the confirmation stage from
-     * the current trade status.
-     */
-    const stage =
-      getConfirmationStageForStatus(
-        trade.status
-      );
+    const stage = getConfirmationStageForStatus(
+      trade.status
+    );
 
     if (!stage) {
       return res.status(400).json({
@@ -506,8 +499,66 @@ export const confirmTrade = async (req, res) => {
       });
     }
 
-    /*
-     * Record the confirmation.
+    /**
+     * VERIFICATION GATE
+     *
+     * Both traders must verify their items before
+     * either trader can confirm handover readiness.
+     */
+    if (
+      trade.status === "VERIFICATION" &&
+      stage === CONFIRMATION_STAGES.HANDOVER
+    ) {
+      const verifications =
+        await prisma.verification.findMany({
+          where: {
+            tradeId: id,
+            userId: {
+              in: [
+                trade.traderAId,
+                trade.traderBId,
+              ],
+            },
+          },
+
+          select: {
+            userId: true,
+            status: true,
+          },
+        });
+
+      const traderAVerified =
+        verifications.some(
+          (verification) =>
+            verification.userId ===
+              trade.traderAId &&
+            verification.status === "VERIFIED"
+        );
+
+      const traderBVerified =
+        verifications.some(
+          (verification) =>
+            verification.userId ===
+              trade.traderBId &&
+            verification.status === "VERIFIED"
+        );
+
+      if (!traderAVerified || !traderBVerified) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Both traders must verify their items before handover readiness can be confirmed.",
+
+          verification: {
+            traderAVerified,
+            traderBVerified,
+          },
+        });
+      }
+    }
+
+    /**
+     * Record current user's confirmation.
      */
     const result = await confirmTradeStage(
       id,
@@ -517,39 +568,51 @@ export const confirmTrade = async (req, res) => {
 
     let updatedTrade = trade;
 
-    /*
-     * If both traders have confirmed,
-     * advance the trade.
+    /**
+     * Advance trade only after BOTH traders
+     * have confirmed the current stage.
      */
     if (result.bothConfirmed) {
       let nextStatus = null;
 
       if (
-        stage === CONFIRMATION_STAGES.AGREEMENT
+        stage ===
+        CONFIRMATION_STAGES.AGREEMENT
       ) {
         nextStatus = "AGREED";
       }
 
       if (
-        stage === CONFIRMATION_STAGES.VERIFICATION
+        stage ===
+        CONFIRMATION_STAGES.VERIFICATION
       ) {
         nextStatus = "VERIFICATION";
       }
 
       if (
-        stage === CONFIRMATION_STAGES.HANDOVER
+        stage ===
+        CONFIRMATION_STAGES.HANDOVER
       ) {
         nextStatus = "READY_FOR_HANDOVER";
       }
 
+      /**
+       * STEP 6.8
+       *
+       * READY_FOR_HANDOVER
+       *        ↓
+       * Both traders confirm handover started
+       *        ↓
+       * IN_PROGRESS
+       */
+      if (
+        stage ===
+        CONFIRMATION_STAGES.HANDOVER_STARTED
+      ) {
+        nextStatus = "IN_PROGRESS";
+      }
+
       if (nextStatus) {
-        /*
-         * Only update if the trade is still at the
-         * status associated with this confirmation stage.
-         *
-         * This prevents an outdated confirmation request
-         * from moving a trade incorrectly.
-         */
         const statusUpdate =
           await prisma.trade.updateMany({
             where: {
@@ -562,37 +625,39 @@ export const confirmTrade = async (req, res) => {
             },
           });
 
-        /*
-         * If another request already advanced the trade,
-         * simply load its current state.
+        /**
+         * Concurrency protection.
+         *
+         * If another request changed the trade
+         * before this update, do not continue using
+         * stale state.
          */
-        if (statusUpdate.count === 1) {
-          updatedTrade =
-            await prisma.trade.findUnique({
-              where: {
-                id,
-              },
-            });
-        } else {
-          updatedTrade =
-            await prisma.trade.findUnique({
-              where: {
-                id,
-              },
-            });
+        if (statusUpdate.count !== 1) {
+          return res.status(409).json({
+            success: false,
+            message:
+              "The trade was updated by another request. Please refresh and try again.",
+          });
         }
+
+        updatedTrade =
+          await prisma.trade.findUnique({
+            where: {
+              id,
+            },
+          });
       }
     }
 
+    /**
+     * Notify other trader when their confirmation
+     * is still required.
+     */
     const otherTraderId =
       trade.traderAId === userId
         ? trade.traderBId
         : trade.traderAId;
 
-    /*
-     * Notify the other trader when only one trader
-     * has confirmed.
-     */
     if (!result.bothConfirmed) {
       await createNotification({
         userId: otherTraderId,
@@ -600,13 +665,14 @@ export const confirmTrade = async (req, res) => {
         title: "Trade Confirmation Required",
         referenceId: trade.id,
         referenceType: "TRADE",
+
         message:
           `Your trade partner has confirmed the ${stage.toLowerCase()} stage. Your confirmation is still required for Trade ${trade.tradeNumber}.`,
       });
     }
 
-    /*
-     * Once both traders confirm, notify BOTH traders.
+    /**
+     * Notify both traders when stage is complete.
      */
     if (result.bothConfirmed) {
       const notificationMessage =
@@ -675,10 +741,7 @@ export const confirmTrade = async (req, res) => {
  * Used for lifecycle transitions that are NOT
  * controlled by two-party confirmation.
  */
-export const updateTradeStatus = async (
-  req,
-  res
-) => {
+export const updateTradeStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -711,11 +774,12 @@ export const updateTradeStatus = async (
     if (!isParticipant) {
       return res.status(403).json({
         success: false,
-        message: "You are not a participant in this trade.",
+        message:
+          "You are not a participant in this trade.",
       });
     }
 
-    /*
+    /**
      * Agreement requires BOTH traders.
      */
     if (
@@ -729,7 +793,7 @@ export const updateTradeStatus = async (
       });
     }
 
-    /*
+    /**
      * Verification requires BOTH traders.
      */
     if (
@@ -743,7 +807,7 @@ export const updateTradeStatus = async (
       });
     }
 
-    /*
+    /**
      * Handover readiness requires BOTH traders.
      */
     if (
@@ -757,7 +821,34 @@ export const updateTradeStatus = async (
       });
     }
 
-    /*
+    /**
+     * STEP 6.8 SECURITY GATE
+     *
+     * A trader cannot directly change:
+     *
+     * READY_FOR_HANDOVER
+     *        ↓
+     * IN_PROGRESS
+     *
+     * The only valid way is:
+     *
+     * Trader A confirms HANDOVER_STARTED
+     * Trader B confirms HANDOVER_STARTED
+     *        ↓
+     * IN_PROGRESS
+     */
+    if (
+      trade.status === "READY_FOR_HANDOVER" &&
+      status === "IN_PROGRESS"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Both traders must confirm that handover has started before the trade can enter progress.",
+      });
+    }
+
+    /**
      * Completion must use the dedicated endpoint.
      */
     if (status === "COMPLETED") {
@@ -768,7 +859,7 @@ export const updateTradeStatus = async (
       });
     }
 
-    /*
+    /**
      * Disputes must use the dispute process.
      */
     if (status === "DISPUTED") {
@@ -793,12 +884,8 @@ export const updateTradeStatus = async (
       });
     }
 
-    /*
-     * Atomically update the trade only if it is still
-     * in the status we originally read.
-     *
-     * This prevents stale concurrent requests from
-     * overwriting a newer trade state.
+    /**
+     * Atomically update the trade.
      */
     const statusUpdate =
       await prisma.trade.updateMany({
@@ -832,7 +919,7 @@ export const updateTradeStatus = async (
         ? trade.traderBId
         : trade.traderAId;
 
-    /*
+    /**
      * Cancellation only notifies the other trader.
      */
     if (status === "CANCELLED") {
@@ -842,11 +929,12 @@ export const updateTradeStatus = async (
         title: "Trade Cancelled",
         referenceId: trade.id,
         referenceType: "TRADE",
+
         message:
           `Trade ${trade.tradeNumber} has been cancelled.`,
       });
     } else {
-      /*
+      /**
        * Normal lifecycle updates notify both traders.
        */
       const message =
@@ -899,18 +987,16 @@ export const updateTradeStatus = async (
  *
  * Only IN_PROGRESS trades can be completed.
  *
- * The status condition inside the transaction makes
- * completion concurrency-safe.
+ * NOTE:
+ * Completion is currently handled by the
+ * dedicated endpoint. Two-party completion can
+ * be added as the next lifecycle step.
  */
 export const completeTrade = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
 
-    /*
-     * Get the trade first so we can verify ownership
-     * and get the trade information for notifications.
-     */
     const trade = await prisma.trade.findUnique({
       where: {
         id,
@@ -944,8 +1030,8 @@ export const completeTrade = async (req, res) => {
       });
     }
 
-    /*
-     * Only Trader A or Trader B can complete the trade.
+    /**
+     * Only participants can complete.
      */
     const isParticipant =
       trade.traderAId === userId ||
@@ -959,7 +1045,7 @@ export const completeTrade = async (req, res) => {
       });
     }
 
-    /*
+    /**
      * Prevent completing an already completed trade.
      */
     if (trade.status === "COMPLETED") {
@@ -970,7 +1056,7 @@ export const completeTrade = async (req, res) => {
       });
     }
 
-    /*
+    /**
      * Only IN_PROGRESS trades can be completed.
      */
     if (trade.status !== "IN_PROGRESS") {
@@ -981,20 +1067,17 @@ export const completeTrade = async (req, res) => {
       });
     }
 
-    /*
-     * Everything that changes because of completion
-     * happens inside ONE transaction.
+    /**
+     * Everything caused by completion happens
+     * inside one transaction.
      */
     const completedTrade =
       await prisma.$transaction(
         async (tx) => {
-          /*
-           * Atomically change:
+          /**
+           * Atomically:
            *
-           * IN_PROGRESS -> COMPLETED
-           *
-           * Only one concurrent request can update
-           * this row successfully.
+           * IN_PROGRESS → COMPLETED
            */
           const tradeUpdate =
             await tx.trade.updateMany({
@@ -1009,9 +1092,6 @@ export const completeTrade = async (req, res) => {
               },
             });
 
-          /*
-           * Another request completed the trade first.
-           */
           if (tradeUpdate.count !== 1) {
             const error = new Error(
               "This trade has already been completed."
@@ -1022,16 +1102,19 @@ export const completeTrade = async (req, res) => {
             throw error;
           }
 
-          /*
-           * Mark all listings involved in this trade
-           * as TRADED.
+          /**
+           * Mark listings as TRADED.
            */
           for (const item of trade.items) {
             await tx.listing.updateMany({
               where: {
                 id: item.listingId,
+
                 status: {
-                  in: ["RESERVED", "ACTIVE"],
+                  in: [
+                    "RESERVED",
+                    "ACTIVE",
+                  ],
                 },
               },
 
@@ -1041,8 +1124,8 @@ export const completeTrade = async (req, res) => {
             });
           }
 
-          /*
-           * Increment Trader A's completed trade count.
+          /**
+           * Increment Trader A.
            */
           await tx.user.update({
             where: {
@@ -1056,8 +1139,8 @@ export const completeTrade = async (req, res) => {
             },
           });
 
-          /*
-           * Increment Trader B's completed trade count.
+          /**
+           * Increment Trader B.
            */
           await tx.user.update({
             where: {
@@ -1071,8 +1154,8 @@ export const completeTrade = async (req, res) => {
             },
           });
 
-          /*
-           * Return the final trade.
+          /**
+           * Return final trade.
            */
           return tx.trade.findUnique({
             where: {
@@ -1117,9 +1200,8 @@ export const completeTrade = async (req, res) => {
         }
       );
 
-    /*
-     * Notify BOTH traders only after the transaction
-     * successfully commits.
+    /**
+     * Notify both traders after successful commit.
      */
     const completionMessage =
       `Trade ${trade.tradeNumber} has been completed successfully.`;

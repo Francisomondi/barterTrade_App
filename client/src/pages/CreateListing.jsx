@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { getCategories } from "../api/categoryApi";
 import { createListing } from "../api/listingApi";
+import { toast } from "react-toastify";
 
 const MAX_IMAGES = 8;
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
@@ -251,26 +252,25 @@ const CreateListing = () => {
         );
       }
 
-      /*
-       * ========================================================
-       * IMPORTANT
-       * ========================================================
-       *
-       * Send the newly created listing directly to Marketplace.
-       *
-       * Marketplace will:
-       *
-       * 1. Display it immediately.
-       * 2. Refresh from the backend.
-       * 3. Prevent duplicates.
-       */
+      toast.success("Listing Created successfully!", {
+        position: "top-center",
+        autoClose: 2200,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
 
-      navigate("/marketplace", {
+      setTimeout(() => {
+        navigate("/marketplace", {
         replace: true,
         state: {
           newListing: data.listing,
         },
       });
+      }, 2300);
+
+      
 
     } catch (error) {
       console.error(
