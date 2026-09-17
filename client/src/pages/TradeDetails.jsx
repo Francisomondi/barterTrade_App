@@ -1,15 +1,23 @@
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
   getTradeById,
   updateTradeStatus,
-  completeTrade,
   confirmTrade,
 } from "../api/tradeApi";
 
 import { useAuth } from "../context/AuthContext";
+
+/* =========================================================
+   STATUS CONFIGURATION
+========================================================= */
 
 const statusStyles = {
   PENDING: "bg-yellow-100 text-yellow-800",
@@ -31,12 +39,24 @@ const statusSteps = [
   "COMPLETED",
 ];
 
+/* =========================================================
+   CONFIRMATION STAGES
+========================================================= */
+
+const AGREEMENT_STAGE = "AGREEMENT";
+const VERIFICATION_STAGE = "VERIFICATION";
+const HANDOVER_STAGE = "HANDOVER";
 const HANDOVER_STARTED_STAGE = "HANDOVER_STARTED";
+const COMPLETION_STAGE = "COMPLETION";
+
+/* =========================================================
+   HELPERS
+========================================================= */
 
 const formatStatus = (status) => {
   return (
     status
-      ?.replaceAll("_", " ")
+      ?.replace(/_/g, " ")
       .toLowerCase()
       .replace(/\b\w/g, (letter) => letter.toUpperCase()) ||
     "Unknown"
@@ -73,17 +93,107 @@ const getImage = (listing) => {
   );
 };
 
+/* =========================================================
+   CONFIRMATION STATUS CARD
+========================================================= */
+
+const ConfirmationStatusCard = ({
+  label,
+  name,
+  confirmed,
+  confirmedAt,
+  isCurrentUser,
+}) => {
+  return (
+    <div
+      className={`rounded-2xl border p-5 ${
+        confirmed
+          ? "border-green-200 bg-green-50"
+          : "border-gray-200 bg-gray-50"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p
+            className={`text-xs font-bold uppercase tracking-wider ${
+              confirmed
+                ? "text-green-700"
+                : "text-gray-500"
+            }`}
+          >
+            {label}
+          </p>
+
+          <h3
+            className={`mt-1 text-lg font-extrabold ${
+              confirmed
+                ? "text-green-800"
+                : "text-[#21191B]"
+            }`}
+          >
+            {name || label}
+          </h3>
+        </div>
+
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold ${
+            confirmed
+              ? "bg-green-600 text-white"
+              : "bg-white text-gray-400 shadow-sm"
+          }`}
+        >
+          {confirmed ? "✓" : "○"}
+        </div>
+      </div>
+
+      <p
+        className={`mt-4 text-sm font-bold ${
+          confirmed
+            ? "text-green-700"
+            : "text-gray-500"
+        }`}
+      >
+        {confirmed
+          ? "Confirmation recorded"
+          : "Waiting for confirmation"}
+      </p>
+
+      {confirmedAt && (
+        <p
+          className={`mt-1 text-xs ${
+            confirmed
+              ? "text-green-600"
+              : "text-gray-500"
+          }`}
+        >
+          Confirmed {formatDateTime(confirmedAt)}
+        </p>
+      )}
+
+      {isCurrentUser && (
+        <span className="mt-4 inline-flex rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
+          You
+        </span>
+      )}
+    </div>
+  );
+};
+
+/* =========================================================
+   TRADE DETAILS
+========================================================= */
+
 const TradeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-
   const { user } = useAuth();
 
   const [trade, setTrade] = useState(null);
 
   const [loading, setLoading] = useState(true);
 
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] =
+    useState(false);
 
   const [handoverLoading, setHandoverLoading] =
     useState(false);
@@ -95,20 +205,28 @@ const TradeDetails = () => {
   const [handoverError, setHandoverError] =
     useState("");
 
+  const [confirmationSuccess, setConfirmationSuccess] =
+    useState("");
+
   const [handoverSuccess, setHandoverSuccess] =
     useState("");
 
-  /**
-   * ============================================
-   * LOAD TRADE
-   * ============================================
-   */
-  const loadTrade = async () => {
+  /* =======================================================
+     LOAD TRADE
+  ======================================================= */
+
+  const loadTrade = useCallback(async () => {
+    if (!id) return;
+
     try {
       setLoading(true);
       setError("");
 
       const response = await getTradeById(id);
+
+      if (!response?.trade) {
+        throw new Error("Trade not found.");
+      }
 
       setTrade(response.trade);
     } catch (error) {
@@ -119,47 +237,42 @@ const TradeDetails = () => {
 
       setError(
         error.response?.data?.message ||
+          error.message ||
           "Unable to load trade details."
       );
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (id) {
-      loadTrade();
-    }
   }, [id]);
 
-  /**
-   * ============================================
-   * CURRENT USER
-   * ============================================
-   */
+  useEffect(() => {
+    loadTrade();
+  }, [loadTrade]);
+
+  /* =======================================================
+     CURRENT USER
+  ======================================================= */
+
   const currentUserId = user?.id;
 
-  /**
-   * ============================================
-   * TRADER ROLES
-   * ============================================
-   */
-  const isTraderA =
+  const isTraderA = Boolean(
     currentUserId &&
-    trade?.traderAId === currentUserId;
+      trade?.traderAId === currentUserId
+  );
 
-  const isTraderB =
+  const isTraderB = Boolean(
     currentUserId &&
-    trade?.traderBId === currentUserId;
+      trade?.traderBId === currentUserId
+  );
 
-  const isParticipant =
-    Boolean(isTraderA || isTraderB);
+  const isParticipant = Boolean(
+    isTraderA || isTraderB
+  );
 
-  /**
-   * ============================================
-   * OTHER TRADER
-   * ============================================
-   */
+  /* =======================================================
+     OTHER TRADER
+  ======================================================= */
+
   const otherTrader = useMemo(() => {
     if (!trade || !currentUserId) {
       return null;
@@ -176,161 +289,593 @@ const TradeDetails = () => {
     return null;
   }, [trade, currentUserId]);
 
-  /**
-   * ============================================
-   * HANDOVER CONFIRMATIONS
-   * ============================================
-   */
-  const handoverConfirmations = useMemo(() => {
-    if (!trade?.confirmations) {
+  /* =======================================================
+     CONFIRMATIONS
+  ======================================================= */
+
+  const confirmations = useMemo(() => {
+    if (!Array.isArray(trade?.confirmations)) {
       return [];
     }
 
-    return trade.confirmations.filter(
-      (confirmation) =>
-        confirmation.stage === HANDOVER_STARTED_STAGE
-    );
+    return trade.confirmations;
   }, [trade]);
 
-  /**
-   * ============================================
-   * TRADER A HANDOVER CONFIRMATION
-   * ============================================
-   */
+  const getStageConfirmations = useCallback(
+    (stage) => {
+      return confirmations.filter(
+        (confirmation) =>
+          confirmation.stage === stage
+      );
+    },
+    [confirmations]
+  );
+
+  const getTraderConfirmation = useCallback(
+    (stage, traderId) => {
+      if (!traderId) return null;
+
+      return (
+        getStageConfirmations(stage).find(
+          (confirmation) =>
+            confirmation.userId === traderId
+        ) || null
+      );
+    },
+    [getStageConfirmations]
+  );
+
+  /* =======================================================
+     AGREEMENT CONFIRMATIONS
+  ======================================================= */
+
+  const agreementConfirmations = useMemo(
+    () =>
+      getStageConfirmations(
+        AGREEMENT_STAGE
+      ),
+    [getStageConfirmations]
+  );
+
+  const traderAAgreementConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          AGREEMENT_STAGE,
+          trade?.traderAId
+        ),
+      [getTraderConfirmation, trade?.traderAId]
+    );
+
+  const traderBAgreementConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          AGREEMENT_STAGE,
+          trade?.traderBId
+        ),
+      [getTraderConfirmation, trade?.traderBId]
+    );
+
+  const currentUserAgreementConfirmation =
+    useMemo(() => {
+      if (!currentUserId) return null;
+
+      return (
+        agreementConfirmations.find(
+          (confirmation) =>
+            confirmation.userId ===
+            currentUserId
+        ) || null
+      );
+    }, [
+      agreementConfirmations,
+      currentUserId,
+    ]);
+
+  const currentUserConfirmedAgreement =
+    Boolean(currentUserAgreementConfirmation);
+
+  const bothTradersConfirmedAgreement =
+    Boolean(
+      traderAAgreementConfirmation &&
+        traderBAgreementConfirmation
+    );
+
+  /* =======================================================
+     VERIFICATION-STAGE CONFIRMATIONS
+  ======================================================= */
+
+  const verificationConfirmations = useMemo(
+    () =>
+      getStageConfirmations(
+        VERIFICATION_STAGE
+      ),
+    [getStageConfirmations]
+  );
+
+  const traderAVerificationConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          VERIFICATION_STAGE,
+          trade?.traderAId
+        ),
+      [getTraderConfirmation, trade?.traderAId]
+    );
+
+  const traderBVerificationConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          VERIFICATION_STAGE,
+          trade?.traderBId
+        ),
+      [getTraderConfirmation, trade?.traderBId]
+    );
+
+  const currentUserVerificationConfirmation =
+    useMemo(() => {
+      if (!currentUserId) return null;
+
+      return (
+        verificationConfirmations.find(
+          (confirmation) =>
+            confirmation.userId ===
+            currentUserId
+        ) || null
+      );
+    }, [
+      verificationConfirmations,
+      currentUserId,
+    ]);
+
+  const currentUserConfirmedVerification =
+    Boolean(
+      currentUserVerificationConfirmation
+    );
+
+  const bothTradersConfirmedVerification =
+    Boolean(
+      traderAVerificationConfirmation &&
+        traderBVerificationConfirmation
+    );
+
+  /* =======================================================
+     HANDOVER READINESS CONFIRMATIONS
+     =======================================================
+
+     IMPORTANT:
+
+     At VERIFICATION, the backend should:
+       1. Create/update current user's Verification
+          record as VERIFIED.
+       2. Create current user's HANDOVER confirmation.
+       3. Move to READY_FOR_HANDOVER only after
+          both traders have done the same.
+  ======================================================= */
+
+  const handoverConfirmations = useMemo(
+    () =>
+      getStageConfirmations(
+        HANDOVER_STAGE
+      ),
+    [getStageConfirmations]
+  );
+
   const traderAHandoverConfirmation =
-    useMemo(() => {
-      return handoverConfirmations.find(
-        (confirmation) =>
-          confirmation.userId === trade?.traderAId
-      );
-    }, [
-      handoverConfirmations,
-      trade?.traderAId,
-    ]);
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          HANDOVER_STAGE,
+          trade?.traderAId
+        ),
+      [getTraderConfirmation, trade?.traderAId]
+    );
 
-  /**
-   * ============================================
-   * TRADER B HANDOVER CONFIRMATION
-   * ============================================
-   */
   const traderBHandoverConfirmation =
-    useMemo(() => {
-      return handoverConfirmations.find(
-        (confirmation) =>
-          confirmation.userId === trade?.traderBId
-      );
-    }, [
-      handoverConfirmations,
-      trade?.traderBId,
-    ]);
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          HANDOVER_STAGE,
+          trade?.traderBId
+        ),
+      [getTraderConfirmation, trade?.traderBId]
+    );
 
-  /**
-   * ============================================
-   * CURRENT USER CONFIRMATION
-   * ============================================
-   */
   const currentUserHandoverConfirmation =
     useMemo(() => {
-      if (!currentUserId) {
-        return null;
-      }
+      if (!currentUserId) return null;
 
-      return handoverConfirmations.find(
-        (confirmation) =>
-          confirmation.userId === currentUserId
+      return (
+        handoverConfirmations.find(
+          (confirmation) =>
+            confirmation.userId ===
+            currentUserId
+        ) || null
       );
     }, [
       handoverConfirmations,
       currentUserId,
     ]);
 
-  const currentUserConfirmedHandover =
+  const currentUserConfirmedHandoverReadiness =
     Boolean(currentUserHandoverConfirmation);
 
-  /**
-   * ============================================
-   * BOTH TRADERS CONFIRMED
-   * ============================================
-   */
-  const bothTradersConfirmedHandover =
+  const bothTradersConfirmedHandoverReadiness =
     Boolean(
       traderAHandoverConfirmation &&
         traderBHandoverConfirmation
     );
 
-  /**
-   * ============================================
-   * HANDLE NORMAL STATUS UPDATE
-   *
-   * IMPORTANT:
-   *
-   * READY_FOR_HANDOVER -> IN_PROGRESS
-   * is NOT handled here.
-   *
-   * That transition must happen through
-   * two-party HANDOVER_STARTED confirmation.
-   * ============================================
-   */
-  const handleStatusUpdate = async (status) => {
-    /**
-     * Safety guard.
-     *
-     * Never allow the frontend to attempt the
-     * protected direct transition.
-     */
-    if (
-      trade?.status === "READY_FOR_HANDOVER" &&
-      status === "IN_PROGRESS"
-    ) {
-      setActionError(
-        "Both traders must confirm that handover has started."
-      );
+  /* =======================================================
+     HANDOVER STARTED
+  ======================================================= */
 
+  const handoverStartedConfirmations =
+    useMemo(
+      () =>
+        getStageConfirmations(
+          HANDOVER_STARTED_STAGE
+        ),
+      [getStageConfirmations]
+    );
+
+  const traderAHandoverStartedConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          HANDOVER_STARTED_STAGE,
+          trade?.traderAId
+        ),
+      [
+        getTraderConfirmation,
+        trade?.traderAId,
+      ]
+    );
+
+  const traderBHandoverStartedConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          HANDOVER_STARTED_STAGE,
+          trade?.traderBId
+        ),
+      [
+        getTraderConfirmation,
+        trade?.traderBId,
+      ]
+    );
+
+  const currentUserHandoverStartedConfirmation =
+    useMemo(() => {
+      if (!currentUserId) return null;
+
+      return (
+        handoverStartedConfirmations.find(
+          (confirmation) =>
+            confirmation.userId ===
+            currentUserId
+        ) || null
+      );
+    }, [
+      handoverStartedConfirmations,
+      currentUserId,
+    ]);
+
+  const currentUserConfirmedHandoverStarted =
+    Boolean(
+      currentUserHandoverStartedConfirmation
+    );
+
+  const bothTradersConfirmedHandoverStarted =
+    Boolean(
+      traderAHandoverStartedConfirmation &&
+        traderBHandoverStartedConfirmation
+    );
+
+  /* =======================================================
+     COMPLETION CONFIRMATIONS
+  ======================================================= */
+
+  const completionConfirmations = useMemo(
+    () =>
+      getStageConfirmations(
+        COMPLETION_STAGE
+      ),
+    [getStageConfirmations]
+  );
+
+  const traderACompletionConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          COMPLETION_STAGE,
+          trade?.traderAId
+        ),
+      [
+        getTraderConfirmation,
+        trade?.traderAId,
+      ]
+    );
+
+  const traderBCompletionConfirmation =
+    useMemo(
+      () =>
+        getTraderConfirmation(
+          COMPLETION_STAGE,
+          trade?.traderBId
+        ),
+      [
+        getTraderConfirmation,
+        trade?.traderBId,
+      ]
+    );
+
+  const currentUserCompletionConfirmation =
+    useMemo(() => {
+      if (!currentUserId) return null;
+
+      return (
+        completionConfirmations.find(
+          (confirmation) =>
+            confirmation.userId ===
+            currentUserId
+        ) || null
+      );
+    }, [
+      completionConfirmations,
+      currentUserId,
+    ]);
+
+  const currentUserConfirmedCompletion =
+    Boolean(
+      currentUserCompletionConfirmation
+    );
+
+  const bothTradersConfirmedCompletion =
+    Boolean(
+      traderACompletionConfirmation &&
+        traderBCompletionConfirmation
+    );
+
+  /* =======================================================
+     VERIFICATION RECORDS
+  ======================================================= */
+
+  const verifications = useMemo(() => {
+    if (!Array.isArray(trade?.verifications)) {
+      return [];
+    }
+
+    return trade.verifications;
+  }, [trade]);
+
+  const getVerificationForUser =
+    useCallback(
+      (userId) => {
+        if (!userId) return null;
+
+        return (
+          verifications.find(
+            (verification) =>
+              verification.userId === userId
+          ) || null
+        );
+      },
+      [verifications]
+    );
+
+  const traderAVerification = useMemo(
+    () =>
+      getVerificationForUser(
+        trade?.traderAId
+      ),
+    [
+      getVerificationForUser,
+      trade?.traderAId,
+    ]
+  );
+
+  const traderBVerification = useMemo(
+    () =>
+      getVerificationForUser(
+        trade?.traderBId
+      ),
+    [
+      getVerificationForUser,
+      trade?.traderBId,
+    ]
+  );
+
+  const currentUserVerification = useMemo(
+    () =>
+      getVerificationForUser(
+        currentUserId
+      ),
+    [
+      getVerificationForUser,
+      currentUserId,
+    ]
+  );
+
+  const otherTraderVerification = useMemo(
+    () =>
+      getVerificationForUser(
+        otherTrader?.id
+      ),
+    [
+      getVerificationForUser,
+      otherTrader?.id,
+    ]
+  );
+
+  const currentUserItemVerified =
+    currentUserVerification?.status ===
+    "VERIFIED";
+
+  const partnerItemVerified =
+    otherTraderVerification?.status ===
+    "VERIFIED";
+
+  const bothItemsVerified =
+    currentUserItemVerified &&
+    partnerItemVerified;
+
+  /* =======================================================
+     TRADE ITEMS
+  ======================================================= */
+
+  const yourListing =
+    trade?.items?.[0]?.listing ||
+    trade?.offer?.offeredListing;
+
+  const theirListing =
+    trade?.items?.[1]?.listing ||
+    trade?.offer?.requestedListing;
+
+  /* =======================================================
+     CONFIRM CURRENT TRADE STAGE
+  =======================================================
+
+     PENDING
+       -> AGREEMENT confirmation
+
+     AGREED
+       -> VERIFICATION confirmation
+
+     VERIFICATION
+       -> verify item
+       -> record HANDOVER readiness
+       -> READY_FOR_HANDOVER after both traders
+
+     No unilateral status changes happen here.
+  ======================================================= */
+
+  const handleConfirmStage = async () => {
+    if (!trade) return;
+
+    if (!isParticipant) {
+      setActionError(
+        "You are not a participant in this trade."
+      );
       return;
     }
 
+    setActionError("");
+    setConfirmationSuccess("");
+
     try {
       setActionLoading(true);
-      setActionError("");
 
-      const response = await updateTradeStatus(
-        id,
-        status
+      /* ---------------------------------------------------
+         AGREEMENT
+      --------------------------------------------------- */
+
+      if (trade.status === "PENDING") {
+        if (currentUserConfirmedAgreement) {
+          setConfirmationSuccess(
+            "Your agreement has already been recorded. Waiting for the other trader."
+          );
+          return;
+        }
+      }
+
+      /* ---------------------------------------------------
+         START VERIFICATION
+      --------------------------------------------------- */
+
+      if (trade.status === "AGREED") {
+        if (currentUserConfirmedVerification) {
+          setConfirmationSuccess(
+            "Your verification-stage confirmation has already been recorded. Waiting for the other trader."
+          );
+          return;
+        }
+      }
+
+      /* ---------------------------------------------------
+         ITEM VERIFICATION + HANDOVER READINESS
+
+         This is intentionally one click.
+
+         The backend should create/update:
+           Verification(status=VERIFIED)
+         and
+           TradeConfirmation(stage=HANDOVER)
+
+         for the current user.
+      --------------------------------------------------- */
+
+      if (
+        trade.status === "VERIFICATION" &&
+        currentUserConfirmedHandoverReadiness
+      ) {
+        setConfirmationSuccess(
+          "Your item verification and handover readiness are already recorded. Waiting for the other trader."
+        );
+        return;
+      }
+
+      const response = await confirmTrade(id);
+
+      console.log(
+        "CONFIRM TRADE RESPONSE:",
+        response
       );
 
-      setTrade(response.trade);
+      if (response?.trade) {
+        setTrade(response.trade);
+      } else {
+        await loadTrade();
+      }
+
+      if (response?.bothConfirmed) {
+        setConfirmationSuccess(
+          response?.message ||
+            "Both traders have confirmed. The trade has advanced to the next stage."
+        );
+      } else {
+        setConfirmationSuccess(
+          response?.message ||
+            "Your confirmation has been recorded. Waiting for the other trader."
+        );
+      }
     } catch (error) {
       console.error(
-        "Update trade status error:",
+        "Confirm trade stage error:",
         error
+      );
+
+      console.error(
+        "Backend response:",
+        error.response?.data
       );
 
       setActionError(
         error.response?.data?.message ||
-          "Unable to update trade status."
+          "Unable to confirm this trade stage."
       );
+
+      try {
+        await loadTrade();
+      } catch {
+        // Ignore refresh failure.
+      }
     } finally {
       setActionLoading(false);
     }
   };
 
-  /**
-   * ============================================
-   * CONFIRM HANDOVER STARTED
-   *
-   * PATCH /api/trades/:id/confirm
-   *
-   * Backend automatically determines:
-   *
-   * READY_FOR_HANDOVER
-   *        ↓
-   * HANDOVER_STARTED confirmation
-   *        ↓
-   * both traders confirmed
-   *        ↓
-   * IN_PROGRESS
-   * ============================================
-   */
+  /* =======================================================
+     CONFIRM HANDOVER STARTED
+
+     READY_FOR_HANDOVER
+       -> HANDOVER_STARTED confirmation
+
+     Both traders must confirm.
+  ======================================================= */
+
   const handleConfirmHandoverStarted =
     async () => {
       if (!trade) return;
@@ -339,26 +884,24 @@ const TradeDetails = () => {
         setHandoverError(
           "You are not a participant in this trade."
         );
-
         return;
       }
 
       if (
-        trade.status !==
-        "READY_FOR_HANDOVER"
+        trade.status !== "READY_FOR_HANDOVER"
       ) {
         setHandoverError(
           "Handover confirmation is not available at this stage."
         );
-
         return;
       }
 
-      if (currentUserConfirmedHandover) {
-        setHandoverError(
-          "You have already confirmed that handover has started."
+      if (
+        currentUserConfirmedHandoverStarted
+      ) {
+        setHandoverSuccess(
+          "Your handover-start confirmation is already recorded. Waiting for the other trader."
         );
-
         return;
       }
 
@@ -366,32 +909,30 @@ const TradeDetails = () => {
         setHandoverLoading(true);
 
         setHandoverError("");
-
         setHandoverSuccess("");
 
-        const response =
-          await confirmTrade(id);
+        const response = await confirmTrade(id);
 
-        /**
-         * Backend returns the updated trade.
-         */
+        console.log(
+          "CONFIRM HANDOVER RESPONSE:",
+          response
+        );
+
         if (response?.trade) {
           setTrade(response.trade);
         } else {
-          /**
-           * Fallback in case the API response
-           * does not contain the trade object.
-           */
           await loadTrade();
         }
 
         if (response?.bothConfirmed) {
           setHandoverSuccess(
-            "Both traders have confirmed. Handover is now in progress."
+            response?.message ||
+              "Both traders have confirmed. Handover is now in progress."
           );
         } else {
           setHandoverSuccess(
-            "Your handover confirmation has been recorded. Waiting for your trade partner."
+            response?.message ||
+              "Your handover-start confirmation has been recorded. Waiting for the other trader."
           );
         }
       } catch (error) {
@@ -405,61 +946,178 @@ const TradeDetails = () => {
             "Unable to confirm that handover has started."
         );
 
-        /**
-         * Refresh the trade in case another
-         * trader completed the confirmation
-         * at the same time.
-         */
         try {
           await loadTrade();
         } catch {
-          // Ignore refresh failure here.
+          // Ignore refresh failure.
         }
       } finally {
         setHandoverLoading(false);
       }
     };
 
-  /**
-   * ============================================
-   * COMPLETE TRADE
-   * ============================================
-   */
-  const handleCompleteTrade = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to mark this trade as completed?"
-    );
+  /* =======================================================
+     CONFIRM COMPLETION
 
-    if (!confirmed) return;
+     IN_PROGRESS
+       -> COMPLETION confirmation
+
+     Both traders must confirm.
+  ======================================================= */
+
+  const handleConfirmCompletion = async () => {
+    if (!trade) return;
+
+    if (!isParticipant) {
+      setActionError(
+        "You are not a participant in this trade."
+      );
+      return;
+    }
+
+    if (trade.status !== "IN_PROGRESS") {
+      setActionError(
+        "The trade must be in progress before completion can be confirmed."
+      );
+      return;
+    }
+
+    if (currentUserConfirmedCompletion) {
+      setConfirmationSuccess(
+        "Your completion confirmation is already recorded. Waiting for the other trader."
+      );
+      return;
+    }
 
     try {
       setActionLoading(true);
+
       setActionError("");
+      setConfirmationSuccess("");
 
-      const response =
-        await completeTrade(id);
+      const response = await confirmTrade(id);
 
-      setTrade(response.trade);
+      console.log(
+        "CONFIRM COMPLETION RESPONSE:",
+        response
+      );
+
+      if (response?.trade) {
+        setTrade(response.trade);
+      } else {
+        await loadTrade();
+      }
+
+      if (response?.bothConfirmed) {
+        setConfirmationSuccess(
+          response?.message ||
+            "Both traders have confirmed. The trade is now officially completed."
+        );
+      } else {
+        setConfirmationSuccess(
+          response?.message ||
+            "Your completion confirmation has been recorded. Waiting for the other trader."
+        );
+      }
     } catch (error) {
       console.error(
-        "Complete trade error:",
+        "Confirm trade completion error:",
         error
       );
 
       setActionError(
         error.response?.data?.message ||
-          "Unable to complete the trade."
+          "Unable to confirm trade completion."
+      );
+
+      try {
+        await loadTrade();
+      } catch {
+        // Ignore refresh failure.
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /* =======================================================
+     CANCEL TRADE
+
+     Only allowed while the trade is still before
+     physical handover.
+  ======================================================= */
+
+  const handleCancelTrade = async () => {
+    if (!trade) return;
+
+    if (!isParticipant) {
+      setActionError(
+        "You are not a participant in this trade."
+      );
+      return;
+    }
+
+    const cancellableStatuses = [
+      "PENDING",
+      "AGREED",
+      "VERIFICATION",
+      "READY_FOR_HANDOVER",
+    ];
+
+    if (
+      !cancellableStatuses.includes(
+        trade.status
+      )
+    ) {
+      setActionError(
+        "This trade can no longer be cancelled at its current stage."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to cancel this trade?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setActionError("");
+      setConfirmationSuccess("");
+
+      const response =
+        await updateTradeStatus(
+          id,
+          "CANCELLED"
+        );
+
+      if (response?.trade) {
+        setTrade(response.trade);
+      } else {
+        await loadTrade();
+      }
+    } catch (error) {
+      console.error(
+        "Cancel trade error:",
+        error
+      );
+
+      setActionError(
+        error.response?.data?.message ||
+          "Unable to cancel this trade."
       );
     } finally {
       setActionLoading(false);
     }
   };
 
-  /**
-   * ============================================
-   * LOADING
-   * ============================================
-   */
+  /* =======================================================
+     LOADING
+  ======================================================= */
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F8F5F3] px-6 py-20">
@@ -470,7 +1128,6 @@ const TradeDetails = () => {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <div className="h-96 rounded-2xl bg-[#E7DDDF]" />
-
             <div className="h-96 rounded-2xl bg-[#E7DDDF]" />
           </div>
         </div>
@@ -478,18 +1135,15 @@ const TradeDetails = () => {
     );
   }
 
-  /**
-   * ============================================
-   * ERROR
-   * ============================================
-   */
+  /* =======================================================
+     ERROR
+  ======================================================= */
+
   if (error || !trade) {
     return (
       <div className="min-h-screen bg-[#F8F5F3] px-6 py-20">
         <div className="mx-auto max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-          <div className="text-5xl">
-            ⚠️
-          </div>
+          <div className="text-5xl">⚠️</div>
 
           <h1 className="mt-4 text-2xl font-extrabold text-red-800">
             Unable to load trade
@@ -499,44 +1153,46 @@ const TradeDetails = () => {
             {error || "Trade not found."}
           </p>
 
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/trades")
-            }
-            className="mt-6 rounded-xl bg-[#5B1725] px-6 py-3 font-bold text-white transition hover:bg-[#3D0F18]"
-          >
-            Back to My Trades
-          </button>
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={loadTrade}
+              className="rounded-xl border border-red-300 bg-white px-6 py-3 font-bold text-red-700 transition hover:bg-red-100"
+            >
+              Try Again
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/trades")
+              }
+              className="rounded-xl bg-[#5B1725] px-6 py-3 font-bold text-white transition hover:bg-[#3D0F18]"
+            >
+              Back to My Trades
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  /**
-   * ============================================
-   * TRADE DATA
-   * ============================================
-   */
+  /* =======================================================
+     TRADE DATA
+  ======================================================= */
+
   const currentStatusIndex =
     statusSteps.indexOf(trade.status);
 
-  const yourListing =
-    trade.items?.[0]?.listing ||
-    trade.offer?.offeredListing;
+  /* =======================================================
+     HANDOVER STARTED STATUS
+  ======================================================= */
 
-  const theirListing =
-    trade.items?.[1]?.listing ||
-    trade.offer?.requestedListing;
-
-  /**
-   * ============================================
-   * HANDOVER STATUS TEXT
-   * ============================================
-   */
-  const getHandoverStatus = (userId) => {
+  const getHandoverStartedStatus = (
+    userId
+  ) => {
     const confirmation =
-      handoverConfirmations.find(
+      handoverStartedConfirmations.find(
         (item) =>
           item.userId === userId
       );
@@ -544,11 +1200,12 @@ const TradeDetails = () => {
     if (confirmation) {
       return {
         label: "Handover Confirmed",
-        description: confirmation.confirmedAt
-          ? `Confirmed ${formatDateTime(
-              confirmation.confirmedAt
-            )}`
-          : "Confirmed",
+        description:
+          confirmation.confirmedAt
+            ? `Confirmed ${formatDateTime(
+                confirmation.confirmedAt
+              )}`
+            : "Confirmed",
         className:
           "bg-green-50 border-green-200 text-green-700",
         icon: "✓",
@@ -565,17 +1222,82 @@ const TradeDetails = () => {
     };
   };
 
-  const traderAStatus =
-    getHandoverStatus(trade.traderAId);
+  const traderAHandoverStartedStatus =
+    getHandoverStartedStatus(
+      trade.traderAId
+    );
 
-  const traderBStatus =
-    getHandoverStatus(trade.traderBId);
+  const traderBHandoverStartedStatus =
+    getHandoverStartedStatus(
+      trade.traderBId
+    );
+
+  /* =======================================================
+     VERIFICATION STATUS
+  ======================================================= */
+
+  const getVerificationStatus = (
+    verification
+  ) => {
+    if (
+      verification?.status ===
+      "VERIFIED"
+    ) {
+      return {
+        label: "Item Verified",
+        description:
+          verification.updatedAt
+            ? `Verified ${formatDateTime(
+                verification.updatedAt
+              )}`
+            : "Verified",
+        className:
+          "border-green-200 bg-green-50 text-green-700",
+        icon: "✓",
+      };
+    }
+
+    if (
+      verification?.status ===
+      "REJECTED"
+    ) {
+      return {
+        label: "Verification Rejected",
+        description:
+          verification.notes ||
+          "This verification was rejected.",
+        className:
+          "border-red-200 bg-red-50 text-red-700",
+        icon: "!",
+      };
+    }
+
+    return {
+      label: "Waiting for Verification",
+      description:
+        "This trader has not yet verified the item.",
+      className:
+        "border-gray-200 bg-gray-50 text-gray-600",
+      icon: "○",
+    };
+  };
+
+  const traderAVerificationStatus =
+    getVerificationStatus(
+      traderAVerification
+    );
+
+  const traderBVerificationStatus =
+    getVerificationStatus(
+      traderBVerification
+    );
 
   return (
     <div className="min-h-screen bg-[#F8F5F3]">
-      {/* ==========================================
+      {/* ==================================================
           HEADER
-      =========================================== */}
+      ================================================== */}
+
       <section className="bg-[#3D0F18] px-6 py-10 text-white">
         <div className="mx-auto max-w-6xl">
           <button
@@ -623,18 +1345,41 @@ const TradeDetails = () => {
       </section>
 
       <main className="mx-auto max-w-6xl px-6 py-10">
-        {/* ==========================================
-            ACTION ERROR
-        =========================================== */}
+        {/* =================================================
+            GLOBAL ACTION ERROR
+        ================================================== */}
+
         {actionError && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {actionError}
+            <div className="flex items-start gap-3">
+              <span>⚠️</span>
+              <p>{actionError}</p>
+            </div>
           </div>
         )}
 
-        {/* ==========================================
+        {/* =================================================
+            GLOBAL SUCCESS
+        ================================================== */}
+
+        {confirmationSuccess && (
+          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
+                ✓
+              </div>
+
+              <p className="text-sm font-semibold leading-6 text-green-700">
+                {confirmationSuccess}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* =================================================
             TRADE PROGRESS
-        =========================================== */}
+        ================================================== */}
+
         <section className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm md:p-8">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
@@ -721,18 +1466,512 @@ const TradeDetails = () => {
           </div>
         </section>
 
-        {/* ==========================================
-            HANDOVER STARTED SECTION
-        =========================================== */}
+        {/* =================================================
+            AGREEMENT STAGE
+        ================================================== */}
+
+        {trade.status === "PENDING" && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+            <div className="border-b border-blue-100 bg-blue-50 px-6 py-6 md:px-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-blue-700">
+                    Stage 1 · Agreement
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+                    Confirm the Trade
+                  </h2>
+
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+                    Both traders must agree to the trade
+                    before it can move to verification.
+                  </p>
+                </div>
+
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl">
+                  🤝
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8">
+              <div className="grid gap-4 md:grid-cols-2">
+                <ConfirmationStatusCard
+                  label="Trader A"
+                  name={
+                    trade.traderA?.name ||
+                    "Trader A"
+                  }
+                  confirmed={Boolean(
+                    traderAAgreementConfirmation
+                  )}
+                  confirmedAt={
+                    traderAAgreementConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderA}
+                />
+
+                <ConfirmationStatusCard
+                  label="Trader B"
+                  name={
+                    trade.traderB?.name ||
+                    "Trader B"
+                  }
+                  confirmed={Boolean(
+                    traderBAgreementConfirmation
+                  )}
+                  confirmedAt={
+                    traderBAgreementConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderB}
+                />
+              </div>
+
+              {!currentUserConfirmedAgreement &&
+                isParticipant && (
+                  <div className="mt-6 rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
+                    <h3 className="font-extrabold text-[#21191B]">
+                      Do you agree to this trade?
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-gray-600">
+                      Confirm only after reviewing the
+                      items, values and other trade details.
+                    </p>
+
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={
+                        handleConfirmStage
+                      }
+                      className="mt-5 rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {actionLoading
+                        ? "Confirming..."
+                        : "✓ Agree to Trade"}
+                    </button>
+                  </div>
+                )}
+
+              {currentUserConfirmedAgreement &&
+                !bothTradersConfirmedAgreement && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
+                        ✓
+                      </div>
+
+                      <div>
+                        <h3 className="font-extrabold text-amber-800">
+                          Your agreement is recorded
+                        </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-amber-700">
+                          The other trader must also agree
+                          before the trade moves to{" "}
+                          <strong>
+                            Verification
+                          </strong>
+                          .
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            VERIFICATION START STAGE
+        ================================================== */}
+
+        {trade.status === "AGREED" && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-purple-200 bg-white shadow-sm">
+            <div className="border-b border-purple-100 bg-purple-50 px-6 py-6 md:px-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-purple-700">
+                    Stage 2 · Verification
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+                    Start Item Verification
+                  </h2>
+
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+                    Both traders must confirm that they are
+                    ready to verify the items before the trade
+                    enters the verification stage.
+                  </p>
+                </div>
+
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-purple-100 text-2xl">
+                  🔎
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8">
+              <div className="grid gap-4 md:grid-cols-2">
+                <ConfirmationStatusCard
+                  label="Trader A"
+                  name={
+                    trade.traderA?.name ||
+                    "Trader A"
+                  }
+                  confirmed={Boolean(
+                    traderAVerificationConfirmation
+                  )}
+                  confirmedAt={
+                    traderAVerificationConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderA}
+                />
+
+                <ConfirmationStatusCard
+                  label="Trader B"
+                  name={
+                    trade.traderB?.name ||
+                    "Trader B"
+                  }
+                  confirmed={Boolean(
+                    traderBVerificationConfirmation
+                  )}
+                  confirmedAt={
+                    traderBVerificationConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderB}
+                />
+              </div>
+
+              {!currentUserConfirmedVerification &&
+                isParticipant && (
+                  <div className="mt-6 rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
+                    <h3 className="font-extrabold text-[#21191B]">
+                      Ready to verify the item?
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-gray-600">
+                      Confirm that you are ready. Both traders
+                      must do this before the actual item
+                      verification stage begins.
+                    </p>
+
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={
+                        handleConfirmStage
+                      }
+                      className="mt-5 rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {actionLoading
+                        ? "Confirming..."
+                        : "✓ Start Verification"}
+                    </button>
+                  </div>
+                )}
+
+              {currentUserConfirmedVerification &&
+                !bothTradersConfirmedVerification && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
+                        ✓
+                      </div>
+
+                      <div>
+                        <h3 className="font-extrabold text-amber-800">
+                          Your verification-stage confirmation is recorded
+                        </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-amber-700">
+                          The other trader must also confirm
+                          before both items can be verified.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            ITEM VERIFICATION + HANDOVER READINESS
+        ================================================== */}
+
+        {trade.status === "VERIFICATION" && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-purple-200 bg-white shadow-sm">
+            <div className="border-b border-purple-100 bg-purple-50 px-6 py-6 md:px-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-purple-700">
+                    Stage 3 · Item Verification
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+                    Verify Items & Confirm Handover Readiness
+                  </h2>
+
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
+                    Check your item carefully against the
+                    barter agreement. One click will record
+                    your item as verified and your readiness
+                    for handover. The other trader must do the
+                    same before the trade can move forward.
+                  </p>
+                </div>
+
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-purple-100 text-2xl">
+                  🔍
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8">
+              {/* ITEM VERIFICATION */}
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+                  Item verification
+                </p>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  {/* TRADER A */}
+                  <div
+                    className={`rounded-2xl border p-5 ${traderAVerificationStatus.className}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider opacity-70">
+                          Trader A
+                        </p>
+
+                        <h3 className="mt-1 text-lg font-extrabold">
+                          {trade.traderA?.name ||
+                            "Trader A"}
+                        </h3>
+                      </div>
+
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg font-bold shadow-sm">
+                        {
+                          traderAVerificationStatus.icon
+                        }
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm font-bold">
+                      {
+                        traderAVerificationStatus.label
+                      }
+                    </p>
+
+                    <p className="mt-1 text-xs opacity-80">
+                      {
+                        traderAVerificationStatus.description
+                      }
+                    </p>
+
+                    {isTraderA && (
+                      <span className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
+                        You
+                      </span>
+                    )}
+                  </div>
+
+                  {/* TRADER B */}
+                  <div
+                    className={`rounded-2xl border p-5 ${traderBVerificationStatus.className}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider opacity-70">
+                          Trader B
+                        </p>
+
+                        <h3 className="mt-1 text-lg font-extrabold">
+                          {trade.traderB?.name ||
+                            "Trader B"}
+                        </h3>
+                      </div>
+
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-lg font-bold shadow-sm">
+                        {
+                          traderBVerificationStatus.icon
+                        }
+                      </div>
+                    </div>
+
+                    <p className="mt-4 text-sm font-bold">
+                      {
+                        traderBVerificationStatus.label
+                      }
+                    </p>
+
+                    <p className="mt-1 text-xs opacity-80">
+                      {
+                        traderBVerificationStatus.description
+                      }
+                    </p>
+
+                    {isTraderB && (
+                      <span className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
+                        You
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* HANDOVER READINESS */}
+              <div className="mt-8">
+                <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+                  Handover readiness
+                </p>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <ConfirmationStatusCard
+                    label="Trader A"
+                    name={
+                      trade.traderA?.name ||
+                      "Trader A"
+                    }
+                    confirmed={Boolean(
+                      traderAHandoverConfirmation
+                    )}
+                    confirmedAt={
+                      traderAHandoverConfirmation?.confirmedAt
+                    }
+                    isCurrentUser={isTraderA}
+                  />
+
+                  <ConfirmationStatusCard
+                    label="Trader B"
+                    name={
+                      trade.traderB?.name ||
+                      "Trader B"
+                    }
+                    confirmed={Boolean(
+                      traderBHandoverConfirmation
+                    )}
+                    confirmedAt={
+                      traderBHandoverConfirmation?.confirmedAt
+                    }
+                    isCurrentUser={isTraderB}
+                  />
+                </div>
+              </div>
+
+              {/* CURRENT USER ACTION */}
+              {isParticipant &&
+                !currentUserConfirmedHandoverReadiness && (
+                  <div className="mt-6 rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
+                    <h3 className="font-extrabold text-[#21191B]">
+                      Verify your item
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-gray-600">
+                      Confirm only after checking that the
+                      item you are receiving matches the trade
+                      agreement. Your item will be marked as
+                      verified and your handover readiness will
+                      be recorded together.
+                    </p>
+
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={
+                        handleConfirmStage
+                      }
+                      className="mt-5 rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {actionLoading
+                        ? "Verifying..."
+                        : "✓ Verify Item & Ready for Handover"}
+                    </button>
+                  </div>
+                )}
+
+              {/* CURRENT USER ALREADY CONFIRMED */}
+              {currentUserConfirmedHandoverReadiness &&
+                !bothTradersConfirmedHandoverReadiness && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
+                        ✓
+                      </div>
+
+                      <div>
+                        <h3 className="font-extrabold text-amber-800">
+                          Your item is verified
+                        </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-amber-700">
+                          Your verification and handover
+                          readiness have been recorded.
+                          Waiting for the other trader.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {/* BOTH READY */}
+              {bothItemsVerified &&
+                bothTradersConfirmedHandoverReadiness && (
+                  <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-bold text-white">
+                        ✓
+                      </div>
+
+                      <div>
+                        <h3 className="font-extrabold text-green-800">
+                          Both items are verified
+                        </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-green-700">
+                          Both traders have verified their
+                          items and confirmed handover
+                          readiness. The trade can now move to
+                          the handover stage.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              <div className="mt-6 rounded-xl bg-gray-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Important
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  One trader cannot make the trade
+                  handover-ready alone. Each trader must
+                  verify their side individually.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            HANDOVER STARTED
+        ================================================== */}
+
         {trade.status ===
           "READY_FOR_HANDOVER" && (
           <section className="mt-6 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm">
-            {/* HEADER */}
             <div className="border-b border-indigo-100 bg-indigo-50 px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-bold uppercase tracking-wider text-indigo-700">
-                    Step 6.8 · Handover
+                    Stage 4 · Handover
                   </p>
 
                   <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
@@ -740,11 +1979,10 @@ const TradeDetails = () => {
                   </h2>
 
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                    The items have been verified and
-                    both traders are ready. Each trader
-                    must confirm that the physical
-                    handover has started before this
-                    trade can move into progress.
+                    Both items are verified and the trade is
+                    ready for physical exchange. Each trader
+                    must confirm when the handover actually
+                    starts.
                   </p>
                 </div>
 
@@ -754,9 +1992,7 @@ const TradeDetails = () => {
               </div>
             </div>
 
-            {/* BODY */}
             <div className="p-6 md:p-8">
-              {/* SUCCESS */}
               {handoverSuccess && (
                 <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4">
                   <div className="flex items-start gap-3">
@@ -771,7 +2007,6 @@ const TradeDetails = () => {
                 </div>
               )}
 
-              {/* ERROR */}
               {handoverError && (
                 <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
                   <div className="flex items-start gap-3">
@@ -786,13 +2021,9 @@ const TradeDetails = () => {
                 </div>
               )}
 
-              {/* TRADER CONFIRMATIONS */}
               <div className="grid gap-4 md:grid-cols-2">
-                {/* TRADER A */}
                 <div
-                  className={`rounded-2xl border p-5 ${
-                    traderAStatus.className
-                  }`}
+                  className={`rounded-2xl border p-5 ${traderAHandoverStartedStatus.className}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -801,38 +2032,39 @@ const TradeDetails = () => {
                       </p>
 
                       <h3 className="mt-1 text-lg font-extrabold">
-                        {trade.traderA
-                          ?.name ||
+                        {trade.traderA?.name ||
                           "Trader A"}
                       </h3>
                     </div>
 
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-lg font-bold shadow-sm">
-                      {traderAStatus.icon}
+                      {
+                        traderAHandoverStartedStatus.icon
+                      }
                     </div>
                   </div>
 
                   <p className="mt-4 text-sm font-bold">
-                    {traderAStatus.label}
+                    {
+                      traderAHandoverStartedStatus.label
+                    }
                   </p>
 
                   <p className="mt-1 text-xs opacity-80">
-                    {traderAStatus.description}
+                    {
+                      traderAHandoverStartedStatus.description
+                    }
                   </p>
 
-                  {trade.traderAId ===
-                    currentUserId && (
-                    <p className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
+                  {isTraderA && (
+                    <span className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
                       You
-                    </p>
+                    </span>
                   )}
                 </div>
 
-                {/* TRADER B */}
                 <div
-                  className={`rounded-2xl border p-5 ${
-                    traderBStatus.className
-                  }`}
+                  className={`rounded-2xl border p-5 ${traderBHandoverStartedStatus.className}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -841,38 +2073,95 @@ const TradeDetails = () => {
                       </p>
 
                       <h3 className="mt-1 text-lg font-extrabold">
-                        {trade.traderB
-                          ?.name ||
+                        {trade.traderB?.name ||
                           "Trader B"}
                       </h3>
                     </div>
 
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-lg font-bold shadow-sm">
-                      {traderBStatus.icon}
+                      {
+                        traderBHandoverStartedStatus.icon
+                      }
                     </div>
                   </div>
 
                   <p className="mt-4 text-sm font-bold">
-                    {traderBStatus.label}
+                    {
+                      traderBHandoverStartedStatus.label
+                    }
                   </p>
 
                   <p className="mt-1 text-xs opacity-80">
-                    {traderBStatus.description}
+                    {
+                      traderBHandoverStartedStatus.description
+                    }
                   </p>
 
-                  {trade.traderBId ===
-                    currentUserId && (
-                    <p className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
+                  {isTraderB && (
+                    <span className="mt-4 inline-flex rounded-full bg-white/80 px-3 py-1 text-xs font-bold">
                       You
-                    </p>
+                    </span>
                   )}
                 </div>
               </div>
 
-              {/* ========================================
-                  BOTH CONFIRMED
-              ========================================= */}
-              {bothTradersConfirmedHandover && (
+              {!currentUserConfirmedHandoverStarted &&
+                !bothTradersConfirmedHandoverStarted &&
+                isParticipant && (
+                  <div className="mt-6 rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
+                    <h3 className="font-extrabold text-[#21191B]">
+                      Has the handover started?
+                    </h3>
+
+                    <p className="mt-2 text-sm leading-6 text-gray-600">
+                      Only confirm this when you and your
+                      trade partner have actually started
+                      exchanging the items.
+                    </p>
+
+                    <button
+                      type="button"
+                      disabled={handoverLoading}
+                      onClick={
+                        handleConfirmHandoverStarted
+                      }
+                      className="mt-5 rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {handoverLoading
+                        ? "Confirming..."
+                        : "✓ Confirm Handover Started"}
+                    </button>
+                  </div>
+                )}
+
+              {currentUserConfirmedHandoverStarted &&
+                !bothTradersConfirmedHandoverStarted && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
+                        ✓
+                      </div>
+
+                      <div>
+                        <h3 className="font-extrabold text-amber-800">
+                          Your handover confirmation is recorded
+                        </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-amber-700">
+                          Your trade partner must also confirm
+                          that the handover has started before
+                          the trade moves to{" "}
+                          <strong>
+                            In Progress
+                          </strong>
+                          .
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+              {bothTradersConfirmedHandoverStarted && (
                 <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5">
                   <div className="flex items-start gap-4">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-bold text-white">
@@ -885,54 +2174,125 @@ const TradeDetails = () => {
                       </h3>
 
                       <p className="mt-1 text-sm leading-6 text-green-700">
-                        Both traders have confirmed
-                        that the handover has started.
-                        The trade is now in progress.
+                        Both traders have confirmed that the
+                        physical handover has started. The
+                        trade is now in progress.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ========================================
-                  CURRENT USER ACTION
-              ========================================= */}
-              {!currentUserConfirmedHandover &&
-                !bothTradersConfirmedHandover && (
+              <div className="mt-6 rounded-xl bg-gray-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Important
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  The trade cannot enter{" "}
+                  <strong>In Progress</strong> through a
+                  normal status update. Both traders must
+                  individually confirm that handover has
+                  started.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            COMPLETION
+        ================================================== */}
+
+        {trade.status === "IN_PROGRESS" && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-sm">
+            <div className="border-b border-orange-100 bg-orange-50 px-6 py-6 md:px-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-orange-700">
+                    Stage 5 · Completion
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+                    Confirm Trade Completion
+                  </h2>
+
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+                    Confirm only after you have received the
+                    item you agreed to receive and handed over
+                    your own item.
+                  </p>
+                </div>
+
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-orange-100 text-2xl">
+                  ✅
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8">
+              <div className="grid gap-4 md:grid-cols-2">
+                <ConfirmationStatusCard
+                  label="Trader A"
+                  name={
+                    trade.traderA?.name ||
+                    "Trader A"
+                  }
+                  confirmed={Boolean(
+                    traderACompletionConfirmation
+                  )}
+                  confirmedAt={
+                    traderACompletionConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderA}
+                />
+
+                <ConfirmationStatusCard
+                  label="Trader B"
+                  name={
+                    trade.traderB?.name ||
+                    "Trader B"
+                  }
+                  confirmed={Boolean(
+                    traderBCompletionConfirmation
+                  )}
+                  confirmedAt={
+                    traderBCompletionConfirmation?.confirmedAt
+                  }
+                  isCurrentUser={isTraderB}
+                />
+              </div>
+
+              {!currentUserConfirmedCompletion &&
+                !bothTradersConfirmedCompletion &&
+                isParticipant && (
                   <div className="mt-6 rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
                     <h3 className="font-extrabold text-[#21191B]">
-                      Has the handover started?
+                      Has the exchange been completed?
                     </h3>
 
                     <p className="mt-2 text-sm leading-6 text-gray-600">
-                      Only confirm this when you and
-                      your trade partner have actually
-                      started exchanging the items.
+                      Only confirm this after the physical
+                      exchange has actually been completed.
                     </p>
 
                     <button
                       type="button"
-                      disabled={
-                        handoverLoading ||
-                        !isParticipant
-                      }
+                      disabled={actionLoading}
                       onClick={
-                        handleConfirmHandoverStarted
+                        handleConfirmCompletion
                       }
-                      className="mt-5 w-full rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      className="mt-5 rounded-xl bg-green-700 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {handoverLoading
+                      {actionLoading
                         ? "Confirming..."
-                        : "✓ Confirm Handover Started"}
+                        : "✓ Confirm Trade Completed"}
                     </button>
                   </div>
                 )}
 
-              {/* ========================================
-                  CURRENT USER ALREADY CONFIRMED
-              ========================================= */}
-              {currentUserConfirmedHandover &&
-                !bothTradersConfirmedHandover && (
+              {currentUserConfirmedCompletion &&
+                !bothTradersConfirmedCompletion && (
                   <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5">
                     <div className="flex items-start gap-4">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
@@ -941,45 +2301,165 @@ const TradeDetails = () => {
 
                       <div>
                         <h3 className="font-extrabold text-amber-800">
-                          Your confirmation is recorded
+                          Your completion confirmation is recorded
                         </h3>
 
                         <p className="mt-1 text-sm leading-6 text-amber-700">
-                          You have confirmed that
-                          handover has started. Your
-                          trade partner must also confirm
-                          before the trade moves to
-                          <strong> In Progress</strong>.
+                          Your trade partner must also confirm
+                          before the trade becomes officially
+                          completed.
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
 
-              {/* ========================================
-                  EXPLANATION
-              ========================================= */}
+              {bothTradersConfirmedCompletion && (
+                <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-600 text-xl font-bold text-white">
+                      ✓
+                    </div>
+
+                    <div>
+                      <h3 className="font-extrabold text-green-800">
+                        Trade Completed
+                      </h3>
+
+                      <p className="mt-1 text-sm leading-6 text-green-700">
+                        Both traders have confirmed that the
+                        exchange has been completed. This trade
+                        is now officially completed.
+                      </p>
+
+                      {trade.completedAt && (
+                        <p className="mt-2 text-xs font-semibold text-green-600">
+                          Completed{" "}
+                          {formatDateTime(
+                            trade.completedAt
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6 rounded-xl bg-gray-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
                   Important
                 </p>
 
                 <p className="mt-2 text-sm leading-6 text-gray-600">
-                  The trade cannot enter{" "}
-                  <strong>In Progress</strong> from
-                  this screen through a normal status
-                  update. Both traders must individually
-                  confirm that handover has started.
+                  One trader cannot complete the trade alone.
+                  Both traders must individually confirm
+                  completion.
                 </p>
               </div>
             </div>
           </section>
         )}
 
-        {/* ==========================================
-            ITEMS
-        =========================================== */}
-        <section className="mt-6">
+        {/* =================================================
+            COMPLETED
+        ================================================== */}
+
+        {trade.status === "COMPLETED" && (
+          <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-600 text-2xl font-bold text-white">
+                ✓
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-green-700">
+                  Trade completed
+                </p>
+
+                <h2 className="mt-1 text-2xl font-extrabold text-green-800">
+                  Exchange Successfully Completed
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-green-700">
+                  Both traders confirmed completion of this
+                  barter trade.
+                </p>
+
+                {trade.completedAt && (
+                  <p className="mt-2 text-xs font-semibold text-green-600">
+                    Completed{" "}
+                    {formatDateTime(
+                      trade.completedAt
+                    )}
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            CANCELLED
+        ================================================== */}
+
+        {trade.status === "CANCELLED" && (
+          <section className="mt-6 rounded-2xl border border-gray-200 bg-gray-100 p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-500 text-xl font-bold text-white">
+                ×
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Trade cancelled
+                </p>
+
+                <h2 className="mt-1 text-2xl font-extrabold text-gray-700">
+                  This trade has been cancelled
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  No further trade confirmations can be made.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            DISPUTED
+        ================================================== */}
+
+        {trade.status === "DISPUTED" && (
+          <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-600 text-xl font-bold text-white">
+                !
+              </div>
+
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-red-700">
+                  Trade dispute
+                </p>
+
+                <h2 className="mt-1 text-2xl font-extrabold text-red-800">
+                  This trade is under dispute
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-red-700">
+                  Further trade progress is paused while the
+                  dispute is handled.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            ITEMS BEING TRADED
+        ================================================== */}
+
+        <section className="mt-8">
           <div className="mb-5">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
               Exchange
@@ -1024,10 +2504,11 @@ const TradeDetails = () => {
                     "Category unavailable"}
                 </p>
 
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <span className="rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
-                    {yourListing?.condition ||
-                      "Unknown"}
+                    {formatStatus(
+                      yourListing?.condition
+                    ) || "Unknown"}
                   </span>
 
                   <span className="font-bold text-[#8A2638]">
@@ -1075,10 +2556,11 @@ const TradeDetails = () => {
                     "Category unavailable"}
                 </p>
 
-                <div className="mt-4 flex items-center justify-between">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                   <span className="rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
-                    {theirListing?.condition ||
-                      "Unknown"}
+                    {formatStatus(
+                      theirListing?.condition
+                    ) || "Unknown"}
                   </span>
 
                   <span className="font-bold text-[#8A2638]">
@@ -1095,9 +2577,10 @@ const TradeDetails = () => {
           </div>
         </section>
 
-        {/* ==========================================
+        {/* =================================================
             TRADER + TRADE INFORMATION
-        =========================================== */}
+        ================================================== */}
+
         <section className="mt-6 grid gap-6 lg:grid-cols-2">
           {/* OTHER TRADER */}
           <div className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
@@ -1136,6 +2619,28 @@ const TradeDetails = () => {
                 </p>
               </div>
             </div>
+
+            {/* PARTNER VERIFICATION */}
+            {trade.status ===
+              "VERIFICATION" && (
+              <div className="mt-6 rounded-xl bg-gray-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  Partner verification
+                </p>
+
+                <p
+                  className={`mt-2 text-sm font-bold ${
+                    partnerItemVerified
+                      ? "text-green-700"
+                      : "text-gray-600"
+                  }`}
+                >
+                  {partnerItemVerified
+                    ? "✓ Partner has verified their item"
+                    : "○ Partner has not yet verified their item"}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* TRADE INFORMATION */}
@@ -1153,8 +2658,7 @@ const TradeDetails = () => {
                 <span className="font-bold text-[#21191B]">
                   KES{" "}
                   {Number(
-                    trade.agreedValueA ||
-                      0
+                    trade.agreedValueA || 0
                   ).toLocaleString()}
                 </span>
               </div>
@@ -1167,8 +2671,7 @@ const TradeDetails = () => {
                 <span className="font-bold text-[#21191B]">
                   KES{" "}
                   {Number(
-                    trade.agreedValueB ||
-                      0
+                    trade.agreedValueB || 0
                   ).toLocaleString()}
                 </span>
               </div>
@@ -1213,9 +2716,10 @@ const TradeDetails = () => {
           </div>
         </section>
 
-        {/* ==========================================
+        {/* =================================================
             OFFER MESSAGE
-        =========================================== */}
+        ================================================== */}
+
         {trade.offer?.message && (
           <section className="mt-6 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
@@ -1228,127 +2732,220 @@ const TradeDetails = () => {
           </section>
         )}
 
-        {/* ==========================================
-            ACTIONS
-        =========================================== */}
+        {/* =================================================
+            TRADE ACTIONS
+        ================================================== */}
+
         <section className="mt-6 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
-          <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
-            Trade actions
-          </p>
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+                Trade actions
+              </p>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Actions available to you at the current
+                trade stage.
+              </p>
+            </div>
+
+            <span
+              className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${
+                statusStyles[
+                  trade.status
+                ] ||
+                "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {formatStatus(
+                trade.status
+              )}
+            </span>
+          </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             {/* AGREEMENT */}
-            {trade.status ===
-              "PENDING" && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() =>
-                  handleStatusUpdate(
-                    "AGREED"
-                  )
-                }
-                className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : "Agree to Trade"}
-              </button>
-            )}
+            {trade.status === "PENDING" &&
+              isParticipant &&
+              !currentUserConfirmedAgreement && (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={
+                    handleConfirmStage
+                  }
+                  className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading
+                    ? "Confirming..."
+                    : "✓ Agree to Trade"}
+                </button>
+              )}
 
-            {/* VERIFICATION */}
-            {trade.status ===
-              "AGREED" && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() =>
-                  handleStatusUpdate(
-                    "VERIFICATION"
-                  )
-                }
-                className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : "Start Verification"}
-              </button>
-            )}
+            {/* VERIFICATION START */}
+            {trade.status === "AGREED" &&
+              isParticipant &&
+              !currentUserConfirmedVerification && (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={
+                    handleConfirmStage
+                  }
+                  className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading
+                    ? "Confirming..."
+                    : "✓ Start Verification"}
+                </button>
+              )}
 
-            {/* HANDOVER READINESS */}
-            {trade.status ===
-              "VERIFICATION" && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={() =>
-                  handleStatusUpdate(
-                    "READY_FOR_HANDOVER"
-                  )
-                }
-                className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {actionLoading
-                  ? "Updating..."
-                  : "Ready for Handover"}
-              </button>
-            )}
+            {/* ITEM VERIFICATION */}
+            {trade.status === "VERIFICATION" &&
+              isParticipant &&
+              !currentUserConfirmedHandoverReadiness && (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={
+                    handleConfirmStage
+                  }
+                  className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading
+                    ? "Verifying..."
+                    : "✓ Verify Item & Ready for Handover"}
+                </button>
+              )}
 
-            {/* ========================================
-                IMPORTANT:
-                NO DIRECT IN_PROGRESS BUTTON
-            ========================================= */}
+            {/* HANDOVER */}
             {trade.status ===
-              "READY_FOR_HANDOVER" && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm font-semibold text-indigo-700">
-                🤝 Use the{" "}
-                <strong>
-                  Handover
-                </strong>{" "}
-                section above to confirm that
-                handover has started.
-              </div>
-            )}
+              "READY_FOR_HANDOVER" &&
+              isParticipant &&
+              !currentUserConfirmedHandoverStarted && (
+                <button
+                  type="button"
+                  disabled={handoverLoading}
+                  onClick={
+                    handleConfirmHandoverStarted
+                  }
+                  className="rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {handoverLoading
+                    ? "Confirming..."
+                    : "✓ Confirm Handover Started"}
+                </button>
+              )}
 
-            {/* COMPLETE */}
+            {/* COMPLETION */}
             {trade.status ===
-              "IN_PROGRESS" && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={
-                  handleCompleteTrade
-                }
-                className="rounded-xl bg-green-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {actionLoading
-                  ? "Completing..."
-                  : "Complete Trade"}
-              </button>
-            )}
+              "IN_PROGRESS" &&
+              isParticipant &&
+              !currentUserConfirmedCompletion && (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={
+                    handleConfirmCompletion
+                  }
+                  className="rounded-xl bg-green-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading
+                    ? "Confirming..."
+                    : "✓ Confirm Trade Completed"}
+                </button>
+              )}
+
+            {/* CANCEL */}
+            {[
+              "PENDING",
+              "AGREED",
+              "VERIFICATION",
+              "READY_FOR_HANDOVER",
+            ].includes(
+              trade.status
+            ) &&
+              isParticipant && (
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  onClick={
+                    handleCancelTrade
+                  }
+                  className="rounded-xl border border-red-200 bg-white px-6 py-3 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionLoading
+                    ? "Processing..."
+                    : "Cancel Trade"}
+                </button>
+              )}
+
+            {/* WAITING STATES */}
+            {trade.status === "PENDING" &&
+              currentUserConfirmedAgreement &&
+              !bothTradersConfirmedAgreement && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700">
+                  ✓ You have agreed. Waiting for the other
+                  trader.
+                </div>
+              )}
+
+            {trade.status === "AGREED" &&
+              currentUserConfirmedVerification &&
+              !bothTradersConfirmedVerification && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700">
+                  ✓ Your verification-stage confirmation is
+                  recorded. Waiting for the other trader.
+                </div>
+              )}
+
+            {trade.status === "VERIFICATION" &&
+              currentUserConfirmedHandoverReadiness &&
+              !bothTradersConfirmedHandoverReadiness && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700">
+                  ✓ Your item is verified and your handover
+                  readiness is recorded. Waiting for the
+                  other trader.
+                </div>
+              )}
+
+            {trade.status ===
+              "READY_FOR_HANDOVER" &&
+              currentUserConfirmedHandoverStarted &&
+              !bothTradersConfirmedHandoverStarted && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700">
+                  ✓ You confirmed that handover has started.
+                  Waiting for the other trader.
+                </div>
+              )}
+
+            {trade.status === "IN_PROGRESS" &&
+              currentUserConfirmedCompletion &&
+              !bothTradersConfirmedCompletion && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700">
+                  ✓ Your completion confirmation is recorded.
+                  Waiting for the other trader.
+                </div>
+              )}
 
             {/* COMPLETED */}
-            {trade.status ===
-              "COMPLETED" && (
-              <div className="rounded-xl bg-green-50 px-5 py-4 text-sm font-semibold text-green-700">
-                ✓ This trade has been completed.
+            {trade.status === "COMPLETED" && (
+              <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-3 text-sm font-semibold text-green-700">
+                ✓ This trade has been completed successfully.
               </div>
             )}
 
             {/* CANCELLED */}
-            {trade.status ===
-              "CANCELLED" && (
-              <div className="rounded-xl bg-gray-100 px-5 py-4 text-sm font-semibold text-gray-600">
+            {trade.status === "CANCELLED" && (
+              <div className="rounded-xl border border-gray-200 bg-gray-100 px-5 py-3 text-sm font-semibold text-gray-600">
                 This trade has been cancelled.
               </div>
             )}
 
             {/* DISPUTED */}
-            {trade.status ===
-              "DISPUTED" && (
-              <div className="rounded-xl bg-red-50 px-5 py-4 text-sm font-semibold text-red-700">
-                This trade is currently under
-                dispute.
+            {trade.status === "DISPUTED" && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700">
+                This trade is currently under dispute.
               </div>
             )}
           </div>
