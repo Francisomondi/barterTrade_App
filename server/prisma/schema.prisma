@@ -336,6 +336,10 @@ model Rating {
   trade    Trade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
   reviewer User  @relation("RatingsGiven", fields: [reviewerId], references: [id])
   reviewed User  @relation("RatingsReceived", fields: [reviewedId], references: [id])
+
+  @@unique([tradeId, reviewerId, reviewedId])
+  @@index([tradeId])
+  @@index([reviewedId])
 }
 
 

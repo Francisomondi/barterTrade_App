@@ -11,6 +11,8 @@ import uploadRoutes from "./routes/uploadRoutes.js";
 import matchRoutes from "./routes/matchRoutes.js";
 
 import notificationRoutes from "./routes/notificationRoutes.js";
+import ratingRoutes from "./routes/ratingRoutes.js";
+
 
 
 const app = express();
@@ -45,5 +47,6 @@ app.use("/api/trades", tradeRoutes);
 app.use("/api/uploads", uploadRoutes);
 app.use("/api/matches", matchRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/ratings", ratingRoutes);
 
 export default app;
