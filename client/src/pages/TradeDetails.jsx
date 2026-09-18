@@ -1,18 +1,8 @@
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState,} from "react";
 import { useNavigate, useParams } from "react-router-dom";
-
-import {
-  getTradeById,
-  updateTradeStatus,
-  confirmTrade,
-} from "../api/tradeApi";
-
+import { getTradeById, updateTradeStatus, confirmTrade,} from "../api/tradeApi";
+import { createRating, getTradeRatings,} from "../api/ratingApi";
 import { useAuth } from "../context/AuthContext";
 
 /* =========================================================
@@ -187,29 +177,21 @@ const TradeDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-
   const [trade, setTrade] = useState(null);
-
   const [loading, setLoading] = useState(true);
-
-  const [actionLoading, setActionLoading] =
-    useState(false);
-
-  const [handoverLoading, setHandoverLoading] =
-    useState(false);
-
+  const [actionLoading, setActionLoading] = useState(false);
+  const [handoverLoading, setHandoverLoading] = useState(false);
   const [error, setError] = useState("");
-
   const [actionError, setActionError] = useState("");
-
-  const [handoverError, setHandoverError] =
-    useState("");
-
-  const [confirmationSuccess, setConfirmationSuccess] =
-    useState("");
-
-  const [handoverSuccess, setHandoverSuccess] =
-    useState("");
+  const [handoverError, setHandoverError] = useState("");
+  const [confirmationSuccess, setConfirmationSuccess] = useState("");
+  const [handoverSuccess, setHandoverSuccess] = useState("");
+  const [ratings, setRatings] = useState([]);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingError, setRatingError] = useState("");
+  const [ratingSuccess, setRatingSuccess] = useState("");
 
   /* =======================================================
      LOAD TRADE
@@ -245,9 +227,34 @@ const TradeDetails = () => {
     }
   }, [id]);
 
+  const loadRatings = useCallback(async () => {
+    if (!id || trade?.status !== "COMPLETED") {
+      return;
+    }
+
+    try {
+      const response = await getTradeRatings(id);
+
+      setRatings(response?.ratings || []);
+    } catch (error) {
+      console.error(
+        "Load trade ratings error:",
+        error
+      );
+
+      setRatings([]);
+    }
+  }, [id, trade?.status]);
+
   useEffect(() => {
     loadTrade();
   }, [loadTrade]);
+
+  useEffect(() => {
+    if (trade?.status === "COMPLETED") {
+      loadRatings();
+    }
+  }, [trade?.status, loadRatings]);
 
   /* =======================================================
      CURRENT USER
@@ -288,6 +295,28 @@ const TradeDetails = () => {
 
     return null;
   }, [trade, currentUserId]);
+
+  const currentUserRating = useMemo(() => {
+    if (!currentUserId) {
+      return null;
+    }
+
+    return ratings.find(
+      (item) =>
+        item.reviewerId === currentUserId
+    );
+  }, [ratings, currentUserId]);
+
+  const partnerRating = useMemo(() => {
+    if (!currentUserId || !otherTrader?.id) {
+      return null;
+    }
+
+    return ratings.find(
+      (item) =>
+        item.reviewerId === otherTrader.id
+    );
+  }, [ratings, currentUserId, otherTrader]);
 
   /* =======================================================
      CONFIRMATIONS
@@ -1114,6 +1143,96 @@ const TradeDetails = () => {
     }
   };
 
+
+  const handleSubmitRating = async () => {
+    if (!trade) return;
+
+    if (!isParticipant) {
+      setRatingError(
+        "You are not a participant in this trade."
+      );
+
+      return;
+    }
+
+    if (trade.status !== "COMPLETED") {
+      setRatingError(
+        "You can only rate a trader after the trade is completed."
+      );
+
+      return;
+    }
+
+    if (currentUserRating) {
+      setRatingError(
+        "You have already rated this trade."
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isInteger(ratingValue) ||
+      ratingValue < 1 ||
+      ratingValue > 5
+    ) {
+      setRatingError(
+        "Please select a rating from 1 to 5 stars."
+      );
+
+      return;
+    }
+
+    if (ratingComment.length > 1000) {
+      setRatingError(
+        "Your comment cannot exceed 1000 characters."
+      );
+
+      return;
+    }
+
+    try {
+      setRatingLoading(true);
+      setRatingError("");
+      setRatingSuccess("");
+
+      const response = await createRating(
+        id,
+        ratingValue,
+        ratingComment.trim()
+      );
+
+      setRatingSuccess(
+        response?.message ||
+          "Your rating has been submitted successfully."
+      );
+
+      setRatingValue(0);
+      setRatingComment("");
+
+      await loadRatings();
+      await loadTrade();
+    } catch (error) {
+      console.error(
+        "Submit rating error:",
+        error
+      );
+
+      setRatingError(
+        error.response?.data?.message ||
+          "Unable to submit your rating."
+      );
+
+      try {
+        await loadRatings();
+      } catch {
+        // Ignore refresh failure.
+      }
+    } finally {
+      setRatingLoading(false);
+    }
+  };
+
   /* =======================================================
      LOADING
   ======================================================= */
@@ -1400,7 +1519,7 @@ const TradeDetails = () => {
           </div>
 
           <div className="mt-8 overflow-x-auto pb-2">
-            <div className="flex min-w-[700px] items-start">
+            <div className="flex min-w-175 items-start">
               {statusSteps.map(
                 (status, index) => {
                   const completed =
@@ -2449,6 +2568,282 @@ const TradeDetails = () => {
                 <p className="mt-2 text-sm leading-6 text-red-700">
                   Further trade progress is paused while the
                   dispute is handled.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* =================================================
+            RATINGS — STEP 6.10.4
+        ================================================== */}
+
+        {trade.status === "COMPLETED" && (
+          <section className="mt-6 overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm">
+            <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] px-6 py-6 md:px-8">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+                    Step 6.10.4 · Reputation
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+                    Rate your trade partner
+                  </h2>
+
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-gray-600">
+                    The trade is complete. Share your experience
+                    with {otherTrader?.name || "your trade partner"}
+                    to help build trust across the Barter Trace
+                    marketplace.
+                  </p>
+                </div>
+
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#F5E8EB] text-2xl">
+                  ⭐
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 md:p-8">
+              {ratingSuccess && (
+                <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
+                      ✓
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-green-800">
+                        Rating submitted successfully
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-green-700">
+                        {ratingSuccess}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {ratingError && (
+                <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="text-lg">⚠️</div>
+                    <p className="text-sm font-semibold leading-6 text-red-700">
+                      {ratingError}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                {/* YOUR RATING */}
+                <div className="rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-6">
+                  {currentUserRating ? (
+                    <>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
+                            Your rating
+                          </p>
+                          <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
+                            You rated {otherTrader?.name || "your trade partner"}
+                          </h3>
+                        </div>
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+                          ✓
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <span
+                            key={star}
+                            className={
+                              star <= currentUserRating.rating
+                                ? "text-3xl text-yellow-500"
+                                : "text-3xl text-gray-300"
+                            }
+                          >
+                            ★
+                          </span>
+                        ))}
+                      </div>
+
+                      <p className="mt-2 text-sm font-bold text-[#5B1725]">
+                        {currentUserRating.rating}/5
+                      </p>
+
+                      {currentUserRating.comment && (
+                        <div className="mt-5 rounded-xl bg-white p-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                            Your comment
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-gray-600">
+                            "{currentUserRating.comment}"
+                          </p>
+                        </div>
+                      )}
+
+                      {currentUserRating.createdAt && (
+                        <p className="mt-4 text-xs text-gray-400">
+                          Submitted {formatDateTime(currentUserRating.createdAt)}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
+                        Leave a rating
+                      </p>
+                      <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
+                        How was your experience?
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-gray-600">
+                        Rate {otherTrader?.name || "your trade partner"} from 1 to 5 stars.
+                      </p>
+
+                      <div
+                        className="mt-5 flex items-center gap-1 sm:gap-2"
+                        role="radiogroup"
+                        aria-label="Trade partner rating"
+                      >
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setRatingValue(star)}
+                            disabled={ratingLoading}
+                            aria-label={`Rate ${star} out of 5`}
+                            aria-pressed={ratingValue === star}
+                            className={`rounded-lg p-1 text-4xl leading-none transition sm:text-5xl ${
+                              star <= ratingValue
+                                ? "scale-105 text-yellow-500"
+                                : "text-gray-300 hover:text-yellow-400"
+                            } disabled:cursor-not-allowed disabled:opacity-60`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                      </div>
+
+                      <p className="mt-2 text-xs font-semibold text-gray-500">
+                        {ratingValue === 0
+                          ? "Select your rating."
+                          : `${ratingValue} out of 5 stars selected`}
+                      </p>
+
+                      <div className="mt-6">
+                        <label
+                          htmlFor="rating-comment"
+                          className="text-sm font-bold text-[#21191B]"
+                        >
+                          Comment <span className="font-normal text-gray-400">(optional)</span>
+                        </label>
+
+                        <textarea
+                          id="rating-comment"
+                          rows={4}
+                          maxLength={1000}
+                          value={ratingComment}
+                          onChange={(event) => setRatingComment(event.target.value)}
+                          disabled={ratingLoading}
+                          placeholder="Tell your trade partner how the experience went..."
+                          className="mt-2 w-full resize-none rounded-xl border border-[#DCCED1] bg-white px-4 py-3 text-sm text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:ring-2 focus:ring-[#F5E8EB] disabled:cursor-not-allowed disabled:bg-gray-100"
+                        />
+
+                        <div className="mt-2 flex justify-end">
+                          <span className="text-xs text-gray-400">
+                            {ratingComment.length}/1000
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={ratingLoading || !isParticipant || ratingValue < 1}
+                        onClick={handleSubmitRating}
+                        className="mt-5 w-full rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {ratingLoading ? "Submitting Rating..." : "⭐ Submit Rating"}
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* PARTNER RATING */}
+                <div className="rounded-2xl border border-[#E7DDDF] bg-white p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
+                        Partner's rating
+                      </p>
+                      <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
+                        {otherTrader?.name || "Trade partner"}
+                      </h3>
+                    </div>
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F5E8EB] text-lg">
+                      ⭐
+                    </div>
+                  </div>
+
+                  {partnerRating ? (
+                    <>
+                      <div className="mt-5 flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <span
+                            key={star}
+                            className={
+                              star <= partnerRating.rating
+                                ? "text-3xl text-yellow-500"
+                                : "text-3xl text-gray-300"
+                            }
+                          >
+                            ★
+                          </span>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-sm font-bold text-[#5B1725]">
+                        {partnerRating.rating}/5
+                      </p>
+
+                      {partnerRating.comment && (
+                        <div className="mt-5 rounded-xl bg-[#FBF5F6] p-4">
+                          <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                            Partner comment
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-gray-600">
+                            "{partnerRating.comment}"
+                          </p>
+                        </div>
+                      )}
+
+                      {partnerRating.createdAt && (
+                        <p className="mt-4 text-xs text-gray-400">
+                          Submitted {formatDateTime(partnerRating.createdAt)}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-bold text-amber-800">
+                        Waiting for your trade partner
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-amber-700">
+                        Their rating will appear here once they rate this completed trade.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-gray-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                  About ratings
+                </p>
+                <p className="mt-2 text-sm leading-6 text-gray-600">
+                  Each trader can submit one rating for this completed trade.
+                  Ratings are linked to the actual trade participants, and your
+                  rating contributes to the trader's Barter Score.
                 </p>
               </div>
             </div>

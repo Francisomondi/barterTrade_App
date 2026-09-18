@@ -254,7 +254,6 @@ model Offer {
   trade            Trade?
 }
 
-
 model Trade {
   id          String @id @default(uuid())
   tradeNumber String @unique
@@ -296,7 +295,6 @@ model Trade {
 
   verifications Verification[]
 }
-
 
 model TradeItem {
   id          String @id @default(uuid())
@@ -341,7 +339,6 @@ model Rating {
   @@index([tradeId])
   @@index([reviewedId])
 }
-
 
 model Verification {
   id          String             @id @default(uuid())

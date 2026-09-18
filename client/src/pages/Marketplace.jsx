@@ -398,7 +398,7 @@ const Marketplace = () => {
               type="button"
               onClick={() => setCategoryId("")}
               className={`
-                flex-shrink-0
+                shrink-0
                 rounded-lg
                 border
                 px-3
@@ -423,7 +423,7 @@ const Marketplace = () => {
                 type="button"
                 onClick={() => setCategoryId(category.id)}
                 className={`
-                  flex-shrink-0
+                  shrink-0
                   rounded-lg
                   border
                   px-3
@@ -490,7 +490,7 @@ const Marketplace = () => {
                   focus:border-[#D6B15E]
                   focus:ring-2
                   focus:ring-[#D6B15E]/10
-                  sm:min-w-[170px]
+                  sm:min-w-42.5
                   sm:flex-none
                 "
               >
@@ -601,7 +601,7 @@ const Marketplace = () => {
                   "
                 >
 
-                  <div className="aspect-[4/3] animate-pulse bg-gray-200" />
+                  <div className="aspect-4/3 animate-pulse bg-gray-200" />
 
                   <div className="space-y-3 p-4">
 
