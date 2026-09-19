@@ -1,7 +1,7 @@
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { showSuccess, showError } from "../utils/toast";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -12,7 +12,6 @@ const Login = () => {
     password: "",
   });
 
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleChange = (event) => {
@@ -25,10 +24,8 @@ const Login = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    setError("");
-
     if (!form.email || !form.password) {
-      setError("Email and password are required.");
+      showError("Email and password are required.");
       return;
     }
 
@@ -40,9 +37,15 @@ const Login = () => {
         password: form.password,
       });
 
-      navigate("/dashboard");
+      // Success toast before redirect
+      showSuccess("Login successful! Welcome back.");
+
+      // Small delay so the user can see the toast
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 700);
     } catch (error) {
-      setError(
+      showError(
         error.response?.data?.message ||
           "Login failed. Please check your credentials."
       );
@@ -78,13 +81,13 @@ const Login = () => {
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 sm:py-8">
         <div className="grid w-full max-w-5xl overflow-hidden rounded-[1.75rem] border border-[#E7DDDF] bg-white shadow-xl lg:grid-cols-2">
-          
+
           {/* =================================================
               DESKTOP BRAND PANEL
           ================================================== */}
 
           <div className="relative hidden overflow-hidden bg-[#3D0F18] px-10 py-8 text-white lg:flex lg:flex-col lg:justify-between xl:px-12">
-            
+
             {/* Decorative background */}
 
             <div className="pointer-events-none absolute -right-28 -top-28 h-72 w-72 rounded-full bg-[#8A2638]/40 blur-3xl" />
@@ -206,23 +209,6 @@ const Login = () => {
               </div>
 
               {/* =================================================
-                  ERROR MESSAGE
-              ================================================== */}
-
-              {error && (
-                <div
-                  role="alert"
-                  className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700"
-                >
-                  <span className="mt-0.5 shrink-0">
-                    ⚠
-                  </span>
-
-                  <span>{error}</span>
-                </div>
-              )}
-
-              {/* =================================================
                   LOGIN FORM
               ================================================== */}
 
@@ -327,8 +313,6 @@ const Login = () => {
                 onClick={handleGoogleLogin}
                 className="flex w-full items-center justify-center gap-3 rounded-xl border border-[#E7DDDF] bg-white px-5 py-3 text-sm font-bold text-[#21191B] shadow-sm transition hover:border-[#8A2638] hover:bg-[#FBF5F6] hover:shadow-md"
               >
-                {/* Google icon */}
-
                 <svg
                   width="19"
                   height="19"
@@ -396,4 +380,3 @@ const Login = () => {
 };
 
 export default Login;
-

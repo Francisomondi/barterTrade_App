@@ -353,53 +353,6 @@ const CreateListing = () => {
     }
   };
 
-  /*
-   * ============================================================
-   * LOADING SCREEN
-   * ============================================================
-   */
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#F8F5F3] px-4 py-6 sm:px-6">
-        <div className="mx-auto max-w-6xl">
-          <div className="animate-pulse">
-            <div className="mx-auto h-12 w-12 rounded-xl bg-[#E7DDDF]" />
-
-            <div className="mx-auto mt-4 h-7 w-56 rounded bg-[#E7DDDF]" />
-
-            <div className="mx-auto mt-2 h-4 w-72 rounded bg-[#E7DDDF]" />
-
-            <div className="mt-7 grid gap-5 lg:grid-cols-2">
-              {[1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
-                >
-                  <div className="h-4 bg-[#E7DDDF]" />
-
-                  <div className="space-y-3 p-5">
-                    <div className="h-4 w-32 rounded bg-[#E7DDDF]" />
-
-                    <div className="h-10 w-full rounded bg-[#E7DDDF]" />
-
-                    <div className="h-10 w-full rounded bg-[#E7DDDF]" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /*
-   * ============================================================
-   * UI
-   * ============================================================
-   */
-
   return (
     <div className="min-h-screen bg-[#F8F5F3] px-4 py-5 sm:px-6 lg:py-7">
       <div className="mx-auto max-w-6xl">

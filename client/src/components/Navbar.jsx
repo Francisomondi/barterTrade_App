@@ -2,10 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getUnreadNotificationCount } from "../api/notificationApi";
-import {
-NOTIFICATION_COUNT_EVENT,
-} from "../utils/notificationEvents";
+import {NOTIFICATION_COUNT_EVENT,} from "../utils/notificationEvents";
 import logo from "../assets/logo4.png";
+import { showSuccess } from "../utils/toast";
 
 const Navbar = () => {
 const navigate = useNavigate();
@@ -73,10 +72,15 @@ return () => {
 }, [user]);
 
 const handleLogout = () => {
-logout();
-setUnreadCount(0);
-setMenuOpen(false);
-navigate("/login", { replace: true });
+  logout();
+  setUnreadCount(0);
+  setMenuOpen(false);
+
+  showSuccess("You have been logged out successfully.");
+
+  setTimeout(() => {
+    navigate("/login", { replace: true });
+  }, 800);
 };
 
 const closeMenu = () => {
