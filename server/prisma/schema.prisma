@@ -364,12 +364,25 @@ model Dispute {
   id          String        @id @default(uuid())
   tradeId     String        @unique
   userId      String
+
   reason      String
   description String
+
   status      DisputeStatus @default(OPEN)
+
   resolution  String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+
+  // Stage the trade was in immediately before it became DISPUTED.
+  previousTradeStatus TradeStatus?
+
+  // Final admin decision.
+  // CANCEL_TRADE or REOPEN_TRADE
+  outcome String?
+
+  outcomeAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   trade Trade @relation(fields: [tradeId], references: [id])
   user  User  @relation(fields: [userId], references: [id])

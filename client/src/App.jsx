@@ -26,6 +26,7 @@ import Profile from "./pages/Profile";
 import Matches from "./pages/Matches";
 import MatchDetails from "./pages/MatchDetails";
 import Notifications from "./pages/Notifications";
+import AdminDisputes from "./pages/AdminDisputes";
 
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -66,9 +67,7 @@ const App = () => {
             <Route path="/listings/:id/manage" element={<ManageListing /> }/>
 
             <Route path="/profile" element={<Profile />} />
-
             <Route path="/make-offer" element={<MakeOffer />} />
-            
             <Route path="/make-offer/:id" element={<MakeOffer />} />
             
             <Route path="/offers" element={<Offers />} />
@@ -78,6 +77,7 @@ const App = () => {
             <Route path="/matches" element={<Matches /> }/>
             <Route path="/matches/:id" element={<MatchDetails />} />
             <Route path="/notifications" element={<Notifications />}/>
+            <Route path="/admin/disputes" element={ <AdminDisputes />}/>
             
 
           </Route>
