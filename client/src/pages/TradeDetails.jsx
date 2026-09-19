@@ -2584,7 +2584,7 @@ const TradeDetails = () => {
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
-                    Step 6.10.4 · Reputation
+                    Trade Reputation
                   </p>
 
                   <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">

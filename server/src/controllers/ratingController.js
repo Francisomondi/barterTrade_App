@@ -447,42 +447,13 @@ export const getUserRatings = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    /*
-     * ----------------------------------------------------------
-     * GET USER
-     * ----------------------------------------------------------
-     */
-
-    const user = await prisma.user.findUnique({
-      where: {
-        id: userId,
-      },
-
-      select: {
-        id: true,
-        name: true,
-        avatar: true,
-        barterScore: true,
-        completedTrades: true,
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    /*
-     * ----------------------------------------------------------
-     * GET RATINGS RECEIVED
-     * ----------------------------------------------------------
-     */
-
     const ratings = await prisma.rating.findMany({
       where: {
         reviewedId: userId,
+      },
+
+      orderBy: {
+        createdAt: "desc",
       },
 
       include: {
@@ -498,23 +469,25 @@ export const getUserRatings = async (req, res) => {
           select: {
             id: true,
             tradeNumber: true,
+            status: true,
             completedAt: true,
+
+            items: {
+              select: {
+                listing: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
-
-      orderBy: {
-        createdAt: "desc",
-      },
     });
 
-    /*
-     * ----------------------------------------------------------
-     * CALCULATE CURRENT REPUTATION
-     * ----------------------------------------------------------
-     */
-
-    const ratingAggregate = await prisma.rating.aggregate({
+    const ratingSummary = await prisma.rating.aggregate({
       where: {
         reviewedId: userId,
       },
@@ -528,27 +501,35 @@ export const getUserRatings = async (req, res) => {
       },
     });
 
-    const averageRating =
-      ratingAggregate._avg.rating || 0;
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
 
-    const barterScore =
-      Math.round(averageRating * 10) / 10;
+      select: {
+        completedTrades: true,
+        barterScore: true,
+      },
+    });
 
     return res.status(200).json({
       success: true,
 
-      user: {
-        ...user,
-        barterScore,
-      },
+      ratings,
 
       reputation: {
-        barterScore,
-        ratingCount:
-          ratingAggregate._count.rating,
-      },
+        averageRating:
+          Number(ratingSummary._avg.rating || 0),
 
-      ratings,
+        totalRatings:
+          Number(ratingSummary._count.rating || 0),
+
+        completedTrades:
+          Number(user?.completedTrades || 0),
+
+        barterScore:
+          Number(user?.barterScore || 0),
+      },
     });
   } catch (error) {
     console.error(
@@ -558,7 +539,8 @@ export const getUserRatings = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Unable to load user ratings.",
+      message:
+        "Unable to load user ratings.",
     });
   }
 };

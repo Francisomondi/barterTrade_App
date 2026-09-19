@@ -1,14 +1,10 @@
 
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
-import { Link } from "react-router-dom";
+import {useCallback, useEffect, useState,} from "react";
+import { Link, useLocation, } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getUserRatings } from "../api/ratingApi";
 
-const formatRatingDate = (date) => {
+const formatRatingDate = (date) => {  
   if (!date) return "—";
 
   return new Date(date).toLocaleDateString("en-KE", {
@@ -20,13 +16,11 @@ const formatRatingDate = (date) => {
 
 const Profile = () => {
   const { user, loading } = useAuth();
-
+  const location = useLocation();
   const [reputation, setReputation] = useState(null);
   const [ratings, setRatings] = useState([]);
-  const [reputationLoading, setReputationLoading] =
-    useState(false);
-  const [reputationError, setReputationError] =
-    useState("");
+  const [reputationLoading, setReputationLoading] = useState(false);
+  const [reputationError, setReputationError] = useState("");
 
   /* =====================================================
      LOAD USER REPUTATION + RATING HISTORY
@@ -58,6 +52,8 @@ const Profile = () => {
           barterScore:
             Number(user.barterScore) || 0,
         });
+
+        setRatings([]);
       }
 
       /* -------------------------------------------------
@@ -76,17 +72,14 @@ const Profile = () => {
       );
 
       setReputationError(
-        error.response?.data?.message ||
-          "Unable to load your reputation information."
+        error.response?.data?.message || "Unable to load your reputation information."
       );
 
       setReputation({
         averageRating: 0,
         totalRatings: 0,
-        completedTrades:
-          Number(user.completedTrades) || 0,
-        barterScore:
-          Number(user.barterScore) || 0,
+        completedTrades: Number(user.completedTrades) || 0,
+        barterScore: Number(user.barterScore) || 0,
       });
 
       setRatings([]);
@@ -103,8 +96,51 @@ const Profile = () => {
     if (user?.id) {
       loadReputation();
     }
-  }, [user?.id, loadReputation]);
+  }, [
+    user?.id,
+    location.pathname,
+    loadReputation,
+  ]);
 
+    /* =====================================================
+    REFRESH REPUTATION WHEN PAGE BECOMES ACTIVE
+    ====================================================== */
+
+    useEffect(() => {
+      if (!user?.id) {
+        return;
+      }
+
+      const refreshWhenActive = () => {
+        if (
+          document.visibilityState === "visible"
+        ) {
+          loadReputation();
+        }
+      };
+
+      window.addEventListener(
+        "focus",
+        refreshWhenActive
+      );
+
+      document.addEventListener(
+        "visibilitychange",
+        refreshWhenActive
+      );
+
+      return () => {
+        window.removeEventListener(
+          "focus",
+          refreshWhenActive
+        );
+
+        document.removeEventListener(
+          "visibilitychange",
+          refreshWhenActive
+        );
+      };
+    }, [user?.id, loadReputation]);
   /* =====================================================
      LOADING
   ====================================================== */
@@ -162,11 +198,9 @@ const Profile = () => {
      PROFILE DATA
   ====================================================== */
 
-  const firstLetter =
-    user.name?.charAt(0)?.toUpperCase() || "U";
+  const firstLetter = user.name?.charAt(0)?.toUpperCase() || "U";
 
-  const completedTrades =
-    Number(
+  const completedTrades = Number(
       reputation?.completedTrades ??
         user.completedTrades ??
         0
@@ -185,6 +219,11 @@ const Profile = () => {
   const totalRatings = Number(
     reputation?.totalRatings ?? ratings.length ?? 0
   );
+
+  const scoreStars = Math.min(
+  5,
+  Math.max(0, Math.round(barterScore))
+);
 
   const accountType =
     user.authProvider === "GOOGLE"
@@ -264,9 +303,9 @@ const Profile = () => {
                     sm:h-32 sm:w-32 sm:text-5xl
                   "
                 >
-                  {user.avatar ? (
+                  {user?.avatar ? (
                     <img
-                      src={user.avatar}
+                      src={user?.avatar}
                       alt={
                         user.name ||
                         "Profile photo"
@@ -368,26 +407,75 @@ const Profile = () => {
             </div>
           </div>
 
-          {/* Barter Score */}
 
-          <div className="border-b border-[#E7DDDF] p-5 sm:border-b-0 sm:border-r sm:p-6">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F8EED5] text-lg">
-                ⭐
-              </div>
-
+          {/* Barter Score Summary */}
+          <div className="rounded-2xl border border-[#EEE5E7] bg-[#FBF8F8] p-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-2xl font-black text-[#8A2638]">
-                  {barterScore.toFixed(1)}
+                <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                  Barter Score
                 </p>
 
-                <p className="text-xs font-medium text-gray-500">
-                  Barter score
+                <div className="mt-3 flex items-end gap-2">
+                  <span className="text-3xl font-black text-[#8A2638]">
+                    {barterScore.toFixed(1)}
+                  </span>
+
+                  <span className="pb-1 text-sm font-semibold text-gray-400">
+                    / 5
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F8EED5] text-lg">
+                ⭐
+              </div>
+            </div>
+
+            <div
+              className="mt-4 flex items-center gap-0.5"
+              aria-label={`${barterScore.toFixed(1)} out of 5 Barter Score`}
+            >
+              {[1, 2, 3, 4, 5].map((star) => (
+                <span
+                  key={star}
+                  className={`text-xl ${
+                    star <= scoreStars
+                      ? "text-yellow-500"
+                      : "text-gray-300"
+                  }`}
+                >
+                  ★
+                </span>
+              ))}
+            </div>
+
+            <p className="mt-3 text-xs leading-5 text-gray-500">
+              Based on feedback received from completed barter trades.
+            </p>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-white px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                  Ratings
+                </p>
+
+                <p className="mt-1 text-sm font-black text-[#21191B]">
+                  {totalRatings}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white px-3 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                  Trades
+                </p>
+
+                <p className="mt-1 text-sm font-black text-[#21191B]">
+                  {completedTrades}
                 </p>
               </div>
             </div>
           </div>
-
           {/* Account */}
 
           <div className="col-span-2 p-5 sm:col-span-1 sm:p-6">
@@ -642,41 +730,69 @@ const Profile = () => {
               <div className="space-y-4">
 
                 {ratings.map((rating) => {
-                  const reviewerName =
-                    rating?.reviewer?.name ||
-                    "Barter Trace Trader";
+                const reviewerName =
+                  rating?.reviewer?.name ||
+                  "Barter Trace Trader";
 
-                  const reviewerInitial =
-                    reviewerName
-                      ?.charAt(0)
-                      ?.toUpperCase() || "U";
+                const reviewerInitial =
+                  reviewerName
+                    ?.charAt(0)
+                    ?.toUpperCase() || "U";
 
-                  const ratingNumber = Number(
-                    rating?.rating || 0
-                  );
+                const ratingNumber = Number(
+                  rating?.rating || 0
+                );
 
-                  return (
-                    <article
-                      key={rating.id}
-                      className="rounded-2xl border border-[#EEE5E7] bg-[#FBF8F8] p-5 transition hover:border-[#D9C0C6] hover:bg-[#FBF5F6]"
-                    >
+                const tradeId =
+                  rating?.trade?.id ||
+                  rating?.tradeId;
+
+                const tradeNumber =
+                  rating?.trade?.tradeNumber ||
+                  "Completed Barter Trade";
+
+                const completedAt =
+                  rating?.trade?.completedAt ||
+                  rating?.createdAt;
+
+                const tradeItems =
+                  Array.isArray(rating?.trade?.items)
+                    ? rating.trade.items
+                    : [];
+
+                const tradeItemNames = tradeItems
+                  .map(
+                    (item) =>
+                      item?.listing?.title
+                  )
+                  .filter(Boolean);
+
+                return (
+                  <article
+                    key={rating.id}
+                    className="rounded-2xl border border-[#EEE5E7] bg-[#FBF8F8] p-5 transition hover:border-[#D9C0C6] hover:bg-[#FBF5F6]"
+                  >
+
+                    {/* =================================================
+                        TOP ROW
+                    ================================================== */}
+
+                    <div className="flex flex-col gap-5">
+
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
                         {/* REVIEWER */}
 
-                        <div className="flex items-start gap-4">
+                        <div className="flex min-w-0 items-start gap-4">
 
                           <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-[#F5E8EB]">
+
                             {rating?.reviewer?.avatar ? (
                               <img
-                                src={
-                                  rating.reviewer.avatar
-                                }
+                                src={rating.reviewer.avatar}
                                 alt={reviewerName}
                                 className="h-full w-full object-cover"
-                                onError={(
-                                  event
-                                ) => {
+                                onError={(event) => {
                                   event.currentTarget.style.display =
                                     "none";
 
@@ -689,11 +805,16 @@ const Profile = () => {
                                 {reviewerInitial}
                               </div>
                             )}
+
                           </div>
 
                           <div className="min-w-0">
 
-                            <h3 className="truncate text-base font-black text-[#21191B]">
+                            <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                              Reviewed by
+                            </p>
+
+                            <h3 className="mt-1 truncate text-base font-black text-[#21191B]">
                               {reviewerName}
                             </h3>
 
@@ -704,19 +825,20 @@ const Profile = () => {
                             </p>
 
                           </div>
+
                         </div>
 
                         {/* RATING */}
 
                         <div className="sm:text-right">
-                          <div className="flex items-center gap-0.5">
+
+                          <div className="flex items-center gap-0.5 sm:justify-end">
                             {[1, 2, 3, 4, 5].map(
                               (star) => (
                                 <span
                                   key={star}
                                   className={`text-xl ${
-                                    star <=
-                                    ratingNumber
+                                    star <= ratingNumber
                                       ? "text-yellow-500"
                                       : "text-gray-300"
                                   }`}
@@ -730,13 +852,85 @@ const Profile = () => {
                           <p className="mt-1 text-xs font-bold text-[#5B1725]">
                             {ratingNumber}/5
                           </p>
+
                         </div>
+
                       </div>
 
-                      {/* COMMENT */}
+                      {/* =================================================
+                          TRADE CONTEXT
+                      ================================================== */}
+
+                      <div className="rounded-2xl border border-[#E7DDDF] bg-white p-4">
+
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+                          <div className="min-w-0">
+
+                            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#8A2638]">
+                              Completed trade
+                            </p>
+
+                            <h4 className="mt-1 truncate text-sm font-black text-[#21191B]">
+                              {tradeNumber}
+                            </h4>
+
+                            <p className="mt-1 text-xs text-gray-400">
+                              Completed{" "}
+                              {formatRatingDate(
+                                completedAt
+                              )}
+                            </p>
+
+                          </div>
+
+                          {tradeId && (
+                            <Link
+                              to={`/trades/${tradeId}`}
+                              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#5B1725] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#3D0F18]"
+                            >
+                              View Trade →
+                            </Link>
+                          )}
+
+                        </div>
+
+                        {/* TRADED ITEMS */}
+
+                        {tradeItemNames.length > 0 && (
+                          <div className="mt-4">
+
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                              Items exchanged
+                            </p>
+
+                            <div className="mt-2 flex flex-wrap gap-2">
+
+                              {tradeItemNames.map(
+                                (itemName, index) => (
+                                  <span
+                                    key={`${itemName}-${index}`}
+                                    className="rounded-full bg-[#F5E8EB] px-3 py-1.5 text-xs font-semibold text-[#5B1725]"
+                                  >
+                                    {itemName}
+                                  </span>
+                                )
+                              )}
+
+                            </div>
+
+                          </div>
+                        )}
+
+                      </div>
+
+                      {/* =================================================
+                          COMMENT
+                      ================================================== */}
 
                       {rating?.comment ? (
-                        <div className="mt-5 rounded-xl border border-[#EEE5E7] bg-white p-4">
+                        <div className="rounded-xl border border-[#EEE5E7] bg-white p-4">
+
                           <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
                             Feedback
                           </p>
@@ -744,17 +938,22 @@ const Profile = () => {
                           <p className="mt-2 text-sm leading-7 text-gray-600">
                             "{rating.comment}"
                           </p>
+
                         </div>
                       ) : (
-                        <div className="mt-5 rounded-xl bg-white px-4 py-3">
+                        <div className="rounded-xl bg-white px-4 py-3">
+
                           <p className="text-sm italic text-gray-400">
                             No written comment was provided.
                           </p>
+
                         </div>
                       )}
-                    </article>
-                  );
-                })}
+
+                    </div>
+                  </article>
+                );
+              })}
 
               </div>
             )}

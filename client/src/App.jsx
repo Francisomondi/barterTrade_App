@@ -36,7 +36,7 @@ const App = () => {
       <AuthProvider>
         <ToastContainer
           position="top-center"
-          autoClose={2500}
+          autoClose={3500}
           hideProgressBar={false}
           newestOnTop
           closeOnClick
