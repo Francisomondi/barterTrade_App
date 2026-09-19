@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { getTradeById, updateTradeStatus, confirmTrade,} from "../api/tradeApi";
 import { createRating, getTradeRatings,} from "../api/ratingApi";
 import { useAuth } from "../context/AuthContext";
+import { createDispute } from "../api/disputeApi";
 
 /* =========================================================
    STATUS CONFIGURATION
@@ -192,6 +193,12 @@ const TradeDetails = () => {
   const [ratingLoading, setRatingLoading] = useState(false);
   const [ratingError, setRatingError] = useState("");
   const [ratingSuccess, setRatingSuccess] = useState("");
+  const [disputeModalOpen, setDisputeModalOpen] = useState(false);
+  const [disputeReason, setDisputeReason] =  useState("");
+  const [disputeDescription, setDisputeDescription] = useState("");
+  const [disputeLoading, setDisputeLoading] = useState(false);
+  const [disputeError, setDisputeError] = useState("");
+  const [disputeSuccess, setDisputeSuccess] = useState("");
 
   /* =======================================================
      LOAD TRADE
@@ -366,8 +373,7 @@ const TradeDetails = () => {
     [getStageConfirmations]
   );
 
-  const traderAAgreementConfirmation =
-    useMemo(
+  const traderAAgreementConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           AGREEMENT_STAGE,
@@ -376,8 +382,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderAId]
     );
 
-  const traderBAgreementConfirmation =
-    useMemo(
+  const traderBAgreementConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           AGREEMENT_STAGE,
@@ -386,8 +391,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderBId]
     );
 
-  const currentUserAgreementConfirmation =
-    useMemo(() => {
+  const currentUserAgreementConfirmation = useMemo(() => {
       if (!currentUserId) return null;
 
       return (
@@ -402,11 +406,9 @@ const TradeDetails = () => {
       currentUserId,
     ]);
 
-  const currentUserConfirmedAgreement =
-    Boolean(currentUserAgreementConfirmation);
+  const currentUserConfirmedAgreement = Boolean(currentUserAgreementConfirmation);
 
-  const bothTradersConfirmedAgreement =
-    Boolean(
+  const bothTradersConfirmedAgreement = Boolean(
       traderAAgreementConfirmation &&
         traderBAgreementConfirmation
     );
@@ -423,8 +425,7 @@ const TradeDetails = () => {
     [getStageConfirmations]
   );
 
-  const traderAVerificationConfirmation =
-    useMemo(
+  const traderAVerificationConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           VERIFICATION_STAGE,
@@ -433,8 +434,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderAId]
     );
 
-  const traderBVerificationConfirmation =
-    useMemo(
+  const traderBVerificationConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           VERIFICATION_STAGE,
@@ -443,8 +443,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderBId]
     );
 
-  const currentUserVerificationConfirmation =
-    useMemo(() => {
+  const currentUserVerificationConfirmation = useMemo(() => {
       if (!currentUserId) return null;
 
       return (
@@ -459,13 +458,11 @@ const TradeDetails = () => {
       currentUserId,
     ]);
 
-  const currentUserConfirmedVerification =
-    Boolean(
+  const currentUserConfirmedVerification = Boolean(
       currentUserVerificationConfirmation
     );
 
-  const bothTradersConfirmedVerification =
-    Boolean(
+  const bothTradersConfirmedVerification = Boolean(
       traderAVerificationConfirmation &&
         traderBVerificationConfirmation
     );
@@ -484,16 +481,14 @@ const TradeDetails = () => {
           both traders have done the same.
   ======================================================= */
 
-  const handoverConfirmations = useMemo(
-    () =>
+  const handoverConfirmations = useMemo( () =>
       getStageConfirmations(
         HANDOVER_STAGE
       ),
     [getStageConfirmations]
   );
 
-  const traderAHandoverConfirmation =
-    useMemo(
+  const traderAHandoverConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           HANDOVER_STAGE,
@@ -502,8 +497,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderAId]
     );
 
-  const traderBHandoverConfirmation =
-    useMemo(
+  const traderBHandoverConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           HANDOVER_STAGE,
@@ -512,8 +506,7 @@ const TradeDetails = () => {
       [getTraderConfirmation, trade?.traderBId]
     );
 
-  const currentUserHandoverConfirmation =
-    useMemo(() => {
+  const currentUserHandoverConfirmation = useMemo(() => {
       if (!currentUserId) return null;
 
       return (
@@ -541,8 +534,7 @@ const TradeDetails = () => {
      HANDOVER STARTED
   ======================================================= */
 
-  const handoverStartedConfirmations =
-    useMemo(
+  const handoverStartedConfirmations = useMemo(
       () =>
         getStageConfirmations(
           HANDOVER_STARTED_STAGE
@@ -550,8 +542,7 @@ const TradeDetails = () => {
       [getStageConfirmations]
     );
 
-  const traderAHandoverStartedConfirmation =
-    useMemo(
+  const traderAHandoverStartedConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           HANDOVER_STARTED_STAGE,
@@ -563,8 +554,7 @@ const TradeDetails = () => {
       ]
     );
 
-  const traderBHandoverStartedConfirmation =
-    useMemo(
+  const traderBHandoverStartedConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           HANDOVER_STARTED_STAGE,
@@ -576,8 +566,7 @@ const TradeDetails = () => {
       ]
     );
 
-  const currentUserHandoverStartedConfirmation =
-    useMemo(() => {
+  const currentUserHandoverStartedConfirmation = useMemo(() => {
       if (!currentUserId) return null;
 
       return (
@@ -592,13 +581,11 @@ const TradeDetails = () => {
       currentUserId,
     ]);
 
-  const currentUserConfirmedHandoverStarted =
-    Boolean(
+  const currentUserConfirmedHandoverStarted = Boolean(
       currentUserHandoverStartedConfirmation
     );
 
-  const bothTradersConfirmedHandoverStarted =
-    Boolean(
+  const bothTradersConfirmedHandoverStarted = Boolean(
       traderAHandoverStartedConfirmation &&
         traderBHandoverStartedConfirmation
     );
@@ -607,16 +594,14 @@ const TradeDetails = () => {
      COMPLETION CONFIRMATIONS
   ======================================================= */
 
-  const completionConfirmations = useMemo(
-    () =>
+  const completionConfirmations = useMemo( () =>
       getStageConfirmations(
         COMPLETION_STAGE
       ),
     [getStageConfirmations]
   );
 
-  const traderACompletionConfirmation =
-    useMemo(
+  const traderACompletionConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           COMPLETION_STAGE,
@@ -628,8 +613,7 @@ const TradeDetails = () => {
       ]
     );
 
-  const traderBCompletionConfirmation =
-    useMemo(
+  const traderBCompletionConfirmation = useMemo(
       () =>
         getTraderConfirmation(
           COMPLETION_STAGE,
@@ -641,8 +625,7 @@ const TradeDetails = () => {
       ]
     );
 
-  const currentUserCompletionConfirmation =
-    useMemo(() => {
+  const currentUserCompletionConfirmation = useMemo(() => {
       if (!currentUserId) return null;
 
       return (
@@ -657,13 +640,11 @@ const TradeDetails = () => {
       currentUserId,
     ]);
 
-  const currentUserConfirmedCompletion =
-    Boolean(
+  const currentUserConfirmedCompletion = Boolean(
       currentUserCompletionConfirmation
     );
 
-  const bothTradersConfirmedCompletion =
-    Boolean(
+  const bothTradersConfirmedCompletion = Boolean(
       traderACompletionConfirmation &&
         traderBCompletionConfirmation
     );
@@ -680,8 +661,7 @@ const TradeDetails = () => {
     return trade.verifications;
   }, [trade]);
 
-  const getVerificationForUser =
-    useCallback(
+  const getVerificationForUser = useCallback(
       (userId) => {
         if (!userId) return null;
 
@@ -695,8 +675,7 @@ const TradeDetails = () => {
       [verifications]
     );
 
-  const traderAVerification = useMemo(
-    () =>
+  const traderAVerification = useMemo(() =>
       getVerificationForUser(
         trade?.traderAId
       ),
@@ -706,8 +685,7 @@ const TradeDetails = () => {
     ]
   );
 
-  const traderBVerification = useMemo(
-    () =>
+  const traderBVerification = useMemo(() =>
       getVerificationForUser(
         trade?.traderBId
       ),
@@ -717,8 +695,7 @@ const TradeDetails = () => {
     ]
   );
 
-  const currentUserVerification = useMemo(
-    () =>
+  const currentUserVerification = useMemo(() =>
       getVerificationForUser(
         currentUserId
       ),
@@ -728,8 +705,7 @@ const TradeDetails = () => {
     ]
   );
 
-  const otherTraderVerification = useMemo(
-    () =>
+  const otherTraderVerification = useMemo(() =>
       getVerificationForUser(
         otherTrader?.id
       ),
@@ -739,29 +715,19 @@ const TradeDetails = () => {
     ]
   );
 
-  const currentUserItemVerified =
-    currentUserVerification?.status ===
-    "VERIFIED";
+  const currentUserItemVerified = currentUserVerification?.status === "VERIFIED";
 
-  const partnerItemVerified =
-    otherTraderVerification?.status ===
-    "VERIFIED";
+  const partnerItemVerified =otherTraderVerification?.status === "VERIFIED";
 
-  const bothItemsVerified =
-    currentUserItemVerified &&
-    partnerItemVerified;
+  const bothItemsVerified = currentUserItemVerified && partnerItemVerified;
 
   /* =======================================================
      TRADE ITEMS
   ======================================================= */
 
-  const yourListing =
-    trade?.items?.[0]?.listing ||
-    trade?.offer?.offeredListing;
+  const yourListing = trade?.items?.[0]?.listing || trade?.offer?.offeredListing;
 
-  const theirListing =
-    trade?.items?.[1]?.listing ||
-    trade?.offer?.requestedListing;
+  const theirListing = trade?.items?.[1]?.listing || trade?.offer?.requestedListing;
 
   /* =======================================================
      CONFIRM CURRENT TRADE STAGE
@@ -848,10 +814,7 @@ const TradeDetails = () => {
 
       const response = await confirmTrade(id);
 
-      console.log(
-        "CONFIRM TRADE RESPONSE:",
-        response
-      );
+      console.log( "CONFIRM TRADE RESPONSE:", response);
 
       if (response?.trade) {
         setTrade(response.trade);
@@ -876,14 +839,10 @@ const TradeDetails = () => {
         error
       );
 
-      console.error(
-        "Backend response:",
-        error.response?.data
-      );
+      console.error("Backend response:",error.response?.data);
 
       setActionError(
-        error.response?.data?.message ||
-          "Unable to confirm this trade stage."
+        error.response?.data?.message || "Unable to confirm this trade stage."
       );
 
       try {
@@ -905,8 +864,7 @@ const TradeDetails = () => {
      Both traders must confirm.
   ======================================================= */
 
-  const handleConfirmHandoverStarted =
-    async () => {
+  const handleConfirmHandoverStarted = async () => {
       if (!trade) return;
 
       if (!isParticipant) {
@@ -1055,8 +1013,7 @@ const TradeDetails = () => {
       );
 
       setActionError(
-        error.response?.data?.message ||
-          "Unable to confirm trade completion."
+        error.response?.data?.message || "Unable to confirm trade completion."
       );
 
       try {
@@ -1080,9 +1037,7 @@ const TradeDetails = () => {
     if (!trade) return;
 
     if (!isParticipant) {
-      setActionError(
-        "You are not a participant in this trade."
-      );
+      setActionError("You are not a participant in this trade.");
       return;
     }
 
@@ -1093,20 +1048,14 @@ const TradeDetails = () => {
       "READY_FOR_HANDOVER",
     ];
 
-    if (
-      !cancellableStatuses.includes(
-        trade.status
-      )
-    ) {
+    if (!cancellableStatuses.includes( trade.status )) {
       setActionError(
         "This trade can no longer be cancelled at its current stage."
       );
       return;
     }
 
-    const confirmed = window.confirm(
-      "Are you sure you want to cancel this trade?"
-    );
+    const confirmed = window.confirm( "Are you sure you want to cancel this trade?");
 
     if (!confirmed) {
       return;
@@ -1134,10 +1083,7 @@ const TradeDetails = () => {
         error
       );
 
-      setActionError(
-        error.response?.data?.message ||
-          "Unable to cancel this trade."
-      );
+      setActionError( error.response?.data?.message || "Unable to cancel this trade.");
     } finally {
       setActionLoading(false);
     }
@@ -1156,17 +1102,13 @@ const TradeDetails = () => {
     }
 
     if (trade.status !== "COMPLETED") {
-      setRatingError(
-        "You can only rate a trader after the trade is completed."
-      );
+      setRatingError( "You can only rate a trader after the trade is completed.");
 
       return;
     }
 
     if (currentUserRating) {
-      setRatingError(
-        "You have already rated this trade."
-      );
+      setRatingError("You have already rated this trade.");
 
       return;
     }
@@ -1176,17 +1118,13 @@ const TradeDetails = () => {
       ratingValue < 1 ||
       ratingValue > 5
     ) {
-      setRatingError(
-        "Please select a rating from 1 to 5 stars."
-      );
+      setRatingError("Please select a rating from 1 to 5 stars.");
 
       return;
     }
 
     if (ratingComment.length > 1000) {
-      setRatingError(
-        "Your comment cannot exceed 1000 characters."
-      );
+      setRatingError("Your comment cannot exceed 1000 characters.");
 
       return;
     }
@@ -1202,10 +1140,7 @@ const TradeDetails = () => {
         ratingComment.trim()
       );
 
-      setRatingSuccess(
-        response?.message ||
-          "Your rating has been submitted successfully."
-      );
+      setRatingSuccess(response?.message || "Your rating has been submitted successfully.");
 
       setRatingValue(0);
       setRatingComment("");
@@ -1213,15 +1148,9 @@ const TradeDetails = () => {
       await loadRatings();
       await loadTrade();
     } catch (error) {
-      console.error(
-        "Submit rating error:",
-        error
-      );
+      console.error("Submit rating error:",error);
 
-      setRatingError(
-        error.response?.data?.message ||
-          "Unable to submit your rating."
-      );
+      setRatingError(error.response?.data?.message || "Unable to submit your rating.");
 
       try {
         await loadRatings();
@@ -1232,6 +1161,98 @@ const TradeDetails = () => {
       setRatingLoading(false);
     }
   };
+  const handleSubmitDispute = async () => {
+    if (!trade) return;
+
+    if (!isParticipant) {
+      setDisputeError("You are not a participant in this trade.");
+      return;
+    }
+
+    const disputableStatuses = [
+      "VERIFICATION",
+      "READY_FOR_HANDOVER",
+      "IN_PROGRESS",
+    ];
+
+    if (!disputableStatuses.includes(trade.status)) {
+      setDisputeError("This trade cannot be disputed at its current stage.");
+      return;
+    }
+
+    if (trade.dispute) {
+      setDisputeError("This trade already has a dispute.");
+      return;
+    }
+
+    const trimmedReason = disputeReason.trim();
+
+    const trimmedDescription = disputeDescription.trim();
+
+    if (!trimmedReason) {
+       setDisputeError("Please select or enter a dispute reason.");
+      return;
+    }
+
+    if (!trimmedDescription) {
+      setDisputeError("Please describe what happened.");
+      return;
+    }
+
+    if (trimmedReason.length > 100) {
+      setDisputeError("Dispute reason cannot exceed 100 characters.");
+      return;
+    }
+
+    if (trimmedDescription.length < 10) {
+      setDisputeError("Please provide at least 10 characters describing the issue.");
+      return;
+    }
+
+    if (trimmedDescription.length > 5000) {
+      setDisputeError("Description cannot exceed 5000 characters.");
+      return;
+    }
+
+    try {
+      setDisputeLoading(true);
+      setDisputeError("");
+      setDisputeSuccess("");
+
+      const response = await createDispute(
+          id,
+          trimmedReason,
+          trimmedDescription
+        );
+
+      setDisputeSuccess(
+        response?.message || "Your dispute has been submitted."
+      );
+
+      setDisputeModalOpen(false);
+
+      setDisputeReason("");
+      setDisputeDescription("");
+
+      if (response?.trade) {
+        setTrade((currentTrade) => ({
+          ...currentTrade,
+          status: response.trade.status,
+          dispute: response.dispute,
+        }));
+      } else {
+        await loadTrade();
+      }
+    } catch (error) {
+      console.error("SUBMIT DISPUTE ERROR:", error);
+
+      setDisputeError(
+        error.response?.data?.message || "Unable to submit dispute.");
+    } finally {
+      setDisputeLoading(false);
+    }
+  };
+
 
   /* =======================================================
      LOADING
@@ -1300,16 +1321,13 @@ const TradeDetails = () => {
      TRADE DATA
   ======================================================= */
 
-  const currentStatusIndex =
-    statusSteps.indexOf(trade.status);
+  const currentStatusIndex = statusSteps.indexOf(trade.status);
 
   /* =======================================================
      HANDOVER STARTED STATUS
   ======================================================= */
 
-  const getHandoverStartedStatus = (
-    userId
-  ) => {
+  const getHandoverStartedStatus = (userId) => {
     const confirmation =
       handoverStartedConfirmations.find(
         (item) =>
@@ -1319,97 +1337,63 @@ const TradeDetails = () => {
     if (confirmation) {
       return {
         label: "Handover Confirmed",
-        description:
-          confirmation.confirmedAt
+        description: confirmation.confirmedAt
             ? `Confirmed ${formatDateTime(
                 confirmation.confirmedAt
               )}`
             : "Confirmed",
-        className:
-          "bg-green-50 border-green-200 text-green-700",
-        icon: "✓",
+        className:  "bg-green-50 border-green-200 text-green-700", icon: "✓",
       };
     }
 
     return {
       label: "Waiting for Confirmation",
-      description:
-        "This trader has not confirmed that handover has started.",
-      className:
-        "bg-gray-50 border-gray-200 text-gray-600",
-      icon: "○",
+      description: "This trader has not confirmed that handover has started.",
+      className: "bg-gray-50 border-gray-200 text-gray-600", icon: "○",
     };
   };
 
-  const traderAHandoverStartedStatus =
-    getHandoverStartedStatus(
-      trade.traderAId
-    );
-
-  const traderBHandoverStartedStatus =
-    getHandoverStartedStatus(
-      trade.traderBId
-    );
+  const traderAHandoverStartedStatus = getHandoverStartedStatus(trade.traderAId);
+  const traderBHandoverStartedStatus = getHandoverStartedStatus(trade.traderBId);
 
   /* =======================================================
      VERIFICATION STATUS
   ======================================================= */
 
-  const getVerificationStatus = (
-    verification
-  ) => {
+  const getVerificationStatus = (verification) => {
     if (
-      verification?.status ===
-      "VERIFIED"
+      verification?.status === "VERIFIED"
     ) {
       return {
         label: "Item Verified",
-        description:
-          verification.updatedAt
+        description: verification.updatedAt
             ? `Verified ${formatDateTime(
                 verification.updatedAt
               )}`
             : "Verified",
-        className:
-          "border-green-200 bg-green-50 text-green-700",
-        icon: "✓",
+        className: "border-green-200 bg-green-50 text-green-700", icon: "✓",
       };
     }
 
     if (
-      verification?.status ===
-      "REJECTED"
+      verification?.status === "REJECTED"
     ) {
       return {
         label: "Verification Rejected",
-        description:
-          verification.notes ||
-          "This verification was rejected.",
-        className:
-          "border-red-200 bg-red-50 text-red-700",
-        icon: "!",
+        description: verification.notes || "This verification was rejected.",
+        className: "border-red-200 bg-red-50 text-red-700", icon: "!",
       };
     }
 
     return {
       label: "Waiting for Verification",
-      description:
-        "This trader has not yet verified the item.",
-      className:
-        "border-gray-200 bg-gray-50 text-gray-600",
-      icon: "○",
+      description: "This trader has not yet verified the item.",
+      className: "border-gray-200 bg-gray-50 text-gray-600", icon: "○",
     };
   };
 
-  const traderAVerificationStatus =
-    getVerificationStatus(
-      traderAVerification
-    );
-
-  const traderBVerificationStatus =
-    getVerificationStatus(
-      traderBVerification
-    );
+  const traderAVerificationStatus = getVerificationStatus( traderAVerification);
+  const traderBVerificationStatus = getVerificationStatus(traderBVerification);
 
   return (
     <div className="min-h-screen bg-[#F8F5F3]">
@@ -1490,6 +1474,20 @@ const TradeDetails = () => {
 
               <p className="text-sm font-semibold leading-6 text-green-700">
                 {confirmationSuccess}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {disputeSuccess && (
+          <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-bold text-white">
+                ✓
+              </div>
+
+              <p className="text-sm font-semibold leading-6 text-green-700">
+                {disputeSuccess}
               </p>
             </div>
           </div>
@@ -2547,29 +2545,110 @@ const TradeDetails = () => {
 
         {/* =================================================
             DISPUTED
-        ================================================== */}
-
+         ================================================== */}
         {trade.status === "DISPUTED" && (
-          <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-600 text-xl font-bold text-white">
-                !
+          <section className="mt-6 overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm">
+            <div className="border-b border-red-100 bg-red-50 px-6 py-6 md:px-8">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-600 text-xl font-bold text-white">
+                  !
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-red-700">
+                    Trade dispute
+                  </p>
+
+                  <h2 className="mt-1 text-2xl font-extrabold text-red-900">
+                    This trade is under dispute
+                  </h2>
+
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-red-700">
+                    Further trade progress is paused while the
+                    dispute is reviewed.
+                  </p>
+                </div>
               </div>
+            </div>
 
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-red-700">
-                  Trade dispute
-                </p>
+            <div className="space-y-5 p-6 md:p-8">
+              {trade.dispute ? (
+                <>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Status
+                    </p>
 
-                <h2 className="mt-1 text-2xl font-extrabold text-red-800">
-                  This trade is under dispute
-                </h2>
+                    <p className="mt-1 text-sm font-extrabold text-red-700">
+                      {formatStatus(
+                        trade.dispute.status
+                      )}
+                    </p>
+                  </div>
 
-                <p className="mt-2 text-sm leading-6 text-red-700">
-                  Further trade progress is paused while the
-                  dispute is handled.
-                </p>
-              </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Reason
+                    </p>
+
+                    <p className="mt-2 text-sm font-semibold text-[#21191B]">
+                      {trade.dispute.reason}
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                      Description
+                    </p>
+
+                    <p className="mt-2 rounded-xl bg-gray-50 p-4 text-sm leading-7 text-gray-600">
+                      {trade.dispute.description}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-[#E7DDDF] bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                        Raised by
+                      </p>
+
+                      <p className="mt-1 font-bold text-[#21191B]">
+                        {trade.dispute.user?.name ||
+                          "Trade participant"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-[#E7DDDF] bg-white p-4">
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                        Submitted
+                      </p>
+
+                      <p className="mt-1 font-bold text-[#21191B]">
+                        {formatDateTime(
+                          trade.dispute.createdAt
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {trade.dispute.resolution && (
+                    <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-green-700">
+                        Resolution
+                      </p>
+
+                      <p className="mt-2 text-sm leading-7 text-green-800">
+                        {trade.dispute.resolution}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">
+                  This trade is disputed, but dispute details
+                  are not currently available.
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -3159,6 +3238,26 @@ const TradeDetails = () => {
           </div>
 
           <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            {[
+                "VERIFICATION",
+                "READY_FOR_HANDOVER",
+                "IN_PROGRESS",
+              ].includes(trade.status) &&
+                isParticipant &&
+                !trade.dispute && (
+                  <button
+                    type="button"
+                    disabled={disputeLoading}
+                    onClick={() => {
+                      setDisputeError("");
+                      setDisputeSuccess("");
+                      setDisputeModalOpen(true);
+                    }}
+                    className="rounded-xl border border-red-200 bg-white px-6 py-3 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    ⚠️ Report a Problem
+                  </button>
+          )}
             {/* AGREEMENT */}
             {trade.status === "PENDING" &&
               isParticipant &&
@@ -3346,6 +3445,199 @@ const TradeDetails = () => {
           </div>
         </section>
       </main>
+      {/* =================================================
+          DISPUTE MODAL
+      ================================================= */}
+
+      {disputeModalOpen && (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-black/60"
+          aria-modal="true"
+          role="dialog"
+        >
+          {/* Scrollable viewport */}
+          <div className="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-6">
+            {/* Modal */}
+            <div className="my-3 flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:my-6">
+              
+              {/* ==============================
+                  HEADER
+              ============================== */}
+              <div className="shrink-0 border-b border-red-100 bg-red-50 px-4 py-5 sm:px-6 sm:py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wider text-red-700 sm:text-sm">
+                      Trade Safety
+                    </p>
+
+                    <h2 className="mt-1 text-xl font-extrabold leading-tight text-red-900 sm:text-2xl">
+                      Report a Problem
+                    </h2>
+
+                    <p className="mt-2 text-sm leading-6 text-red-700">
+                      Tell us what went wrong with this trade.
+                      Submitting a dispute will pause further
+                      trade progress.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!disputeLoading) {
+                        setDisputeModalOpen(false);
+                        setDisputeError("");
+                      }
+                    }}
+                    disabled={disputeLoading}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-gray-500 shadow-sm transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Close dispute modal"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+
+              {/* ==============================
+                  SCROLLABLE CONTENT
+              ============================== */}
+              <div className="max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain px-4 py-5 sm:max-h-[calc(100dvh-6rem)] sm:px-6 sm:py-6 md:px-8 md:py-8">
+                <div className="space-y-5 sm:space-y-6">
+
+                  {/* ERROR */}
+                  {disputeError && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-700">
+                      ⚠️ {disputeError}
+                    </div>
+                  )}
+
+                  {/* REASON */}
+                  <div>
+                    <label
+                      htmlFor="dispute-reason"
+                      className="mb-2 block text-sm font-bold text-[#21191B]"
+                    >
+                      Reason
+                    </label>
+
+                    <select
+                      id="dispute-reason"
+                      value={disputeReason}
+                      onChange={(event) =>
+                        setDisputeReason(event.target.value)
+                      }
+                      disabled={disputeLoading}
+                      className="w-full rounded-xl border border-[#DCCACE] bg-white px-4 py-3 text-sm text-[#21191B] outline-none transition focus:border-[#8A2638] focus:ring-2 focus:ring-[#F5E8EB]"
+                    >
+                      <option value="">
+                        Select a reason
+                      </option>
+
+                      <option value="Item condition differs from the agreement">
+                        Item condition differs from the agreement
+                      </option>
+
+                      <option value="Item was not received">
+                        Item was not received
+                      </option>
+
+                      <option value="Trader did not appear for handover">
+                        Trader did not appear for handover
+                      </option>
+
+                      <option value="Suspected fraud">
+                        Suspected fraud
+                      </option>
+
+                      <option value="Item does not match the listing">
+                        Item does not match the listing
+                      </option>
+
+                      <option value="Other">
+                        Other
+                      </option>
+                    </select>
+                  </div>
+
+                  {/* DESCRIPTION */}
+                  <div>
+                    <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <label
+                        htmlFor="dispute-description"
+                        className="block text-sm font-bold text-[#21191B]"
+                      >
+                        Describe what happened
+                      </label>
+
+                      <span className="text-xs text-gray-400">
+                        {disputeDescription.length}/5000
+                      </span>
+                    </div>
+
+                    <textarea
+                      id="dispute-description"
+                      value={disputeDescription}
+                      onChange={(event) =>
+                        setDisputeDescription(
+                          event.target.value
+                        )
+                      }
+                      disabled={disputeLoading}
+                      rows={6}
+                      maxLength={5000}
+                      placeholder="Explain the problem clearly. Include what was agreed, what happened, and why you believe the trade should be reviewed."
+                      className="min-h-[150px] w-full resize-y rounded-xl border border-[#DCCACE] bg-white px-4 py-3 text-sm leading-6 text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:ring-2 focus:ring-[#F5E8EB]"
+                    />
+                  </div>
+
+                  {/* WARNING */}
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-sm font-bold text-amber-800">
+                      Important
+                    </p>
+
+                    <p className="mt-1 text-sm leading-6 text-amber-700">
+                      Only submit a dispute when there is a genuine
+                      problem with this barter trade. Once submitted,
+                      the trade will be moved to Disputed and normal
+                      trade progression will stop.
+                    </p>
+                  </div>
+
+                  {/* ACTIONS */}
+                  <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (disputeLoading) return;
+
+                        setDisputeModalOpen(false);
+                        setDisputeError("");
+                      }}
+                      disabled={disputeLoading}
+                      className="w-full rounded-xl border border-[#DCCACE] bg-white px-6 py-3 text-sm font-bold text-gray-600 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSubmitDispute}
+                      disabled={disputeLoading}
+                      className="w-full rounded-xl bg-red-700 px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    >
+                      {disputeLoading
+                        ? "Submitting..."
+                        : "Submit Dispute"}
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

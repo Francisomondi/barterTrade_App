@@ -288,7 +288,17 @@ export const getTradeById = async (req, res) => {
 
         ratings: true,
 
-        dispute: true,
+        dispute: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                avatar: true,
+              },
+            },
+          },
+        },
       },
     });
 
