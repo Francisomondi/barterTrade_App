@@ -378,7 +378,7 @@ const Trades = () => {
 
                         <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white">
 
-                          <div className="aspect-[4/3] overflow-hidden bg-[#F5E8EB]">
+                          <div className="aspect-4/3 overflow-hidden bg-[#F5E8EB]">
                             <img
                               src={getListingImage(
                                 yourListing
@@ -397,7 +397,7 @@ const Trades = () => {
 
                           <div className="p-3.5">
 
-                            <p className="line-clamp-2 min-h-[40px] text-sm font-bold leading-5 text-[#21191B]">
+                            <p className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#21191B]">
                               {yourListing?.title ||
                                 "Item unavailable"}
                             </p>
@@ -426,7 +426,7 @@ const Trades = () => {
 
                         <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white">
 
-                          <div className="aspect-[4/3] overflow-hidden bg-[#F5E8EB]">
+                          <div className="aspect-4/3 overflow-hidden bg-[#F5E8EB]">
                             <img
                               src={getListingImage(
                                 theirListing
@@ -445,7 +445,7 @@ const Trades = () => {
 
                           <div className="p-3.5">
 
-                            <p className="line-clamp-2 min-h-[40px] text-sm font-bold leading-5 text-[#21191B]">
+                            <p className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-[#21191B]">
                               {theirListing?.title ||
                                 "Item unavailable"}
                             </p>

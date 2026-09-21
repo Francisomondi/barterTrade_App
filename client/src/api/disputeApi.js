@@ -68,3 +68,14 @@ export const applyDisputeOutcome = async (
 
   return response.data;
 };
+
+
+export const getDisputeEvents = async (
+  disputeId
+) => {
+  const response = await api.get(
+    `/disputes/${disputeId}/events`
+  );
+
+  return response.data;
+};

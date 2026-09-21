@@ -16,6 +16,7 @@ import disputeRoutes from "./routes/disputeRoutes.js";
 
 
 
+
 const app = express();
 
 
@@ -50,5 +51,6 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/disputes", disputeRoutes);
+
 
 export default app;
