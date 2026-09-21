@@ -1,17 +1,6 @@
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
-import {
-  getAdminDisputes,
-  updateDispute,
-  applyDisputeOutcome,
-} from "../api/disputeApi";
-
+import {useCallback, useEffect, useState,} from "react";
+import {getAdminDisputes, updateDispute, applyDisputeOutcome, getDisputeEvents,} from "../api/disputeApi";
 import { useAuth } from "../context/AuthContext";
 
 /* =========================================================
@@ -19,17 +8,10 @@ import { useAuth } from "../context/AuthContext";
 ========================================================= */
 
 const statusStyles = {
-  OPEN:
-    "bg-red-100 text-red-700 border-red-200",
-
-  UNDER_REVIEW:
-    "bg-blue-100 text-blue-700 border-blue-200",
-
-  RESOLVED:
-    "bg-green-100 text-green-700 border-green-200",
-
-  CLOSED:
-    "bg-gray-100 text-gray-700 border-gray-200",
+  OPEN: "border-red-200 bg-red-50 text-red-700",
+  UNDER_REVIEW: "border-blue-200 bg-blue-50 text-blue-700",
+  RESOLVED: "border-green-200 bg-green-50 text-green-700",
+  CLOSED: "border-gray-200 bg-gray-100 text-gray-700",
 };
 
 /* =========================================================
@@ -50,21 +32,20 @@ const formatStatus = (status) => {
 const formatDateTime = (date) => {
   if (!date) return "—";
 
-  return new Date(date).toLocaleString(
-    "en-KE",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }
-  );
-};
+  const parsed = new Date(date);
 
-/* =========================================================
-   ALLOWED ADMIN STATUS TRANSITIONS
-========================================================= */
+  if (Number.isNaN(parsed.getTime())) {
+    return "—";
+  }
+
+  return parsed.toLocaleString("en-KE", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
 
 const getNextStatuses = (status) => {
   switch (status) {
@@ -85,6 +66,118 @@ const getNextStatuses = (status) => {
   }
 };
 
+const getOutcomeLabel = (outcome) => {
+  if (outcome === "CANCEL_TRADE") {
+    return "Trade Cancelled";
+  }
+
+  if (outcome === "REOPEN_TRADE") {
+    return "Trade Reopened";
+  }
+
+  return formatStatus(outcome);
+};
+
+const getEventTitle = (eventType) => {
+  const titles = {
+    DISPUTE_CREATED: "Dispute Created",
+    STATUS_UPDATED: "Dispute Status Updated",
+    DISPUTE_STATUS_UPDATED:
+      "Dispute Status Updated",
+    OUTCOME_APPLIED: "Dispute Outcome Applied",
+    DISPUTE_OUTCOME_APPLIED:
+      "Dispute Outcome Applied",
+    TRADE_STATUS_CHANGED:
+      "Trade Status Changed",
+  };
+
+  return (
+    titles[eventType] ||
+    formatStatus(eventType)
+  );
+};
+
+const getEventIcon = (eventType) => {
+  if (
+    eventType === "DISPUTE_CREATED"
+  ) {
+    return "!";
+  }
+
+  if (
+    eventType?.includes("OUTCOME")
+  ) {
+    return "✓";
+  }
+
+  if (
+    eventType?.includes("STATUS")
+  ) {
+    return "↻";
+  }
+
+  return "•";
+};
+
+/* =========================================================
+   SMALL UI COMPONENTS
+========================================================= */
+
+const StatusBadge = ({ status }) => {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${statusStyles[status] ||
+        statusStyles.OPEN
+        }`}
+    >
+      <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-current" />
+      {formatStatus(status)}
+    </span>
+  );
+};
+
+const SectionHeader = ({ eyebrow, title, description}) => {
+  return (
+    <div className="mb-5">
+      {eyebrow && (
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+          {eyebrow}
+        </p>
+      )}
+
+      <h3 className="mt-1 text-xl font-extrabold tracking-tight text-[#21191B]">
+        {title}
+      </h3>
+
+      {description && (
+        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-gray-500">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+};
+
+const InfoCard = ({
+  label,
+  value,
+  valueClassName = "",
+}) => {
+  return (
+    <div className="rounded-2xl border border-[#E9DFE2] bg-[#FCF8F9] p-4">
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-400">
+        {label}
+      </p>
+
+      <p
+        className={`mt-2 wrap-break-words text-sm font-extrabold text-[#21191B] ${valueClassName}`}
+      >
+        {value || "—"}
+      </p>
+    </div>
+  );
+};
+
 /* =========================================================
    ADMIN DISPUTES
 ========================================================= */
@@ -97,52 +190,33 @@ const AdminDisputes = () => {
   ======================================================= */
 
   const [disputes, setDisputes] = useState([]);
-
-  const [selectedDispute, setSelectedDispute] =
-    useState(null);
-
-  const [filterStatus, setFilterStatus] =
-    useState("OPEN");
-
-  const [resolution, setResolution] =
-    useState("");
-
-  const [nextStatus, setNextStatus] =
-    useState("");
-
-  const [selectedOutcome, setSelectedOutcome] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [actionLoading, setActionLoading] =
-    useState(false);
-
-  const [outcomeLoading, setOutcomeLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState("");
-
-  const [outcomeError, setOutcomeError] =
-    useState("");
+  const [statusCounts, setStatusCounts] = useState({ OPEN: 0, UNDER_REVIEW: 0, RESOLVED: 0, CLOSED: 0,});
+  const [selectedDispute, setSelectedDispute] = useState(null);
+  const [filterStatus, setFilterStatus] = useState("OPEN");
+  const [resolution, setResolution] = useState("");
+  const [nextStatus, setNextStatus] = useState("");
+  const [selectedOutcome, setSelectedOutcome] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [outcomeLoading, setOutcomeLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [outcomeError, setOutcomeError] = useState("");
 
   /* =======================================================
-     ADMIN CHECK
+     AUDIT HISTORY
   ======================================================= */
 
+  const [disputeEvents, setDisputeEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsError, setEventsError] = useState("");
   const isAdmin = user?.role === "ADMIN";
 
   /* =======================================================
-     LOAD DISPUTES
+     LOAD DISPUTES + GLOBAL COUNTS
   ======================================================= */
 
-  const loadDisputes = useCallback(
-    async () => {
+  const loadDisputes = useCallback(async () => {
       if (!isAdmin) {
         return;
       }
@@ -151,29 +225,66 @@ const AdminDisputes = () => {
         setLoading(true);
         setError("");
 
-        const response =
-          await getAdminDisputes(
-            filterStatus
-          );
+        const statuses = [
+          "OPEN",
+          "UNDER_REVIEW",
+          "RESOLVED",
+          "CLOSED",
+        ];
 
-        setDisputes(
-          response?.disputes || []
+        const responses = await Promise.all(
+          statuses.map((status) =>
+            getAdminDisputes(status)
+          )
         );
+
+        const nextCounts = {};
+
+        statuses.forEach(
+          (status, index) => {
+            nextCounts[status] =
+              responses[index]?.disputes
+                ?.length || 0;
+          }
+        );
+
+        setStatusCounts(nextCounts);
+
+        const selectedIndex = statuses.indexOf(filterStatus);
+        const selectedResponse = selectedIndex >= 0
+            ? responses[selectedIndex]
+            : null;
+
+        const nextDisputes = selectedResponse?.disputes || [];
+
+        setDisputes(nextDisputes);
+
+        if (selectedDispute?.id) {
+          const refreshed =
+            nextDisputes.find(
+              (dispute) =>
+                dispute.id ===
+                selectedDispute.id
+            );
+
+          if (refreshed) {
+            setSelectedDispute(refreshed);
+          }
+        }
       } catch (error) {
-        console.error(
-          "LOAD ADMIN DISPUTES ERROR:",
-          error
-        );
+        console.error("LOAD ADMIN DISPUTES ERROR:", error);
 
-        setError(
-          error.response?.data?.message ||
-            "Unable to load disputes."
+        setError( error.response?.data?.message || "Unable to load disputes."
         );
       } finally {
         setLoading(false);
       }
     },
-    [isAdmin, filterStatus]
+    [
+      isAdmin,
+      filterStatus,
+      selectedDispute?.id,
+    ]
   );
 
   useEffect(() => {
@@ -181,21 +292,37 @@ const AdminDisputes = () => {
   }, [loadDisputes]);
 
   /* =======================================================
-     STATUS COUNTS
+     LOAD AUDIT EVENTS
   ======================================================= */
 
-  const counts = useMemo(() => {
-    return disputes.reduce(
-      (result, dispute) => {
-        result[dispute.status] =
-          (result[dispute.status] || 0) +
-          1;
+  const loadDisputeEvents = useCallback(async (disputeId) => {
+      if (!disputeId || !isAdmin) {
+        return;
+      }
 
-        return result;
-      },
-      {}
-    );
-  }, [disputes]);
+      try {
+        setEventsLoading(true);
+        setEventsError("");
+        setDisputeEvents([]);
+
+        const response = await getDisputeEvents(
+            disputeId
+          );
+
+        setDisputeEvents(response?.events || []);
+      } catch (error) {
+        console.error( "LOAD DISPUTE EVENTS ERROR:",error);
+
+        setEventsError(
+          error.response?.data?.message || "Unable to load dispute audit history.");
+
+        setDisputeEvents([]);
+      } finally {
+        setEventsLoading(false);
+      }
+    },
+    [isAdmin]
+  );
 
   /* =======================================================
      OPEN DISPUTE
@@ -209,18 +336,20 @@ const AdminDisputes = () => {
     );
 
     setNextStatus("");
-
     setSelectedOutcome("");
 
     setError("");
-
     setSuccess("");
-
     setOutcomeError("");
+
+    setDisputeEvents([]);
+    setEventsError("");
+
+    loadDisputeEvents(dispute.id);
   };
 
   /* =======================================================
-     CLOSE DISPUTE MODAL
+     CLOSE DISPUTE
   ======================================================= */
 
   const closeDispute = () => {
@@ -234,16 +363,15 @@ const AdminDisputes = () => {
     setSelectedDispute(null);
 
     setResolution("");
-
     setNextStatus("");
-
     setSelectedOutcome("");
 
     setError("");
-
     setSuccess("");
-
     setOutcomeError("");
+
+    setDisputeEvents([]);
+    setEventsError("");
   };
 
   /* =======================================================
@@ -256,10 +384,7 @@ const AdminDisputes = () => {
     }
 
     if (!nextStatus) {
-      setError(
-        "Please select the next dispute status."
-      );
-
+      setError("Please select the next dispute status.");
       return;
     }
 
@@ -272,15 +397,12 @@ const AdminDisputes = () => {
       setError(
         "A resolution is required before resolving or closing a dispute."
       );
-
       return;
     }
 
     try {
       setActionLoading(true);
-
       setError("");
-
       setSuccess("");
 
       const response =
@@ -311,16 +433,15 @@ const AdminDisputes = () => {
       setNextStatus("");
 
       await loadDisputes();
-    } catch (error) {
-      console.error(
-        "UPDATE ADMIN DISPUTE ERROR:",
-        error
+
+      await loadDisputeEvents(
+        selectedDispute.id
       );
+    } catch (error) {
+      console.error( "UPDATE ADMIN DISPUTE ERROR:",  error);
 
       setError(
-        error.response?.data?.message ||
-          "Unable to update dispute."
-      );
+        error.response?.data?.message ||"Unable to update dispute.");
     } finally {
       setActionLoading(false);
     }
@@ -336,13 +457,9 @@ const AdminDisputes = () => {
     }
 
     if (
-      selectedDispute.status !==
-      "UNDER_REVIEW"
+      selectedDispute.status !=="UNDER_REVIEW"
     ) {
-      setOutcomeError(
-        "The dispute must be under review before an outcome can be applied."
-      );
-
+      setOutcomeError( "The dispute must be under review before an outcome can be applied.");
       return;
     }
 
@@ -355,7 +472,6 @@ const AdminDisputes = () => {
       setOutcomeError(
         "Please select a dispute outcome."
       );
-
       return;
     }
 
@@ -363,10 +479,7 @@ const AdminDisputes = () => {
       resolution.trim();
 
     if (!trimmedResolution) {
-      setOutcomeError(
-        "Please enter a resolution."
-      );
-
+      setOutcomeError( "Please enter a resolution.");
       return;
     }
 
@@ -376,7 +489,6 @@ const AdminDisputes = () => {
       setOutcomeError(
         "Resolution cannot exceed 5000 characters."
       );
-
       return;
     }
 
@@ -396,16 +508,16 @@ const AdminDisputes = () => {
 
     try {
       setOutcomeLoading(true);
-
       setOutcomeError("");
-
       setError("");
-
       setSuccess("");
+
+      const disputeId =
+        selectedDispute.id;
 
       const response =
         await applyDisputeOutcome(
-          selectedDispute.id,
+          disputeId,
           selectedOutcome,
           trimmedResolution
         );
@@ -415,17 +527,14 @@ const AdminDisputes = () => {
           "Dispute outcome applied successfully."
       );
 
-      /*
-       * Close the modal after a successful
-       * final outcome.
-       */
       setSelectedDispute(null);
 
       setResolution("");
-
       setSelectedOutcome("");
 
       await loadDisputes();
+
+      setDisputeEvents([]);
     } catch (error) {
       console.error(
         "APPLY DISPUTE OUTCOME ERROR:",
@@ -447,14 +556,19 @@ const AdminDisputes = () => {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[#F8F5F3] px-6 py-20">
-        <div className="mx-auto max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-          <h1 className="text-2xl font-extrabold text-red-800">
+      <div className="min-h-screen bg-[#F8F5F3] px-4 py-16 sm:px-6">
+        <div className="mx-auto max-w-lg rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-2xl">
+            🔐
+          </div>
+
+          <h1 className="mt-5 text-2xl font-extrabold text-[#21191B]">
             Authentication required
           </h1>
 
-          <p className="mt-2 text-sm text-red-700">
-            Please log in to continue.
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            Please log in to access the
+            dispute management panel.
           </p>
         </div>
       </div>
@@ -467,28 +581,24 @@ const AdminDisputes = () => {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-[#F8F5F3] px-6 py-20">
-        <div className="mx-auto max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
-          <div className="text-4xl">
+      <div className="min-h-screen bg-[#F8F5F3] px-4 py-16 sm:px-6">
+        <div className="mx-auto max-w-lg rounded-3xl border border-red-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-50 text-2xl">
             🔒
           </div>
 
-          <h1 className="mt-4 text-2xl font-extrabold text-red-800">
+          <h1 className="mt-5 text-2xl font-extrabold text-[#21191B]">
             Administrator Access Required
           </h1>
 
-          <p className="mt-2 text-sm leading-6 text-red-700">
-            You do not have permission to view
-            the dispute management panel.
+          <p className="mt-2 text-sm leading-6 text-gray-500">
+            You do not have permission to
+            view the dispute management panel.
           </p>
         </div>
       </div>
     );
   }
-
-  /* =======================================================
-     NEXT STATUS OPTIONS
-  ======================================================= */
 
   const nextStatuses =
     getNextStatuses(
@@ -502,24 +612,28 @@ const AdminDisputes = () => {
   return (
     <div className="min-h-screen bg-[#F8F5F3]">
       {/* =================================================
-          HEADER
+          PAGE HEADER
       ================================================= */}
 
-      <section className="bg-[#3D0F18] px-6 py-12 text-white">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-sm font-bold uppercase tracking-widest text-[#DCAEB7]">
-            Administration
-          </p>
+      <section className="overflow-hidden bg-[#3D0F18] text-white">
+        <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-bold text-[#DCAEB7]">
+              <span className="h-2 w-2 rounded-full bg-[#DCAEB7]" />
+              Administration
+            </div>
 
-          <h1 className="mt-2 text-3xl font-extrabold md:text-5xl">
-            Trade Disputes
-          </h1>
+            <h1 className="mt-5 text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+              Trade Disputes
+            </h1>
 
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-white/70">
-            Review reported barter problems,
-            examine both sides of the trade, and
-            record final dispute outcomes.
-          </p>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-white/70 sm:text-base">
+              Review reported barter problems,
+              examine both sides of the trade,
+              track the investigation, and
+              record the final outcome.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -527,225 +641,298 @@ const AdminDisputes = () => {
           MAIN
       ================================================= */}
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         {/* GLOBAL ERROR */}
 
-        {error &&
-          !selectedDispute && (
-            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-              ⚠️ {error}
+        {error && !selectedDispute && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <span className="text-lg">
+              ⚠️
+            </span>
+
+            <div>
+              <p className="font-extrabold">
+                Something went wrong
+              </p>
+
+              <p className="mt-1 leading-6">
+                {error}
+              </p>
             </div>
-          )}
+          </div>
+        )}
 
         {/* GLOBAL SUCCESS */}
 
-        {success &&
-          !selectedDispute && (
-            <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
-              ✓ {success}
+        {success && !selectedDispute && (
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <span className="text-lg">
+              ✓
+            </span>
+
+            <div>
+              <p className="font-extrabold">
+                Action completed
+              </p>
+
+              <p className="mt-1 leading-6">
+                {success}
+              </p>
             </div>
-          )}
+          </div>
+        )}
 
         {/* =================================================
-            STATUS FILTERS
+            QUEUE OVERVIEW
         ================================================= */}
 
-        <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm md:p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-3xl border border-[#E7DDDF] bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
                 Dispute queue
               </p>
 
-              <h2 className="mt-1 text-2xl font-extrabold text-[#21191B]">
+              <h2 className="mt-1 text-2xl font-black tracking-tight text-[#21191B]">
                 Review reports
               </h2>
+
+              <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
+                Select a queue to review cases
+                at each stage of the dispute
+                workflow.
+              </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-130">
               {[
                 "OPEN",
                 "UNDER_REVIEW",
                 "RESOLVED",
                 "CLOSED",
-              ].map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() =>
-                    setFilterStatus(status)
-                  }
-                  className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${
-                    filterStatus === status
-                      ? "border-[#5B1725] bg-[#5B1725] text-white"
-                      : "border-[#DCCACE] bg-white text-gray-600 hover:bg-[#FBF5F6]"
-                  }`}
-                >
-                  {formatStatus(status)}
+              ].map((status) => {
+                const active =
+                  filterStatus === status;
 
-                  {counts[status] ? (
-                    <span className="ml-2">
-                      ({counts[status]})
-                    </span>
-                  ) : null}
-                </button>
-              ))}
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() =>
+                      setFilterStatus(status)
+                    }
+                    className={`group rounded-2xl border p-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#DCAEB7] ${
+                      active
+                        ? "border-[#5B1725] bg-[#5B1725] text-white shadow-md"
+                        : "border-[#E7DDDF] bg-white text-[#21191B] hover:border-[#B98A95] hover:bg-[#FCF8F9]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[11px] font-bold uppercase tracking-wider ${
+                          active
+                            ? "text-white/70"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {status ===
+                        "UNDER_REVIEW"
+                          ? "Under review"
+                          : formatStatus(
+                              status
+                            )}
+                      </span>
+
+                      <span
+                        className={`flex h-7 min-w-7 items-center justify-center rounded-full px-2 text-xs font-black ${
+                          active
+                            ? "bg-white/15 text-white"
+                            : "bg-[#F5E8EB] text-[#5B1725]"
+                        }`}
+                      >
+                        {statusCounts[
+                          status
+                        ] || 0}
+                      </span>
+                    </div>
+
+                    <div
+                      className={`mt-2 text-xs ${
+                        active
+                          ? "text-white/60"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {active
+                        ? "Currently viewing"
+                        : "View queue"}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </section>
 
         {/* =================================================
-            DISPUTES
+            DISPUTE LIST
         ================================================= */}
 
         <section className="mt-6">
           {loading ? (
-            <div className="rounded-2xl border border-[#E7DDDF] bg-white p-12 text-center shadow-sm">
-              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#E7DDDF] border-t-[#8A2638]" />
-
-              <p className="mt-4 text-sm text-gray-500">
-                Loading disputes...
-              </p>
-            </div>
-          ) : disputes.length ===
-            0 ? (
-            <div className="rounded-2xl border border-dashed border-[#DCCACE] bg-white p-12 text-center shadow-sm">
-              <div className="text-4xl">
-                ✅
+            <div className="rounded-3xl border border-[#E7DDDF] bg-white px-6 py-16 text-center shadow-sm">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F5E8EB]">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#DCAEB7] border-t-[#5B1725]" />
               </div>
 
-              <h3 className="mt-4 text-xl font-extrabold text-[#21191B]">
+              <h3 className="mt-5 text-lg font-extrabold text-[#21191B]">
+                Loading disputes
+              </h3>
+
+              <p className="mt-1 text-sm text-gray-500">
+                Fetching the latest dispute
+                queue...
+              </p>
+            </div>
+          ) : disputes.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-[#DCCACE] bg-white px-6 py-16 text-center shadow-sm">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-50 text-3xl">
+                ✓
+              </div>
+
+              <h3 className="mt-5 text-xl font-black text-[#21191B]">
                 No disputes found
               </h3>
 
-              <p className="mt-2 text-sm text-gray-500">
-                There are no disputes in this
-                status queue.
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
+                There are currently no disputes
+                in the{" "}
+                <span className="font-bold text-[#5B1725]">
+                  {formatStatus(
+                    filterStatus
+                  )}
+                </span>{" "}
+                queue.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {disputes.map(
-                (dispute) => {
-                  const trade =
-                    dispute.trade;
+              {disputes.map((dispute) => {
+                const trade =
+                  dispute.trade;
 
-                  return (
-                    <article
-                      key={dispute.id}
-                      className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-sm md:p-6"
-                    >
-                      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`rounded-full border px-3 py-1 text-xs font-bold ${
-                                statusStyles[
-                                  dispute.status
-                                ] ||
-                                statusStyles.OPEN
-                              }`}
-                            >
-                              {formatStatus(
-                                dispute.status
-                              )}
-                            </span>
+                return (
+                  <article
+                    key={dispute.id}
+                    className="group rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm transition hover:-translate-y-px hover:border-[#CDAAB2] hover:shadow-md sm:p-6"
+                  >
+                    <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        {/* BADGES */}
 
-                            <span className="rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
-                              {trade?.tradeNumber ||
-                                "Unknown trade"}
-                            </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge
+                            status={
+                              dispute.status
+                            }
+                          />
 
-                            {dispute.outcome && (
-                              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                                {dispute.outcome ===
-                                "CANCEL_TRADE"
-                                  ? "Trade Cancelled"
-                                  : "Trade Reopened"}
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="mt-4 text-xl font-extrabold text-[#21191B]">
-                            {dispute.reason}
-                          </h3>
-
-                          <p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-600">
-                            {dispute.description}
-                          </p>
-
-                          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                            <div className="rounded-xl bg-[#FBF5F6] p-4">
-                              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                                Reported by
-                              </p>
-
-                              <p className="mt-1 font-bold text-[#21191B]">
-                                {dispute.user
-                                  ?.name ||
-                                  "Unknown user"}
-                              </p>
-                            </div>
-
-                            <div className="rounded-xl bg-[#FBF5F6] p-4">
-                              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                                Submitted
-                              </p>
-
-                              <p className="mt-1 font-bold text-[#21191B]">
-                                {formatDateTime(
-                                  dispute.createdAt
-                                )}
-                              </p>
-                            </div>
-                          </div>
+                          <span className="inline-flex items-center rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
+                            Trade{" "}
+                            {trade?.tradeNumber ||
+                              "Unknown"}
+                          </span>
 
                           {dispute.outcome && (
-                            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-4">
-                              <p className="text-xs font-bold uppercase tracking-wider text-green-700">
-                                Admin outcome
-                              </p>
-
-                              <p className="mt-1 text-sm font-extrabold text-green-800">
-                                {dispute.outcome ===
-                                "CANCEL_TRADE"
-                                  ? "Trade Cancelled"
-                                  : "Trade Reopened"}
-                              </p>
-
-                              {dispute.outcome ===
-                                "REOPEN_TRADE" &&
-                                dispute.previousTradeStatus && (
-                                  <p className="mt-1 text-xs text-green-700">
-                                    Returned to{" "}
-                                    <span className="font-bold">
-                                      {formatStatus(
-                                        dispute.previousTradeStatus
-                                      )}
-                                    </span>
-                                  </p>
-                                )}
-
-                              {dispute.resolution && (
-                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-green-700">
-                                  {
-                                    dispute.resolution
-                                  }
-                                </p>
+                            <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                              ✓{" "}
+                              {getOutcomeLabel(
+                                dispute.outcome
                               )}
-
-                              {dispute.outcomeAt && (
-                                <p className="mt-2 text-xs text-green-600">
-                                  Outcome recorded{" "}
-                                  {formatDateTime(
-                                    dispute.outcomeAt
-                                  )}
-                                </p>
-                              )}
-                            </div>
+                            </span>
                           )}
                         </div>
 
+                        {/* TITLE */}
+
+                        <h3 className="mt-5 text-xl font-black tracking-tight text-[#21191B] sm:text-2xl">
+                          {dispute.reason ||
+                            "Trade dispute"}
+                        </h3>
+
+                        <p className="mt-2 line-clamp-3 max-w-3xl text-sm leading-7 text-gray-600">
+                          {dispute.description}
+                        </p>
+
+                        {/* META */}
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                          <InfoCard
+                            label="Reported by"
+                            value={
+                              dispute.user
+                                ?.name ||
+                              "Unknown user"
+                            }
+                          />
+
+                          <InfoCard
+                            label="Submitted"
+                            value={formatDateTime(
+                              dispute.createdAt
+                            )}
+                          />
+                        </div>
+
+                        {/* OUTCOME SUMMARY */}
+
+                        {dispute.outcome && (
+                          <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-green-600 text-sm font-black text-white">
+                                ✓
+                              </div>
+
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold uppercase tracking-[0.12em] text-green-700">
+                                  Admin outcome
+                                </p>
+
+                                <p className="mt-1 font-extrabold text-green-900">
+                                  {getOutcomeLabel(
+                                    dispute.outcome
+                                  )}
+                                </p>
+
+                                {dispute.outcome ===
+                                  "REOPEN_TRADE" &&
+                                  dispute.previousTradeStatus && (
+                                    <p className="mt-1 text-xs text-green-700">
+                                      Returned to{" "}
+                                      <span className="font-bold">
+                                        {formatStatus(
+                                          dispute.previousTradeStatus
+                                        )}
+                                      </span>
+                                    </p>
+                                  )}
+
+                                {dispute.resolution && (
+                                  <p className="mt-3 line-clamp-2 text-sm leading-6 text-green-800">
+                                    {
+                                      dispute.resolution
+                                    }
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* REVIEW BUTTON */}
+
+                      <div className="shrink-0 lg:pt-1">
                         <button
                           type="button"
                           onClick={() =>
@@ -753,15 +940,18 @@ const AdminDisputes = () => {
                               dispute
                             )
                           }
-                          className="w-full shrink-0 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] lg:w-auto"
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#5B1725] px-5 py-3.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-[#3D0F18] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#DCAEB7] focus:ring-offset-2 sm:w-auto"
                         >
-                          Review Dispute →
+                          Review Dispute
+                          <span className="text-base transition-transform group-hover:translate-x-0.5">
+                            →
+                          </span>
                         </button>
                       </div>
-                    </article>
-                  );
-                }
-              )}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </section>
@@ -772,58 +962,62 @@ const AdminDisputes = () => {
       ================================================= */}
 
       {selectedDispute && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60">
-          <div className="flex min-h-full items-start justify-center p-3 sm:items-center sm:p-6">
-            <div className="my-3 flex w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:my-6">
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-[#21191B]/70 p-3 backdrop-blur-sm sm:p-6"
+          onMouseDown={(event) => {
+            if (
+              event.target ===
+                event.currentTarget &&
+              !actionLoading &&
+              !outcomeLoading
+            ) {
+              closeDispute();
+            }
+          }}
+        >
+          <div className="flex min-h-full items-start justify-center sm:items-center">
+            <div className="my-2 flex w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:my-6">
               {/* =================================================
                   MODAL HEADER
               ================================================= */}
 
-              <div className="shrink-0 border-b border-[#E7DDDF] bg-[#FBF5F6] px-5 py-5 sm:px-7">
-                <div className="flex items-start justify-between gap-4">
+              <header className="shrink-0 border-b border-[#E7DDDF] bg-[#FBF5F6] px-5 py-5 sm:px-7">
+                <div className="flex items-start justify-between gap-5">
                   <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
-                      Dispute Review
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge
+                        status={
+                          selectedDispute.status
+                        }
+                      />
+
+                      {selectedDispute.outcome && (
+                        <span className="inline-flex items-center rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                          ✓{" "}
+                          {getOutcomeLabel(
+                            selectedDispute.outcome
+                          )}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-4 text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+                      Dispute review
                     </p>
 
-                    <h2 className="mt-1 text-xl font-extrabold text-[#21191B] sm:text-2xl">
+                    <h2 className="mt-1 truncate text-xl font-black tracking-tight text-[#21191B] sm:text-2xl">
                       {selectedDispute
                         .trade
                         ?.tradeNumber ||
                         "Trade Dispute"}
                     </h2>
 
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span
-                        className={`rounded-full border px-3 py-1 text-xs font-bold ${
-                          statusStyles[
-                            selectedDispute
-                              .status
-                          ] ||
-                          statusStyles.OPEN
-                        }`}
-                      >
-                        {formatStatus(
-                          selectedDispute.status
-                        )}
-                      </span>
-
-                      <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-600">
-                        Submitted{" "}
-                        {formatDateTime(
-                          selectedDispute.createdAt
-                        )}
-                      </span>
-
-                      {selectedDispute.outcome && (
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                          {selectedDispute.outcome ===
-                          "CANCEL_TRADE"
-                            ? "Trade Cancelled"
-                            : "Trade Reopened"}
-                        </span>
+                    <p className="mt-2 text-xs text-gray-500">
+                      Submitted{" "}
+                      {formatDateTime(
+                        selectedDispute.createdAt
                       )}
-                    </div>
+                    </p>
                   </div>
 
                   <button
@@ -833,30 +1027,55 @@ const AdminDisputes = () => {
                       actionLoading ||
                       outcomeLoading
                     }
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-gray-500 shadow-sm transition hover:bg-gray-100 disabled:opacity-50"
+                    aria-label="Close dispute review"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E7DDDF] bg-white text-xl font-medium text-gray-500 transition hover:border-[#B98A95] hover:bg-[#F5E8EB] hover:text-[#5B1725] disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     ×
                   </button>
                 </div>
-              </div>
+              </header>
 
               {/* =================================================
-                  MODAL CONTENT
+                  MODAL BODY
               ================================================= */}
 
-              <div className="max-h-[calc(100dvh-8rem)] overflow-y-auto px-5 py-6 sm:px-7 sm:py-7">
-                <div className="space-y-6">
-                  {/* GLOBAL MODAL ERROR */}
+              <div className="max-h-[calc(100dvh-7rem)] overflow-y-auto px-4 py-5 sm:px-7 sm:py-7">
+                <div className="space-y-7">
+                  {/* MODAL MESSAGES */}
 
                   {error && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-                      ⚠️ {error}
+                    <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                      <span className="text-lg">
+                        ⚠️
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="font-extrabold">
+                          Action could not be completed
+                        </p>
+
+                        <p className="mt-1 leading-6">
+                          {error}
+                        </p>
+                      </div>
                     </div>
                   )}
 
                   {success && (
-                    <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-700">
-                      ✓ {success}
+                    <div className="flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+                      <span className="text-lg">
+                        ✓
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="font-extrabold">
+                          Action completed
+                        </p>
+
+                        <p className="mt-1 leading-6">
+                          {success}
+                        </p>
+                      </div>
                     </div>
                   )}
 
@@ -864,27 +1083,41 @@ const AdminDisputes = () => {
                       REPORTED ISSUE
                   ================================================= */}
 
-                  <section className="rounded-2xl border border-red-200 bg-red-50 p-5">
-                    <p className="text-xs font-bold uppercase tracking-wider text-red-700">
-                      Reported issue
-                    </p>
+                  <section className="rounded-3xl border border-red-200 bg-red-50 p-5 sm:p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-lg">
+                        ⚠️
+                      </div>
 
-                    <h3 className="mt-2 text-lg font-extrabold text-red-900">
-                      {selectedDispute.reason}
-                    </h3>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">
+                          Reported issue
+                        </p>
 
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-red-800">
-                      {
-                        selectedDispute.description
-                      }
-                    </p>
+                        <h3 className="mt-1.5 text-xl font-black text-red-950">
+                          {selectedDispute.reason}
+                        </h3>
 
-                    <p className="mt-4 text-xs font-semibold text-red-700">
-                      Reported by{" "}
-                      {selectedDispute.user
-                        ?.name ||
-                        "Unknown trader"}
-                    </p>
+                        <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-red-900/80">
+                          {
+                            selectedDispute.description
+                          }
+                        </p>
+
+                        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-red-700">
+                          <span>
+                            Reported by
+                          </span>
+
+                          <span className="font-extrabold">
+                            {selectedDispute
+                              .user
+                              ?.name ||
+                              "Unknown trader"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </section>
 
                   {/* =================================================
@@ -892,55 +1125,48 @@ const AdminDisputes = () => {
                   ================================================= */}
 
                   <section>
-                    <p className="mb-3 text-sm font-bold uppercase tracking-wider text-[#8A2638]">
-                      Trade context
-                    </p>
+                    <SectionHeader
+                      eyebrow="Trade context"
+                      title="Trade information"
+                      description="The trade information connected to this dispute."
+                    />
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-4">
-                        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                          Trade number
-                        </p>
-
-                        <p className="mt-1 font-extrabold text-[#21191B]">
-                          {selectedDispute
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <InfoCard
+                        label="Trade number"
+                        value={
+                          selectedDispute
                             .trade
-                            ?.tradeNumber ||
-                            "Unknown"}
-                        </p>
-                      </div>
+                            ?.tradeNumber
+                        }
+                      />
 
-                      <div className="rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-4">
-                        <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                          Current trade status
-                        </p>
-
-                        <p className="mt-1 font-extrabold text-[#21191B]">
-                          {formatStatus(
-                            selectedDispute
-                              .trade
-                              ?.status
-                          )}
-                        </p>
-                      </div>
+                      <InfoCard
+                        label="Current trade status"
+                        value={formatStatus(
+                          selectedDispute
+                            .trade
+                            ?.status
+                        )}
+                      />
 
                       {selectedDispute.previousTradeStatus && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
-                          <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2">
+                          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-amber-700">
                             Status before dispute
                           </p>
 
-                          <p className="mt-1 font-extrabold text-amber-800">
+                          <p className="mt-2 text-sm font-extrabold text-amber-900">
                             {formatStatus(
                               selectedDispute.previousTradeStatus
                             )}
                           </p>
 
                           <p className="mt-1 text-xs leading-5 text-amber-700">
-                            This is the stage the
-                            trade was in before
-                            it was moved to
-                            DISPUTED.
+                            This is the trade stage
+                            recorded before the
+                            dispute moved the trade
+                            into DISPUTED.
                           </p>
                         </div>
                       )}
@@ -952,17 +1178,17 @@ const AdminDisputes = () => {
                   ================================================= */}
 
                   <section>
-                    <p className="mb-3 text-sm font-bold uppercase tracking-wider text-[#8A2638]">
-                      Traders
-                    </p>
+                    <SectionHeader
+                      eyebrow="Participants"
+                      title="Traders"
+                      description="Both users involved in the trade."
+                    />
 
                     <div className="grid gap-4 md:grid-cols-2">
                       {[
-                        selectedDispute
-                          .trade
+                        selectedDispute.trade
                           ?.traderA,
-                        selectedDispute
-                          .trade
+                        selectedDispute.trade
                           ?.traderB,
                       ].map(
                         (
@@ -974,17 +1200,26 @@ const AdminDisputes = () => {
                               trader?.id ||
                               index
                             }
-                            className="rounded-2xl border border-[#E7DDDF] bg-white p-5"
+                            className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm"
                           >
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                              Trader{" "}
-                              {index ===
-                              0
-                                ? "A"
-                                : "B"}
-                            </p>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F5E8EB] font-black text-[#5B1725]">
+                                {index ===
+                                0
+                                  ? "A"
+                                  : "B"}
+                              </div>
 
-                            <h3 className="mt-1 text-lg font-extrabold text-[#21191B]">
+                              <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                                Trader{" "}
+                                {index ===
+                                0
+                                  ? "A"
+                                  : "B"}
+                              </span>
+                            </div>
+
+                            <h3 className="mt-5 text-lg font-black text-[#21191B]">
                               {trader?.name ||
                                 "Unknown trader"}
                             </h3>
@@ -999,13 +1234,13 @@ const AdminDisputes = () => {
                                 "No phone"}
                             </p>
 
-                            <div className="mt-3 grid grid-cols-2 gap-2">
-                              <div className="rounded-lg bg-[#FBF5F6] p-3">
-                                <p className="text-xs text-gray-400">
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <div className="rounded-xl bg-[#FCF8F9] p-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                                   Barter score
                                 </p>
 
-                                <p className="mt-1 font-bold text-[#8A2638]">
+                                <p className="mt-1 font-black text-[#8A2638]">
                                   {Number(
                                     trader?.barterScore ||
                                       0
@@ -1015,12 +1250,12 @@ const AdminDisputes = () => {
                                 </p>
                               </div>
 
-                              <div className="rounded-lg bg-[#FBF5F6] p-3">
-                                <p className="text-xs text-gray-400">
+                              <div className="rounded-xl bg-[#FCF8F9] p-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                                   Completed
                                 </p>
 
-                                <p className="mt-1 font-bold text-[#8A2638]">
+                                <p className="mt-1 font-black text-[#8A2638]">
                                   {trader?.completedTrades ||
                                     0}
                                 </p>
@@ -1033,19 +1268,21 @@ const AdminDisputes = () => {
                   </section>
 
                   {/* =================================================
-                      ITEMS
+                      TRADE ITEMS
                   ================================================= */}
 
                   <section>
-                    <p className="mb-3 text-sm font-bold uppercase tracking-wider text-[#8A2638]">
-                      Trade items
-                    </p>
+                    <SectionHeader
+                      eyebrow="Trade contents"
+                      title="Trade items"
+                      description="Items attached to the disputed trade."
+                    />
 
                     <div className="grid gap-4 md:grid-cols-2">
                       {selectedDispute
                         .trade
-                        ?.items
-                        ?.map(
+                        ?.items?.length > 0 ? (
+                        selectedDispute.trade.items.map(
                           (
                             item,
                             index
@@ -1055,128 +1292,318 @@ const AdminDisputes = () => {
                                 item.id ||
                                 index
                               }
-                              className="rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5"
+                              className="rounded-3xl border border-[#E7DDDF] bg-[#FCF8F9] p-5"
                             >
-                              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
-                                Item{" "}
-                                {index +
-                                  1}
-                              </p>
+                              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white font-black text-[#8A2638] shadow-sm">
+                                {index + 1}
+                              </div>
 
-                              <h3 className="mt-1 text-lg font-extrabold text-[#21191B]">
+                              <h3 className="mt-4 text-lg font-black text-[#21191B]">
                                 {item
                                   .listing
                                   ?.title ||
                                   "Unknown item"}
                               </h3>
 
-                              <p className="mt-2 text-sm text-gray-500">
-                                Condition:{" "}
-                                {item
-                                  .listing
-                                  ?.condition ||
-                                  "Unknown"}
-                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-gray-600">
+                                  {formatStatus(
+                                    item
+                                      .listing
+                                      ?.condition
+                                  )}
+                                </span>
 
-                              <p className="mt-1 text-sm font-bold text-[#8A2638]">
-                                KES{" "}
-                                {Number(
-                                  item
-                                    .listing
-                                    ?.estimatedValue ||
-                                    0
-                                ).toLocaleString()}
-                              </p>
+                                <span className="rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#8A2638]">
+                                  KES{" "}
+                                  {Number(
+                                    item
+                                      .listing
+                                      ?.estimatedValue ||
+                                      0
+                                  ).toLocaleString()}
+                                </span>
+                              </div>
                             </div>
                           )
-                        )}
-
-                      {(!selectedDispute
-                        .trade
-                        ?.items ||
-                        selectedDispute
-                          .trade
-                          .items
-                          .length ===
-                          0) && (
-                        <div className="rounded-xl border border-dashed border-[#DCCACE] p-5 text-sm text-gray-500 md:col-span-2">
-                          No trade item
-                          details are
-                          available.
+                        )
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-[#DCCACE] p-6 text-sm text-gray-500 md:col-span-2">
+                          No trade item details
+                          are available.
                         </div>
                       )}
                     </div>
                   </section>
 
                   {/* =================================================
-                      EXISTING RESOLUTION / OUTCOME
+                      AUDIT HISTORY
+                  ================================================= */}
+
+                  <section className="rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
+                    <div className="border-b border-[#E7DDDF] bg-[#FCF8F9] p-5 sm:p-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">
+                            Audit trail
+                          </p>
+
+                          <h3 className="mt-1 text-xl font-black text-[#21191B]">
+                            Dispute History
+                          </h3>
+
+                          <p className="mt-1 text-sm leading-6 text-gray-500">
+                            A chronological record
+                            of important actions on
+                            this dispute.
+                          </p>
+                        </div>
+
+                        <div className="inline-flex w-fit items-center rounded-full bg-[#F5E8EB] px-3 py-1.5 text-xs font-black text-[#5B1725]">
+                          {disputeEvents.length}{" "}
+                          {disputeEvents.length ===
+                          1
+                            ? "event"
+                            : "events"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-5 sm:p-6">
+                      {eventsLoading && (
+                        <div className="rounded-2xl border border-[#E7DDDF] bg-[#FCF8F9] px-5 py-10 text-center">
+                          <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
+                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#DCAEB7] border-t-[#5B1725]" />
+                          </div>
+
+                          <p className="mt-4 text-sm font-bold text-gray-600">
+                            Loading audit history...
+                          </p>
+                        </div>
+                      )}
+
+                      {!eventsLoading &&
+                        eventsError && (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                            <p className="font-extrabold text-red-800">
+                              Audit history unavailable
+                            </p>
+
+                            <p className="mt-1 text-sm leading-6 text-red-700">
+                              {eventsError}
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                loadDisputeEvents(
+                                  selectedDispute.id
+                                )
+                              }
+                              className="mt-4 inline-flex items-center rounded-xl bg-red-700 px-4 py-2.5 text-xs font-extrabold text-white transition hover:bg-red-800"
+                            >
+                              Try Again
+                            </button>
+                          </div>
+                        )}
+
+                      {!eventsLoading &&
+                        !eventsError &&
+                        disputeEvents.length ===
+                          0 && (
+                          <div className="rounded-2xl border border-dashed border-[#DCCACE] bg-[#FCF8F9] px-5 py-10 text-center">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl shadow-sm">
+                              📝
+                            </div>
+
+                            <p className="mt-4 font-extrabold text-[#21191B]">
+                              No audit events yet
+                            </p>
+
+                            <p className="mx-auto mt-1 max-w-sm text-sm leading-6 text-gray-500">
+                              No recorded activity is
+                              available for this
+                              dispute.
+                            </p>
+                          </div>
+                        )}
+
+                      {!eventsLoading &&
+                        !eventsError &&
+                        disputeEvents.length >
+                          0 && (
+                          <div className="relative">
+                            {/* TIMELINE */}
+
+                            <div className="absolute bottom-5 left-5 top-5 w-px bg-[#E7DDDF]" />
+
+                            <div className="space-y-5">
+                              {disputeEvents.map(
+                                (
+                                  event,
+                                  index
+                                ) => (
+                                  <div
+                                    key={
+                                      event.id ||
+                                      `${event.eventType}-${index}`
+                                    }
+                                    className="relative flex gap-4"
+                                  >
+                                    <div className="relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-white bg-[#5B1725] text-xs font-black text-white shadow-sm">
+                                      {getEventIcon(
+                                        event.eventType
+                                      )}
+                                    </div>
+
+                                    <div className="min-w-0 flex-1 rounded-2xl border border-[#E7DDDF] bg-white p-4 shadow-sm">
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                          <p className="font-extrabold text-[#21191B]">
+                                            {getEventTitle(
+                                              event.eventType
+                                            )}
+                                          </p>
+
+                                          {event.user?.name && (
+                                            <p className="mt-1 text-xs font-semibold text-[#8A2638]">
+                                              By{" "}
+                                              {
+                                                event
+                                                  .user
+                                                  .name
+                                              }
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <time className="shrink-0 text-xs font-medium text-gray-400">
+                                          {formatDateTime(
+                                            event.createdAt
+                                          )}
+                                        </time>
+                                      </div>
+
+                                      {event.description && (
+                                        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                                          {
+                                            event.description
+                                          }
+                                        </p>
+                                      )}
+
+                                      {event.metadata &&
+                                        typeof event.metadata ===
+                                          "object" &&
+                                        Object.keys(
+                                          event.metadata
+                                        ).length >
+                                          0 && (
+                                          <details className="mt-4 overflow-hidden rounded-xl border border-[#E7DDDF]">
+                                            <summary className="cursor-pointer bg-[#FCF8F9] px-4 py-3 text-xs font-extrabold text-[#5B1725]">
+                                              View event details
+                                            </summary>
+
+                                            <pre className="max-h-64 overflow-auto bg-[#21191B] p-4 text-xs leading-5 text-white">
+                                              {JSON.stringify(
+                                                event.metadata,
+                                                null,
+                                                2
+                                              )}
+                                            </pre>
+                                          </details>
+                                        )}
+                                    </div>
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+                    </div>
+                  </section>
+
+                  {/* =================================================
+                      EXISTING OUTCOME
                   ================================================= */}
 
                   {selectedDispute.outcome && (
-                    <section className="rounded-2xl border border-green-200 bg-green-50 p-5">
-                      <p className="text-xs font-bold uppercase tracking-wider text-green-700">
-                        Final admin outcome
-                      </p>
+                    <section className="rounded-3xl border border-green-200 bg-green-50 p-5 sm:p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-green-600 text-lg font-black text-white">
+                          ✓
+                        </div>
 
-                      <h3 className="mt-1 text-xl font-extrabold text-green-800">
-                        {selectedDispute.outcome ===
-                        "CANCEL_TRADE"
-                          ? "Trade Cancelled"
-                          : "Trade Reopened"}
-                      </h3>
-
-                      {selectedDispute.outcome ===
-                        "REOPEN_TRADE" &&
-                        selectedDispute.previousTradeStatus && (
-                          <p className="mt-2 text-sm text-green-700">
-                            Trade returned to{" "}
-                            <span className="font-bold">
-                              {formatStatus(
-                                selectedDispute.previousTradeStatus
-                              )}
-                            </span>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                            Final admin outcome
                           </p>
-                        )}
 
-                      {selectedDispute.resolution && (
-                        <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-green-700">
-                          {
-                            selectedDispute.resolution
-                          }
-                        </p>
-                      )}
+                          <h3 className="mt-1 text-xl font-black text-green-900">
+                            {getOutcomeLabel(
+                              selectedDispute.outcome
+                            )}
+                          </h3>
 
-                      {selectedDispute.outcomeAt && (
-                        <p className="mt-3 text-xs text-green-600">
-                          Outcome recorded{" "}
-                          {formatDateTime(
-                            selectedDispute.outcomeAt
+                          {selectedDispute.outcome ===
+                            "REOPEN_TRADE" &&
+                            selectedDispute.previousTradeStatus && (
+                              <p className="mt-2 text-sm text-green-800">
+                                Trade returned to{" "}
+                                <span className="font-extrabold">
+                                  {formatStatus(
+                                    selectedDispute.previousTradeStatus
+                                  )}
+                                </span>
+                              </p>
+                            )}
+
+                          {selectedDispute.resolution && (
+                            <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-green-800">
+                              {
+                                selectedDispute.resolution
+                              }
+                            </p>
                           )}
-                        </p>
-                      )}
+
+                          {selectedDispute.outcomeAt && (
+                            <p className="mt-3 text-xs text-green-700">
+                              Outcome recorded{" "}
+                              {formatDateTime(
+                                selectedDispute.outcomeAt
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </section>
                   )}
 
                   {/* =================================================
-                      ADMIN STATUS ACTION
+                      STATUS WORKFLOW
                   ================================================= */}
 
                   {nextStatuses.length >
                     0 && (
-                    <section className="rounded-2xl border border-[#E7DDDF] bg-white">
-                      <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] p-5">
-                        <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
+                    <section className="rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
+                      <div className="border-b border-[#E7DDDF] bg-[#FCF8F9] p-5 sm:p-6">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">
                           Dispute workflow
                         </p>
 
-                        <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
+                        <h3 className="mt-1 text-xl font-black text-[#21191B]">
                           Update dispute status
                         </h3>
+
+                        <p className="mt-1 text-sm leading-6 text-gray-500">
+                          Move the dispute to the
+                          next permitted stage.
+                        </p>
                       </div>
 
-                      <div className="space-y-5 p-5">
+                      <div className="space-y-5 p-5 sm:p-6">
                         <div>
-                          <label className="mb-2 block text-sm font-bold text-[#21191B]">
+                          <label className="mb-2 block text-sm font-extrabold text-[#21191B]">
                             New status
                           </label>
 
@@ -1184,33 +1611,27 @@ const AdminDisputes = () => {
                             value={nextStatus}
                             onChange={(
                               event
-                            ) =>
+                            ) => {
                               setNextStatus(
-                                event
-                                  .target
+                                event.target
                                   .value
-                              )
-                            }
+                              );
+                              setError("");
+                            }}
                             disabled={
                               actionLoading
                             }
-                            className="w-full rounded-xl border border-[#DCCACE] bg-white px-4 py-3 text-sm outline-none focus:border-[#8A2638] focus:ring-2 focus:ring-[#F5E8EB]"
+                            className="w-full rounded-2xl border border-[#DCCACE] bg-white px-4 py-3.5 text-sm font-medium text-[#21191B] outline-none transition focus:border-[#8A2638] focus:ring-4 focus:ring-[#F5E8EB] disabled:bg-gray-100"
                           >
                             <option value="">
                               Select next status
                             </option>
 
                             {nextStatuses.map(
-                              (
-                                status
-                              ) => (
+                              (status) => (
                                 <option
-                                  key={
-                                    status
-                                  }
-                                  value={
-                                    status
-                                  }
+                                  key={status}
+                                  value={status}
                                 >
                                   {formatStatus(
                                     status
@@ -1221,7 +1642,7 @@ const AdminDisputes = () => {
                           </select>
                         </div>
 
-                        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                        <div className="flex flex-col-reverse gap-3 border-t border-[#E7DDDF] pt-5 sm:flex-row sm:justify-end">
                           <button
                             type="button"
                             onClick={
@@ -1230,7 +1651,7 @@ const AdminDisputes = () => {
                             disabled={
                               actionLoading
                             }
-                            className="w-full rounded-xl border border-[#DCCACE] bg-white px-6 py-3 text-sm font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+                            className="w-full rounded-2xl border border-[#DCCACE] bg-white px-6 py-3.5 text-sm font-extrabold text-gray-600 transition hover:bg-[#FCF8F9] hover:text-[#5B1725] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                           >
                             Close
                           </button>
@@ -1244,13 +1665,24 @@ const AdminDisputes = () => {
                               actionLoading ||
                               !nextStatus
                             }
-                            className="w-full rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#5B1725] px-6 py-3.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                           >
-                            {actionLoading
-                              ? "Saving..."
-                              : `Move to ${formatStatus(
+                            {actionLoading ? (
+                              <>
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                Move to{" "}
+                                {formatStatus(
                                   nextStatus
-                                )}`}
+                                )}
+                                <span>
+                                  →
+                                </span>
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1263,31 +1695,41 @@ const AdminDisputes = () => {
 
                   {selectedDispute.status ===
                     "UNDER_REVIEW" && (
-                    <section className="rounded-2xl border border-[#E7DDDF] bg-white">
-                      <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] p-5">
-                        <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
-                          Step 2 · Final outcome
-                        </p>
+                    <section className="rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
+                      <div className="border-b border-[#E7DDDF] bg-[#FCF8F9] p-5 sm:p-6">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#5B1725] text-sm font-black text-white">
+                            2
+                          </div>
 
-                        <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
-                          Decide what happens
-                          to the trade
-                        </h3>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">
+                              Final outcome
+                            </p>
 
-                        <p className="mt-2 text-sm leading-6 text-gray-600">
+                            <h3 className="mt-1 text-xl font-black text-[#21191B]">
+                              Decide what happens to
+                              the trade
+                            </h3>
+                          </div>
+                        </div>
+
+                        <p className="mt-4 text-sm leading-7 text-gray-600">
                           The trade is currently{" "}
-                          <span className="font-bold">
+                          <span className="font-black text-[#5B1725]">
                             DISPUTED
                           </span>
                           . Choose whether to
-                          cancel it or reopen it at
-                          the stage recorded before
-                          the dispute.
+                          cancel it permanently or
+                          return it to the stage
+                          recorded before the dispute.
                         </p>
                       </div>
 
-                      <div className="space-y-5 p-5">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="space-y-6 p-5 sm:p-6">
+                        {/* OUTCOME OPTIONS */}
+
+                        <div className="grid gap-4 md:grid-cols-2">
                           {/* CANCEL */}
 
                           <button
@@ -1296,7 +1738,6 @@ const AdminDisputes = () => {
                               setSelectedOutcome(
                                 "CANCEL_TRADE"
                               );
-
                               setOutcomeError(
                                 ""
                               );
@@ -1304,28 +1745,40 @@ const AdminDisputes = () => {
                             disabled={
                               outcomeLoading
                             }
-                            className={`rounded-2xl border p-5 text-left transition ${
+                            className={`group rounded-3xl border p-5 text-left transition focus:outline-none focus:ring-2 focus:ring-red-200 ${
                               selectedOutcome ===
                               "CANCEL_TRADE"
-                                ? "border-red-500 bg-red-50 ring-2 ring-red-200"
-                                : "border-gray-200 bg-white hover:border-red-300"
+                                ? "border-red-500 bg-red-50 shadow-sm ring-2 ring-red-100"
+                                : "border-[#E7DDDF] bg-white hover:border-red-300 hover:bg-red-50/50"
                             } disabled:cursor-not-allowed disabled:opacity-50`}
                           >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-lg font-extrabold text-red-800">
-                                Cancel Trade
-                              </p>
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-100 text-lg text-red-700">
+                                ×
+                              </div>
 
-                              <span className="text-xl">
-                                ✕
+                              <span
+                                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                                  selectedOutcome ===
+                                  "CANCEL_TRADE"
+                                    ? "border-red-600 bg-red-600 text-white"
+                                    : "border-gray-300"
+                                }`}
+                              >
+                                {selectedOutcome ===
+                                  "CANCEL_TRADE" &&
+                                  "✓"}
                               </span>
                             </div>
 
-                            <p className="mt-2 text-sm leading-6 text-red-700">
+                            <h4 className="mt-5 text-lg font-black text-red-900">
+                              Cancel Trade
+                            </h4>
+
+                            <p className="mt-2 text-sm leading-6 text-red-800/80">
                               End this trade
-                              permanently and
-                              move it to
-                              CANCELLED.
+                              permanently and move
+                              it to CANCELLED.
                             </p>
                           </button>
 
@@ -1337,7 +1790,6 @@ const AdminDisputes = () => {
                               setSelectedOutcome(
                                 "REOPEN_TRADE"
                               );
-
                               setOutcomeError(
                                 ""
                               );
@@ -1346,36 +1798,49 @@ const AdminDisputes = () => {
                               outcomeLoading ||
                               !selectedDispute.previousTradeStatus
                             }
-                            className={`rounded-2xl border p-5 text-left transition ${
+                            className={`group rounded-3xl border p-5 text-left transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
                               selectedOutcome ===
                               "REOPEN_TRADE"
-                                ? "border-green-500 bg-green-50 ring-2 ring-green-200"
-                                : "border-gray-200 bg-white hover:border-green-300"
+                                ? "border-green-500 bg-green-50 shadow-sm ring-2 ring-green-100"
+                                : "border-[#E7DDDF] bg-white hover:border-green-300 hover:bg-green-50/50"
                             } disabled:cursor-not-allowed disabled:opacity-50`}
                           >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-lg font-extrabold text-green-800">
-                                Reopen Trade
-                              </p>
-
-                              <span className="text-xl">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-green-100 text-lg text-green-700">
                                 ↻
+                              </div>
+
+                              <span
+                                className={`flex h-6 w-6 items-center justify-center rounded-full border-2 ${
+                                  selectedOutcome ===
+                                  "REOPEN_TRADE"
+                                    ? "border-green-600 bg-green-600 text-white"
+                                    : "border-gray-300"
+                                }`}
+                              >
+                                {selectedOutcome ===
+                                  "REOPEN_TRADE" &&
+                                  "✓"}
                               </span>
                             </div>
 
-                            <p className="mt-2 text-sm leading-6 text-green-700">
+                            <h4 className="mt-5 text-lg font-black text-green-900">
+                              Reopen Trade
+                            </h4>
+
+                            <p className="mt-2 text-sm leading-6 text-green-800/80">
                               Return the trade to
-                              the stage it had
-                              before the dispute.
+                              the stage it had before
+                              the dispute.
                             </p>
 
-                            <p className="mt-3 rounded-lg bg-white px-3 py-2 text-sm font-bold text-green-800">
+                            <div className="mt-4 rounded-xl bg-white px-3 py-2.5 text-xs font-extrabold text-green-800">
                               {selectedDispute.previousTradeStatus
-                                ? formatStatus(
+                                ? `Return to ${formatStatus(
                                     selectedDispute.previousTradeStatus
-                                  )
+                                  )}`
                                 : "Previous stage unavailable"}
-                            </p>
+                            </div>
                           </button>
                         </div>
 
@@ -1384,11 +1849,11 @@ const AdminDisputes = () => {
                         {selectedOutcome && (
                           <div>
                             <div className="mb-2 flex items-center justify-between gap-4">
-                              <label className="block text-sm font-bold text-[#21191B]">
+                              <label className="text-sm font-extrabold text-[#21191B]">
                                 Resolution
                               </label>
 
-                              <span className="text-xs text-gray-400">
+                              <span className="text-xs font-medium text-gray-400">
                                 {
                                   resolution.length
                                 }
@@ -1406,11 +1871,9 @@ const AdminDisputes = () => {
                                 event
                               ) => {
                                 setResolution(
-                                  event
-                                    .target
+                                  event.target
                                     .value
                                 );
-
                                 setOutcomeError(
                                   ""
                                 );
@@ -1424,23 +1887,26 @@ const AdminDisputes = () => {
                                   ? "Explain why the trade was cancelled..."
                                   : "Explain why the trade was reopened..."
                               }
-                              className="w-full resize-y rounded-xl border border-[#DCCACE] bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-[#8A2638] focus:ring-2 focus:ring-[#F5E8EB] disabled:bg-gray-100"
+                              className="w-full resize-y rounded-2xl border border-[#DCCACE] bg-white px-4 py-3.5 text-sm leading-7 text-[#21191B] outline-none transition placeholder:text-gray-400 focus:border-[#8A2638] focus:ring-4 focus:ring-[#F5E8EB] disabled:bg-gray-100"
                             />
                           </div>
                         )}
 
-                        {/* OUTCOME ERROR */}
-
                         {outcomeError && (
-                          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-                            ⚠️{" "}
-                            {
-                              outcomeError
-                            }
+                          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                            <span>
+                              ⚠️
+                            </span>
+
+                            <p className="leading-6">
+                              {
+                                outcomeError
+                              }
+                            </p>
                           </div>
                         )}
 
-                        {/* OUTCOME BUTTONS */}
+                        {/* OUTCOME ACTIONS */}
 
                         <div className="flex flex-col-reverse gap-3 border-t border-[#E7DDDF] pt-5 sm:flex-row sm:justify-end">
                           <button
@@ -1451,7 +1917,7 @@ const AdminDisputes = () => {
                             disabled={
                               outcomeLoading
                             }
-                            className="w-full rounded-xl border border-[#DCCACE] bg-white px-6 py-3 text-sm font-bold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50 sm:w-auto"
+                            className="w-full rounded-2xl border border-[#DCCACE] bg-white px-6 py-3.5 text-sm font-extrabold text-gray-600 transition hover:bg-[#FCF8F9] hover:text-[#5B1725] disabled:opacity-50 sm:w-auto"
                           >
                             Close
                           </button>
@@ -1466,11 +1932,22 @@ const AdminDisputes = () => {
                               !selectedOutcome ||
                               !resolution.trim()
                             }
-                            className="w-full rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#5B1725] px-6 py-3.5 text-sm font-extrabold text-white shadow-sm transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                           >
-                            {outcomeLoading
-                              ? "Applying Outcome..."
-                              : "Apply Dispute Outcome"}
+                            {outcomeLoading ? (
+                              <>
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                Applying...
+                              </>
+                            ) : (
+                              <>
+                                Apply Dispute
+                                Outcome
+                                <span>
+                                  →
+                                </span>
+                              </>
+                            )}
                           </button>
                         </div>
                       </div>
@@ -1484,89 +1961,97 @@ const AdminDisputes = () => {
                   {selectedDispute.status ===
                     "RESOLVED" &&
                     !selectedDispute.outcome && (
-                      <section className="rounded-2xl border border-green-200 bg-green-50 p-5">
-                        <p className="text-xs font-bold uppercase tracking-wider text-green-700">
-                          Dispute resolved
-                        </p>
+                      <section className="rounded-3xl border border-green-200 bg-green-50 p-5 sm:p-6">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-green-600 text-white">
+                            ✓
+                          </div>
 
-                        <h3 className="mt-1 text-xl font-extrabold text-green-800">
-                          Resolution recorded
-                        </h3>
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-green-700">
+                              Dispute resolved
+                            </p>
 
-                        {selectedDispute.resolution && (
-                          <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-green-700">
-                            {
-                              selectedDispute.resolution
-                            }
-                          </p>
-                        )}
+                            <h3 className="mt-1 text-xl font-black text-green-900">
+                              Resolution recorded
+                            </h3>
+
+                            {selectedDispute.resolution && (
+                              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-green-800">
+                                {
+                                  selectedDispute.resolution
+                                }
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </section>
                     )}
 
                   {/* =================================================
-                      CLOSED
+                      CLOSE RESOLVED DISPUTE
                   ================================================= */}
 
                   {selectedDispute.status ===
                     "RESOLVED" && (
-                    <section className="rounded-2xl border border-gray-200 bg-gray-50">
-                      <div className="space-y-5 p-5">
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-gray-500">
-                            Final workflow
-                          </p>
+                    <section className="rounded-3xl border border-gray-200 bg-gray-50 p-5 sm:p-6">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-gray-500">
+                          Final workflow
+                        </p>
 
-                          <h3 className="mt-1 text-xl font-extrabold text-[#21191B]">
-                            Close dispute record
-                          </h3>
+                        <h3 className="mt-1 text-xl font-black text-[#21191B]">
+                          Close dispute record
+                        </h3>
 
-                          <p className="mt-2 text-sm leading-6 text-gray-600">
-                            Closing the dispute
-                            archives the resolved
-                            case. The trade outcome
-                            has already been applied.
-                          </p>
-                        </div>
-
-                        {nextStatuses.includes(
-                          "CLOSED"
-                        ) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setNextStatus(
-                                "CLOSED"
-                              );
-
-                              setError("");
-
-                              if (
-                                !resolution.trim()
-                              ) {
-                                setResolution(
-                                  selectedDispute.resolution ||
-                                    ""
-                                );
-                              }
-                            }}
-                            disabled={
-                              actionLoading
-                            }
-                            className={`w-full rounded-xl px-6 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                              nextStatus ===
-                              "CLOSED"
-                                ? "bg-[#3D0F18] text-white"
-                                : "bg-[#5B1725] text-white hover:bg-[#3D0F18]"
-                            }`}
-                          >
-                            Select Closed
-                          </button>
-                        )}
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
+                          Closing the dispute
+                          archives the resolved case.
+                          The trade outcome has already
+                          been applied.
+                        </p>
                       </div>
+
+                      {nextStatuses.includes(
+                        "CLOSED"
+                      ) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNextStatus(
+                              "CLOSED"
+                            );
+                            setError("");
+
+                            if (
+                              !resolution.trim()
+                            ) {
+                              setResolution(
+                                selectedDispute.resolution ||
+                                  ""
+                              );
+                            }
+                          }}
+                          disabled={
+                            actionLoading
+                          }
+                          className={`mt-5 inline-flex w-full items-center justify-center rounded-2xl px-6 py-3.5 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto ${
+                            nextStatus ===
+                            "CLOSED"
+                              ? "bg-[#3D0F18] text-white"
+                              : "bg-[#5B1725] text-white hover:bg-[#3D0F18]"
+                          }`}
+                        >
+                          {nextStatus ===
+                          "CLOSED"
+                            ? "Closing selected"
+                            : "Select Close"}
+                        </button>
+                      )}
 
                       {nextStatus ===
                         "CLOSED" && (
-                        <div className="border-t border-gray-200 p-5">
+                        <div className="mt-5 border-t border-gray-200 pt-5">
                           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
                             <button
                               type="button"
@@ -1575,7 +2060,10 @@ const AdminDisputes = () => {
                                   ""
                                 )
                               }
-                              className="w-full rounded-xl border border-[#DCCACE] bg-white px-6 py-3 text-sm font-bold text-gray-600 sm:w-auto"
+                              disabled={
+                                actionLoading
+                              }
+                              className="w-full rounded-2xl border border-[#DCCACE] bg-white px-6 py-3.5 text-sm font-extrabold text-gray-600 transition hover:bg-white disabled:opacity-50 sm:w-auto"
                             >
                               Cancel
                             </button>
@@ -1588,11 +2076,16 @@ const AdminDisputes = () => {
                               disabled={
                                 actionLoading
                               }
-                              className="w-full rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-bold text-white hover:bg-[#3D0F18] disabled:opacity-50 sm:w-auto"
+                              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#5B1725] px-6 py-3.5 text-sm font-extrabold text-white transition hover:bg-[#3D0F18] disabled:opacity-50 sm:w-auto"
                             >
-                              {actionLoading
-                                ? "Closing..."
-                                : "Close Dispute"}
+                              {actionLoading ? (
+                                <>
+                                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                                  Closing...
+                                </>
+                              ) : (
+                                "Close Dispute"
+                              )}
                             </button>
                           </div>
                         </div>

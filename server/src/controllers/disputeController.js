@@ -284,14 +284,6 @@ export const createDispute = async (req, res) => {
         });
       }
 
-      /**
-       * This is the important REDISPUTE GUARD.
-       *
-       * Even when an administrator has resolved the
-       * previous dispute and reopened the trade, the
-       * current schema does not permit another dispute
-       * record for the same trade.
-       */
       if (
         previousDispute.status === "RESOLVED" ||
         previousDispute.status === "CLOSED"
@@ -421,8 +413,7 @@ export const createDispute = async (req, res) => {
           /**
            * Create the dispute.
            */
-          const createdDispute =
-            await tx.dispute.create({
+          const createdDispute = await tx.dispute.create({
               data: {
                 tradeId: currentTrade.id,
                 userId,
@@ -694,20 +685,6 @@ export const getTradeDispute = async (
   }
 };
 
-/**
- * =========================================================
- * GET ALL DISPUTES — ADMIN
- *
- * GET /api/disputes/admin
- *
- * Optional:
- *
- * ?status=OPEN
- * ?status=UNDER_REVIEW
- * ?status=RESOLVED
- * ?status=CLOSED
- * =========================================================
- */
 
 export const getAdminDisputes =
   async (req, res) => {
