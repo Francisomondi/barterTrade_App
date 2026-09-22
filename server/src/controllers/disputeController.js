@@ -1344,934 +1344,960 @@ export const updateDispute =
  * =========================================================
  */
 
-export const applyDisputeOutcome =
-  async (req, res) => {
-    try {
-      const {
-        disputeId,
-      } = req.params;
-
-      const adminId =
-        req.user.id;
-
-      const {
-        outcome,
-        resolution,
-      } = req.body;
-
-      /**
-       * ===================================================
-       * ADMIN SECURITY
-       * ===================================================
-       */
-
-      if (
-        !req.user ||
-        req.user.role !==
-          "ADMIN"
-      ) {
-        return res.status(403).json({
-          success: false,
-          message:
-            "Administrator access is required.",
-        });
-      }
-
-      /**
-       * ===================================================
-       * VALIDATE OUTCOME
-       * ===================================================
-       */
-
-      if (
-        !validDisputeOutcomes.includes(
-          outcome
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid dispute outcome. Use CANCEL_TRADE or REOPEN_TRADE.",
-        });
-      }
-
-      /**
-       * ===================================================
-       * VALIDATE RESOLUTION
-       * ===================================================
-       */
-
-      const trimmedResolution =
-        typeof resolution ===
-        "string"
-          ? resolution.trim()
-          : "";
-
-      if (!trimmedResolution) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "A resolution is required before applying a dispute outcome.",
-        });
-      }
-
-      if (
-        trimmedResolution.length >
-        5000
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Resolution cannot exceed 5000 characters.",
-        });
-      }
-
-      /**
-       * ===================================================
-       * TRANSACTION
-       * ===================================================
-       *
-       * Everything that represents trade state is updated
-       * together.
-       */
-
-      const result =
-        await prisma.$transaction(
-          async (tx) => {
-            /**
-             * ---------------------------------------------
-             * LOAD DISPUTE + TRADE
-             * ---------------------------------------------
-             */
-
-            const dispute =
-              await tx.dispute.findUnique(
-                {
-                  where: {
-                    id: disputeId,
-                  },
-
-                  include: {
-                    trade: {
-                      include: {
-                        items: {
-                          select: {
-                            listingId:
-                              true,
-                          },
-                        },
-                      },
-                    },
-                  },
-                }
-              );
-
-            /**
-             * ---------------------------------------------
-             * DISPUTE EXISTS
-             * ---------------------------------------------
-             */
-
-            if (!dispute) {
-              const error =
-                new Error(
-                  "Dispute not found."
-                );
-
-              error.statusCode =
-                404;
-
-              throw error;
-            }
-
-            /**
-             * ---------------------------------------------
-             * DISPUTE MUST BE UNDER REVIEW
-             * ---------------------------------------------
-             */
-
-            if (
-              dispute.status !==
-              "UNDER_REVIEW"
-            ) {
-              const error =
-                new Error(
-                  "The dispute must be under review before an outcome can be applied."
-                );
-
-              error.statusCode =
-                400;
-
-              throw error;
-            }
-
-            /**
-             * ---------------------------------------------
-             * TRADE MUST STILL BE DISPUTED
-             * ---------------------------------------------
-             */
-
-            if (
-              dispute.trade.status !==
-              "DISPUTED"
-            ) {
-              const error =
-                new Error(
-                  "This trade is no longer in dispute."
-                );
-
-              error.statusCode =
-                409;
-
-              throw error;
-            }
-
-            /**
-             * ---------------------------------------------
-             * DETERMINE TARGET STATUS
-             * ---------------------------------------------
-             */
-
-            let targetTradeStatus;
-
-            if (
-              outcome ===
-              "CANCEL_TRADE"
-            ) {
-              targetTradeStatus =
-                "CANCELLED";
-            }
-
-            if (
-              outcome ===
-              "REOPEN_TRADE"
-            ) {
-              if (
-                !reopenableTradeStatuses.includes(
-                  dispute.previousTradeStatus
-                )
-              ) {
-                const error =
-                  new Error(
-                    "This dispute cannot reopen the trade because its previous trade status is invalid."
-                  );
-
-                error.statusCode =
-                  400;
-
-                throw error;
-              }
-
-              targetTradeStatus =
-                dispute.previousTradeStatus;
-            }
-
-            /**
-             * ---------------------------------------------
-             * RECOVERY VARIABLES
-             * ---------------------------------------------
-             */
-
-            let stagesToReset =
-              [];
-
-            let verificationReset =
-              false;
-
-            let listingsReleased =
-              false;
-
-            /**
-             * ---------------------------------------------
-             * REOPEN FROM VERIFICATION
-             * ---------------------------------------------
-             *
-             * Old downstream confirmations must disappear.
-             *
-             * Verification must also be redone.
-             */
-
-            if (
-              outcome ===
-                "REOPEN_TRADE" &&
-              dispute.previousTradeStatus ===
-                "VERIFICATION"
-            ) {
-              stagesToReset = [
-                "HANDOVER",
-                "HANDOVER_STARTED",
-                "COMPLETION",
-              ];
-
-              verificationReset =
-                true;
-            }
-
-            /**
-             * ---------------------------------------------
-             * REOPEN FROM READY_FOR_HANDOVER
-             * ---------------------------------------------
-             *
-             * Item verification remains valid.
-             *
-             * Handover-started and completion confirmations
-             * must be repeated.
-             */
-
-            if (
-              outcome ===
-                "REOPEN_TRADE" &&
-              dispute.previousTradeStatus ===
-                "READY_FOR_HANDOVER"
-            ) {
-              stagesToReset = [
-                "HANDOVER_STARTED",
-                "COMPLETION",
-              ];
-            }
-
-            /**
-             * ---------------------------------------------
-             * REOPEN FROM IN_PROGRESS
-             * ---------------------------------------------
-             *
-             * Only completion needs to be repeated.
-             */
-
-            if (
-              outcome ===
-                "REOPEN_TRADE" &&
-              dispute.previousTradeStatus ===
-                "IN_PROGRESS"
-            ) {
-              stagesToReset = [
-                "COMPLETION",
-              ];
-            }
-
-            /**
-             * ---------------------------------------------
-             * RESET DOWNSTREAM CONFIRMATIONS
-             * ---------------------------------------------
-             */
-
-            if (
-              outcome ===
-                "REOPEN_TRADE" &&
-              stagesToReset.length >
-                0
-            ) {
-              await tx.tradeConfirmation.deleteMany(
-                {
-                  where: {
-                    tradeId:
-                      dispute.tradeId,
-
-                    stage: {
-                      in: stagesToReset,
-                    },
-                  },
-                }
-              );
-            }
-
-            /**
-             * ---------------------------------------------
-             * RESET VERIFICATION
-             * ---------------------------------------------
-             *
-             * This applies only when the dispute occurred
-             * at VERIFICATION.
-             *
-             * Existing verification records remain as
-             * history, but become PENDING and lose the
-             * previously supplied document.
-             */
-
-            if (
-              verificationReset
-            ) {
-              await tx.verification.updateMany(
-                {
-                  where: {
-                    tradeId:
-                      dispute.tradeId,
-                  },
-
-                  data: {
-                    status:
-                      "PENDING",
-
-                    documentUrl:
-                      null,
-
-                    notes:
-                      "Verification reset after dispute review. Re-verification is required.",
-                  },
-                }
-              );
-            }
-
-            /**
-             * ---------------------------------------------
-             * LISTING STATE RECOVERY
-             * ---------------------------------------------
-             */
-
-            const listingIds =
-              dispute.trade.items.map(
-                (item) =>
-                  item.listingId
-              );
-
-            if (
-              listingIds.length >
-              0
-            ) {
-              /**
-               * CANCEL TRADE
-               *
-               * RESERVED → ACTIVE
-               */
-
-              if (
-                outcome ===
-                "CANCEL_TRADE"
-              ) {
-                await tx.listing.updateMany(
-                  {
-                    where: {
-                      id: {
-                        in: listingIds,
-                      },
-
-                      status:
-                        "RESERVED",
-                    },
-
-                    data: {
-                      status:
-                        "ACTIVE",
-                    },
-                  }
-                );
-
-                listingsReleased =
-                  true;
-              }
-
-              /**
-               * REOPEN TRADE
-               *
-               * ACTIVE → RESERVED
-               *
-               * Only accidental ACTIVE states are repaired.
-               */
-
-              if (
-                outcome ===
-                "REOPEN_TRADE"
-              ) {
-                await tx.listing.updateMany(
-                  {
-                    where: {
-                      id: {
-                        in: listingIds,
-                      },
-
-                      status:
-                        "ACTIVE",
-                    },
-
-                    data: {
-                      status:
-                        "RESERVED",
-                    },
-                  }
-                );
-              }
-            }
-
-            /**
-             * ---------------------------------------------
-             * UPDATE TRADE
-             * ---------------------------------------------
-             */
-
-            const tradeUpdate =
-              await tx.trade.updateMany(
-                {
-                  where: {
-                    id: dispute.tradeId,
-
-                    status:
-                      "DISPUTED",
-                  },
-
-                  data: {
-                    status:
-                      targetTradeStatus,
-
-                    /**
-                     * Clear current confirmation flags.
-                     *
-                     * These flags must reflect the new
-                     * lifecycle state, not the old state.
-                     */
-
-                    traderAConfirmed:
-                      false,
-
-                    traderBConfirmed:
-                      false,
-
-                    traderAConfirmedAt:
-                      null,
-
-                    traderBConfirmedAt:
-                      null,
-
-                    /**
-                     * Reopened trade cannot remain marked
-                     * completed.
-                     */
-
-                    completedAt:
-                      null,
-                  },
-                }
-              );
-
-            if (
-              tradeUpdate.count !==
-              1
-            ) {
-              const error =
-                new Error(
-                  "The trade was changed by another request. Please refresh and try again."
-                );
-
-              error.statusCode =
-                409;
-
-              throw error;
-            }
-
-            /**
-             * ---------------------------------------------
-             * UPDATE DISPUTE
-             * ---------------------------------------------
-             */
-
-            const updatedDispute =
-              await tx.dispute.update(
-                {
-                  where: {
-                    id: disputeId,
-                  },
-
-                  data: {
-                    status:
-                      "RESOLVED",
-
-                    resolution:
-                      trimmedResolution,
-
-                    outcome,
-
-                    outcomeAt:
-                      new Date(),
-                  },
-
-                  include: {
-                    user: {
-                      select: {
-                        id: true,
-                        name: true,
-                        avatar: true,
-                      },
-                    },
-
-                    trade: {
-                      select: {
-                        id: true,
-
-                        tradeNumber:
-                          true,
-
-                        status: true,
-                      },
-                    },
-                  },
-                }
-              );
-
-            /**
-             * ---------------------------------------------
-             * CREATE AUDIT EVENT
-             * ---------------------------------------------
-             */
-
-            await tx.disputeEvent.create({
-              data: {
-                disputeId:
-                  dispute.id,
-
-                userId:
-                  adminId,
-
-                eventType:
-                  outcome ===
-                  "CANCEL_TRADE"
-                    ? "TRADE_CANCELLED"
-                    : "TRADE_REOPENED",
-
-                description:
-                  outcome ===
-                  "CANCEL_TRADE"
-                    ? "Administrator cancelled the trade after dispute review."
-                    : "Administrator reopened the trade after dispute review.",
-
-                metadata: {
-                  previousTradeStatus:
-                    dispute.previousTradeStatus,
-
-                  newTradeStatus:
-                    targetTradeStatus,
-
-                  confirmationStagesReset:
-                    stagesToReset,
-
-                  verificationReset,
-
-                  listingsReleased,
-
-                  resolution:
-                    trimmedResolution,
-
-                  outcome,
-                },
-              },
-            });
-
-            /**
-             * ---------------------------------------------
-             * LOAD UPDATED TRADE
-             * ---------------------------------------------
-             */
-
-            const updatedTrade =
-              await tx.trade.findUnique(
-                {
-                  where: {
-                    id:
-                      dispute.tradeId,
-                  },
-
-                  include: {
-                    traderA: {
-                      select: {
-                        id: true,
-                        name: true,
-                        avatar: true,
-                      },
-                    },
-
-                    traderB: {
-                      select: {
-                        id: true,
-                        name: true,
-                        avatar: true,
-                      },
-                    },
-
-                    offer: {
-                      include: {
-                        sender: {
-                          select: {
-                            id: true,
-                            name: true,
-                            avatar: true,
-                          },
-                        },
-
-                        receiver: {
-                          select: {
-                            id: true,
-                            name: true,
-                            avatar: true,
-                          },
-                        },
-
-                        offeredListing: {
-                          include: {
-                            images:
-                              true,
-
-                            category:
-                              true,
-                          },
-                        },
-
-                        requestedListing: {
-                          include: {
-                            images:
-                              true,
-
-                            category:
-                              true,
-                          },
-                        },
-                      },
-                    },
-
-                    items: {
-                      include: {
-                        listing: {
-                          include: {
-                            images:
-                              true,
-
-                            category:
-                              true,
-                          },
-                        },
-                      },
-                    },
-
-                    confirmations: {
-                      select: {
-                        id: true,
-                        userId: true,
-                        stage: true,
-                        confirmedAt:
-                          true,
-                      },
-
-                      orderBy: {
-                        confirmedAt:
-                          "asc",
-                      },
-                    },
-
-                    verifications: {
-                      select: {
-                        id: true,
-                        userId: true,
-                        tradeId: true,
-                        type: true,
-                        status: true,
-                        documentUrl:
-                          true,
-                        notes: true,
-                        createdAt:
-                          true,
-                        updatedAt:
-                          true,
-                      },
-
-                      orderBy: {
-                        createdAt:
-                          "asc",
-                      },
-                    },
-
-                    ratings:
-                      true,
-
-                    dispute:
-                      true,
-                  },
-                }
-              );
-
-            return {
-              dispute:
-                updatedDispute,
-
-              trade:
-                updatedTrade,
-
-              recovery: {
-                outcome,
-
-                previousTradeStatus:
-                  dispute.previousTradeStatus,
-
-                currentTradeStatus:
-                  targetTradeStatus,
-
-                confirmationStagesReset:
-                  stagesToReset,
-
-                verificationReset,
-
-                listingsReleased,
-
-                requiresReconfirmation:
-                  outcome ===
-                  "REOPEN_TRADE",
-              },
-            };
-          },
-
-          {
-            isolationLevel:
-              "Serializable",
-          }
-        );
-
-      /**
-       * ===================================================
-       * NOTIFICATIONS
-       * ===================================================
-       *
-       * Notifications happen AFTER the successful
-       * transaction commit.
-       *
-       * Notification failure must never undo a successful
-       * dispute resolution.
-       */
-
-      let notificationMessage;
-
-      if (
-        outcome ===
-        "CANCEL_TRADE"
-      ) {
-        notificationMessage =
-          `Trade ${result.trade.tradeNumber} has been cancelled after dispute review. The reserved listings have been released.`;
-      }
-
-      if (
-        outcome ===
-        "REOPEN_TRADE"
-      ) {
-        notificationMessage =
-          `Trade ${result.trade.tradeNumber} has been reopened at ${result.recovery.previousTradeStatus}.`;
-
-        if (
-          result.recovery
-            .verificationReset
-        ) {
-          notificationMessage +=
-            " Previous verification has been reset and both traders must verify again.";
-        } else if (
-          result.recovery
-            .confirmationStagesReset
-            .length > 0
-        ) {
-          notificationMessage +=
-            " Required trade confirmations have been reset and must be completed again.";
-        }
-      }
-
-      const notificationResults =
-        await Promise.allSettled([
-          createNotification({
-            userId:
-              result.trade
-                .traderAId,
-
-            type: "TRADE",
-
-            title:
-              outcome ===
-              "CANCEL_TRADE"
-                ? "Trade Cancelled After Dispute Review"
-                : "Trade Reopened After Dispute Review",
-
-            referenceId:
-              result.trade.id,
-
-            referenceType:
-              "TRADE",
-
-            message:
-              notificationMessage,
-          }),
-
-          createNotification({
-            userId:
-              result.trade
-                .traderBId,
-
-            type: "TRADE",
-
-            title:
-              outcome ===
-              "CANCEL_TRADE"
-                ? "Trade Cancelled After Dispute Review"
-                : "Trade Reopened After Dispute Review",
-
-            referenceId:
-              result.trade.id,
-
-            referenceType:
-              "TRADE",
-
-            message:
-              notificationMessage,
-          }),
-        ]);
-
-      notificationResults.forEach(
-        (
-          notificationResult
-        ) => {
-          if (
-            notificationResult.status ===
-            "rejected"
-          ) {
-            console.error(
-              "DISPUTE OUTCOME NOTIFICATION ERROR:",
-              notificationResult.reason
-            );
-          }
-        }
-      );
-
-      /**
-       * ===================================================
-       * RESPONSE
-       * ===================================================
-       */
-
-      return res.status(200).json({
-        success: true,
-
-        message:
-          outcome ===
-          "CANCEL_TRADE"
-            ? "Dispute resolved and trade cancelled successfully."
-            : "Dispute resolved and trade reopened successfully.",
-
-        dispute:
-          result.dispute,
-
-        trade:
-          result.trade,
-
-        recovery:
-          result.recovery,
-      });
-    } catch (error) {
-      console.error(
-        "APPLY DISPUTE OUTCOME ERROR:",
-        error
-      );
-
-      return res.status(
-        error.statusCode || 500
-      ).json({
+export const applyDisputeOutcome = async (req, res) => {
+  try {
+    /**
+     * =======================================================
+     * AUTHENTICATION + ADMIN SECURITY
+     * =======================================================
+     */
+
+    if (!req.user) {
+      return res.status(401).json({
         success: false,
-
-        message:
-          error.message ||
-          "Failed to apply dispute outcome.",
+        message: "Authentication required.",
       });
     }
-  };
+
+    if (req.user.role !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Administrator access is required.",
+      });
+    }
+
+    const { disputeId } = req.params;
+
+    const adminId = req.user.id;
+
+    /**
+     * =======================================================
+     * REQUEST DATA
+     * =======================================================
+     */
+
+    const {
+      outcome,
+      resolution,
+    } = req.body || {};
+
+    /**
+     * =======================================================
+     * VALIDATE OUTCOME
+     * =======================================================
+     */
+
+    if (!validDisputeOutcomes.includes(outcome)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid dispute outcome. Use CANCEL_TRADE or REOPEN_TRADE.",
+      });
+    }
+
+    /**
+     * =======================================================
+     * VALIDATE RESOLUTION
+     * =======================================================
+     */
+
+    const trimmedResolution =
+      typeof resolution === "string"
+        ? resolution.trim()
+        : "";
+
+    if (!trimmedResolution) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "A resolution is required before applying a dispute outcome.",
+      });
+    }
+
+    if (trimmedResolution.length > 5000) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Resolution cannot exceed 5000 characters.",
+      });
+    }
+
+    /**
+     * =======================================================
+     * TRANSACTION
+     *
+     * All trade-state changes happen together.
+     *
+     * If ANY operation fails:
+     *
+     * - trade status rolls back
+     * - listing changes roll back
+     * - confirmation changes roll back
+     * - verification changes roll back
+     * - dispute outcome rolls back
+     * - audit event rolls back
+     * =======================================================
+     */
+
+    const result = await prisma.$transaction(
+      async (tx) => {
+        /**
+         * ===================================================
+         * LOAD DISPUTE + TRADE
+         * ===================================================
+         */
+
+        const dispute =
+          await tx.dispute.findUnique({
+            where: {
+              id: disputeId,
+            },
+
+            include: {
+              trade: {
+                include: {
+                  items: {
+                    select: {
+                      listingId: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+        /**
+         * ===================================================
+         * DISPUTE EXISTS
+         * ===================================================
+         */
+
+        if (!dispute) {
+          const error = new Error(
+            "Dispute not found."
+          );
+
+          error.statusCode = 404;
+
+          throw error;
+        }
+
+        /**
+         * ===================================================
+         * DISPUTE MUST BE UNDER REVIEW
+         * ===================================================
+         */
+
+        if (
+          dispute.status !==
+          "UNDER_REVIEW"
+        ) {
+          const error = new Error(
+            "The dispute must be under review before an outcome can be applied."
+          );
+
+          error.statusCode = 400;
+
+          throw error;
+        }
+
+        /**
+         * ===================================================
+         * TRADE MUST STILL BE DISPUTED
+         * ===================================================
+         */
+
+        if (
+          dispute.trade.status !==
+          "DISPUTED"
+        ) {
+          const error = new Error(
+            "This trade is no longer in dispute."
+          );
+
+          error.statusCode = 409;
+
+          throw error;
+        }
+
+        /**
+         * ===================================================
+         * DETERMINE PREVIOUS STATUS
+         * ===================================================
+         */
+
+        const previousTradeStatus =
+          dispute.previousTradeStatus;
+
+        /**
+         * ===================================================
+         * DETERMINE TARGET STATUS
+         * ===================================================
+         */
+
+        let targetTradeStatus;
+
+        if (
+          outcome ===
+          "CANCEL_TRADE"
+        ) {
+          targetTradeStatus =
+            "CANCELLED";
+        }
+
+        if (
+          outcome ===
+          "REOPEN_TRADE"
+        ) {
+          if (
+            !reopenableTradeStatuses.includes(
+              previousTradeStatus
+            )
+          ) {
+            const error = new Error(
+              "This dispute cannot reopen the trade because its previous trade status is invalid."
+            );
+
+            error.statusCode = 400;
+
+            throw error;
+          }
+
+          targetTradeStatus =
+            previousTradeStatus;
+        }
+
+        /**
+         * ===================================================
+         * RECOVERY STATE
+         * ===================================================
+         */
+
+        let stagesToReset = [];
+
+        let verificationReset = false;
+
+        let listingsReleased = false;
+
+        let listingsReserved = false;
+
+        /**
+         * ===================================================
+         * CONFIRMATION RECOVERY
+         *
+         * IMPORTANT:
+         *
+         * These are the actual confirmation stages
+         * used by the existing trade system.
+         * ===================================================
+         */
+
+        if (
+          outcome ===
+            "REOPEN_TRADE" &&
+          previousTradeStatus ===
+            "VERIFICATION"
+        ) {
+          stagesToReset = [
+            "HANDOVER",
+            "HANDOVER_STARTED",
+            "COMPLETION",
+          ];
+
+          verificationReset = true;
+        }
+
+        if (
+          outcome ===
+            "REOPEN_TRADE" &&
+          previousTradeStatus ===
+            "READY_FOR_HANDOVER"
+        ) {
+          stagesToReset = [
+            "HANDOVER_STARTED",
+            "COMPLETION",
+          ];
+        }
+
+        if (
+          outcome ===
+            "REOPEN_TRADE" &&
+          previousTradeStatus ===
+            "IN_PROGRESS"
+        ) {
+          stagesToReset = [
+            "COMPLETION",
+          ];
+        }
+
+        /**
+         * ===================================================
+         * RESET DOWNSTREAM CONFIRMATIONS
+         * ===================================================
+         *
+         * Historical confirmation records that belong
+         * to the invalidated downstream stages are removed.
+         *
+         * The trade can then require fresh confirmation.
+         */
+
+        if (
+          outcome ===
+            "REOPEN_TRADE" &&
+          stagesToReset.length > 0
+        ) {
+          await tx.tradeConfirmation.deleteMany({
+            where: {
+              tradeId:
+                dispute.tradeId,
+
+              stage: {
+                in: stagesToReset,
+              },
+            },
+          });
+        }
+
+        /**
+         * ===================================================
+         * RESET VERIFICATION
+         * ===================================================
+         *
+         * If the dispute occurred during verification,
+         * previous verification must no longer count as
+         * completed.
+         */
+
+        if (verificationReset) {
+          await tx.verification.updateMany({
+            where: {
+              tradeId:
+                dispute.tradeId,
+            },
+
+            data: {
+              status: "PENDING",
+
+              documentUrl: null,
+
+              notes:
+                "Verification reset after dispute review. Re-verification is required.",
+            },
+          });
+        }
+
+        /**
+         * ===================================================
+         * LOAD TRADE LISTINGS
+         * ===================================================
+         */
+
+        const listingIds =
+          dispute.trade.items.map(
+            (item) =>
+              item.listingId
+          );
+
+        /**
+         * ===================================================
+         * LISTING RECOVERY
+         * ===================================================
+         */
+
+        if (listingIds.length > 0) {
+          /**
+           * -----------------------------------------------
+           * CANCEL TRADE
+           *
+           * Only currently RESERVED listings are released.
+           * -----------------------------------------------
+           */
+
+          if (
+            outcome ===
+            "CANCEL_TRADE"
+          ) {
+            const released =
+              await tx.listing.updateMany({
+                where: {
+                  id: {
+                    in: listingIds,
+                  },
+
+                  status:
+                    "RESERVED",
+                },
+
+                data: {
+                  status:
+                    "ACTIVE",
+                },
+              });
+
+            listingsReleased =
+              released.count > 0;
+          }
+
+          /**
+           * -----------------------------------------------
+           * REOPEN TRADE
+           *
+           * The trade must have its listings reserved
+           * again before continuing.
+           *
+           * We intentionally only convert ACTIVE listings.
+           *
+           * Any other state causes the recovery to stop
+           * rather than silently overwriting an unexpected
+           * listing state.
+           * -----------------------------------------------
+           */
+
+          if (
+            outcome ===
+            "REOPEN_TRADE"
+          ) {
+            const listings =
+              await tx.listing.findMany({
+                where: {
+                  id: {
+                    in: listingIds,
+                  },
+                },
+
+                select: {
+                  id: true,
+                  status: true,
+                },
+              });
+
+            const invalidListing =
+              listings.find(
+                (listing) =>
+                  ![
+                    "ACTIVE",
+                    "RESERVED",
+                  ].includes(
+                    listing.status
+                  )
+              );
+
+            if (invalidListing) {
+              const error =
+                new Error(
+                  "The trade cannot be reopened because one or more trade listings are no longer in a recoverable state."
+                );
+
+              error.statusCode =
+                409;
+
+              throw error;
+            }
+
+            const reserved =
+              await tx.listing.updateMany({
+                where: {
+                  id: {
+                    in: listingIds,
+                  },
+
+                  status:
+                    "ACTIVE",
+                },
+
+                data: {
+                  status:
+                    "RESERVED",
+                },
+              });
+
+            listingsReserved =
+              reserved.count > 0;
+          }
+        }
+
+        /**
+         * ===================================================
+         * UPDATE TRADE
+         * ===================================================
+         *
+         * The WHERE clause protects against another
+         * request changing the trade while the admin
+         * decision is being processed.
+         */
+
+        const tradeUpdate =
+          await tx.trade.updateMany({
+            where: {
+              id: dispute.tradeId,
+
+              status:
+                "DISPUTED",
+            },
+
+            data: {
+              status:
+                targetTradeStatus,
+
+              /**
+               * These flags represent the current
+               * confirmation state.
+               *
+               * They must not survive a recovery.
+               */
+
+              traderAConfirmed:
+                false,
+
+              traderBConfirmed:
+                false,
+
+              traderAConfirmedAt:
+                null,
+
+              traderBConfirmedAt:
+                null,
+
+              /**
+               * A reopened trade can never remain
+               * marked as completed.
+               */
+
+              completedAt:
+                null,
+            },
+          });
+
+        if (
+          tradeUpdate.count !==
+          1
+        ) {
+          const error =
+            new Error(
+              "The trade was changed by another request. Please refresh and try again."
+            );
+
+          error.statusCode =
+            409;
+
+          throw error;
+        }
+
+        /**
+         * ===================================================
+         * UPDATE DISPUTE
+         * ===================================================
+         */
+
+        const updatedDispute =
+          await tx.dispute.update({
+            where: {
+              id: disputeId,
+            },
+
+            data: {
+              status:
+                "RESOLVED",
+
+              resolution:
+                trimmedResolution,
+
+              outcome,
+
+              outcomeAt:
+                new Date(),
+            },
+
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true,
+                },
+              },
+
+              trade: {
+                select: {
+                  id: true,
+
+                  tradeNumber:
+                    true,
+
+                  status:
+                    true,
+
+                  traderAId:
+                    true,
+
+                  traderBId:
+                    true,
+                },
+              },
+            },
+          });
+
+        /**
+         * ===================================================
+         * AUDIT EVENT
+         * ===================================================
+         */
+
+        await tx.disputeEvent.create({
+          data: {
+            disputeId:
+              dispute.id,
+
+            userId:
+              adminId,
+
+            eventType:
+              outcome ===
+              "CANCEL_TRADE"
+                ? "TRADE_CANCELLED"
+                : "TRADE_REOPENED",
+
+            description:
+              outcome ===
+              "CANCEL_TRADE"
+                ? "Administrator cancelled the trade after dispute review."
+                : "Administrator reopened the trade after dispute review.",
+
+            metadata: {
+              previousTradeStatus,
+
+              newTradeStatus:
+                targetTradeStatus,
+
+              confirmationStagesReset:
+                stagesToReset,
+
+              verificationReset,
+
+              listingsReleased,
+
+              listingsReserved,
+
+              resolution:
+                trimmedResolution,
+
+              outcome,
+            },
+          },
+        });
+
+        /**
+         * ===================================================
+         * LOAD FINAL TRADE
+         * ===================================================
+         *
+         * IMPORTANT:
+         * Include traderAId/traderBId because notifications
+         * after the transaction need those IDs.
+         * ===================================================
+         */
+
+        const updatedTrade =
+          await tx.trade.findUnique({
+            where: {
+              id:
+                dispute.tradeId,
+            },
+
+            select: {
+              id: true,
+
+              tradeNumber:
+                true,
+
+              status:
+                true,
+
+              traderAId:
+                true,
+
+              traderBId:
+                true,
+
+              traderA: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true,
+                },
+              },
+
+              traderB: {
+                select: {
+                  id: true,
+                  name: true,
+                  avatar: true,
+                },
+              },
+
+              completedAt:
+                true,
+
+              traderAConfirmed:
+                true,
+
+              traderBConfirmed:
+                true,
+
+              traderAConfirmedAt:
+                true,
+
+              traderBConfirmedAt:
+                true,
+
+              confirmations: {
+                select: {
+                  id: true,
+                  userId: true,
+                  stage: true,
+                  confirmedAt:
+                    true,
+                },
+
+                orderBy: {
+                  confirmedAt:
+                    "asc",
+                },
+              },
+
+              verifications: {
+                select: {
+                  id: true,
+                  userId: true,
+                  tradeId: true,
+                  type: true,
+                  status: true,
+                  documentUrl: true,
+                  notes: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+
+                orderBy: {
+                  createdAt:
+                    "asc",
+                },
+              },
+
+              ratings: true,
+
+              dispute: true,
+            },
+          });
+
+        if (!updatedTrade) {
+          const error =
+            new Error(
+              "Trade could not be loaded after dispute recovery."
+            );
+
+          error.statusCode =
+            500;
+
+          throw error;
+        }
+
+        return {
+          dispute:
+            updatedDispute,
+
+          trade:
+            updatedTrade,
+
+          recovery: {
+            outcome,
+
+            previousTradeStatus,
+
+            currentTradeStatus:
+              targetTradeStatus,
+
+            confirmationStagesReset:
+              stagesToReset,
+
+            verificationReset,
+
+            listingsReleased,
+
+            listingsReserved,
+
+            requiresReconfirmation:
+              outcome ===
+              "REOPEN_TRADE",
+          },
+        };
+      },
+
+      {
+        isolationLevel:
+          "Serializable",
+      }
+    );
+
+    /**
+     * =======================================================
+     * NOTIFICATIONS
+     *
+     * These happen AFTER the transaction commits.
+     *
+     * Notification failure must never undo a successful
+     * trade recovery.
+     * =======================================================
+     */
+
+    let notificationMessage;
+
+    if (
+      outcome ===
+      "CANCEL_TRADE"
+    ) {
+      notificationMessage =
+        `Trade ${result.trade.tradeNumber} has been cancelled after dispute review.`;
+
+      if (
+        result.recovery
+          .listingsReleased
+      ) {
+        notificationMessage +=
+          " The reserved listings have been released.";
+      }
+    }
+
+    if (
+      outcome ===
+      "REOPEN_TRADE"
+    ) {
+      notificationMessage =
+        `Trade ${result.trade.tradeNumber} has been reopened at ${result.recovery.previousTradeStatus}.`;
+
+      if (
+        result.recovery
+          .verificationReset
+      ) {
+        notificationMessage +=
+          " Previous verification has been reset and re-verification is required.";
+      }
+
+      if (
+        result.recovery
+          .confirmationStagesReset
+          .length > 0
+      ) {
+        notificationMessage +=
+          " Required trade confirmations have been reset and must be completed again.";
+      }
+    }
+
+    const notificationResults =
+      await Promise.allSettled([
+        createNotification({
+          userId:
+            result.trade
+              .traderAId,
+
+          type: "TRADE",
+
+          title:
+            outcome ===
+            "CANCEL_TRADE"
+              ? "Trade Cancelled After Dispute Review"
+              : "Trade Reopened After Dispute Review",
+
+          referenceId:
+            result.trade.id,
+
+          referenceType:
+            "TRADE",
+
+          message:
+            notificationMessage,
+        }),
+
+        createNotification({
+          userId:
+            result.trade
+              .traderBId,
+
+          type: "TRADE",
+
+          title:
+            outcome ===
+            "CANCEL_TRADE"
+              ? "Trade Cancelled After Dispute Review"
+              : "Trade Reopened After Dispute Review",
+
+          referenceId:
+            result.trade.id,
+
+          referenceType:
+            "TRADE",
+
+          message:
+            notificationMessage,
+        }),
+      ]);
+
+    notificationResults.forEach(
+      (notificationResult) => {
+        if (
+          notificationResult.status ===
+          "rejected"
+        ) {
+          console.error(
+            "DISPUTE OUTCOME NOTIFICATION ERROR:",
+            notificationResult.reason
+          );
+        }
+      }
+    );
+
+    /**
+     * =======================================================
+     * RESPONSE
+     * =======================================================
+     */
+
+    return res.status(200).json({
+      success: true,
+
+      message:
+        outcome ===
+        "CANCEL_TRADE"
+          ? "Dispute resolved and trade cancelled successfully."
+          : "Dispute resolved and trade reopened successfully.",
+
+      dispute:
+        result.dispute,
+
+      trade:
+        result.trade,
+
+      recovery:
+        result.recovery,
+    });
+  } catch (error) {
+    console.error(
+      "APPLY DISPUTE OUTCOME ERROR:",
+      error
+    );
+
+    return res.status(
+      error.statusCode || 500
+    ).json({
+      success: false,
+
+      message:
+        error.message ||
+        "Failed to apply dispute outcome.",
+    });
+  }
+};
+
 
 /**
  * =========================================================

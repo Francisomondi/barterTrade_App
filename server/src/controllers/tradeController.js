@@ -343,11 +343,7 @@ export const getTradeById = async (req, res) => {
  *
  * prevents duplicate confirmation.
  */
-const confirmTradeStage = async (
-  tradeId,
-  userId,
-  stage
-) => {
+const confirmTradeStage = async (tradeId,userId,stage) => {
   const trade = await prisma.trade.findUnique({
     where: {
       id: tradeId,
@@ -488,781 +484,812 @@ const confirmTradeStage = async (
   };
 };
 
-/**
- * CONFIRM TRADE STAGE
- * PATCH /api/trades/:id/confirm
- *
- * Both traders must confirm each stage before
- * the trade can progress.
- *
- * At VERIFICATION:
- *   - current trader's item is marked VERIFIED
- *   - current trader's HANDOVER confirmation is recorded
- *   - both traders must complete this before
- *     READY_FOR_HANDOVER
- *
- * At READY_FOR_HANDOVER:
- *   - both traders must confirm HANDOVER_STARTED
- *   - then trade becomes IN_PROGRESS
- *
- * At IN_PROGRESS:
- *   - both traders must confirm COMPLETION
- *   - then trade becomes COMPLETED
- */
+
 export const confirmTrade = async (req, res) => {
   try {
-    const { id } = req.params;
-    const userId = req.user.id;
+    const { id: tradeId } = req.params;
+    const userId = req.user?.id;
 
-    /*
-     * Get the current trade.
-     *
-     * Trade items are loaded here because completion
-     * must mark the actual listing records as TRADED.
+    /**
+     * =======================================================
+     * AUTHENTICATION
+     * =======================================================
      */
-    const trade = await prisma.trade.findUnique({
-      where: {
-        id,
-      },
 
-      include: {
-        items: {
-          select: {
-            listingId: true,
-          },
-        },
-      },
-    });
-
-    if (!trade) {
-      return res.status(404).json({
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message: "Trade not found.",
+        message: "Authentication required.",
       });
     }
 
-    /*
-     * Only Trader A or Trader B can confirm.
+    /**
+     * =======================================================
+     * TRANSACTION
+     * =======================================================
      */
-    const isParticipant =
-      trade.traderAId === userId ||
-      trade.traderBId === userId;
 
-    if (!isParticipant) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "You are not a participant in this trade.",
-      });
-    }
-
-    /*
-     * Determine the stage from the current
-     * trade status.
-     */
-    const stage =
-      getConfirmationStageForStatus(
-        trade.status
-      );
-
-    if (!stage) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "This trade does not currently require confirmation.",
-      });
-    }
-
-    /*
-     * =========================================================
-     * VERIFICATION + HANDOVER READINESS
-     * =========================================================
-     *
-     * At VERIFICATION, one click does two things:
-     *
-     * 1. The current trader's item is marked VERIFIED.
-     * 2. The current trader's HANDOVER readiness is recorded
-     *    by confirmTradeStage() immediately below.
-     *
-     * The trade moves to READY_FOR_HANDOVER only after both
-     * traders have completed this action.
-     */
-    if (
-      trade.status === "VERIFICATION" &&
-      stage === CONFIRMATION_STAGES.HANDOVER
-    ) {
-      let currentVerification =
-        await prisma.verification.findFirst({
-          where: {
-            tradeId: id,
-            userId,
-          },
-        });
-
-      /*
-       * Create verification if it does not exist.
-       */
-      if (!currentVerification) {
-        currentVerification =
-          await prisma.verification.create({
-            data: {
-              tradeId: id,
-              userId,
-              type: "ITEM",
-              status: "VERIFIED",
-              notes:
-                "Item verified by trader before handover.",
-            },
-          });
-      } else if (
-        currentVerification.status !== "VERIFIED"
-      ) {
-        /*
-         * Update the trader's existing verification.
+    const result = await prisma.$transaction(
+      async (tx) => {
+        /**
+         * ---------------------------------------------------
+         * LOAD TRADE
+         * ---------------------------------------------------
          */
-        currentVerification =
-          await prisma.verification.update({
+
+        const trade =
+          await tx.trade.findUnique({
             where: {
-              id: currentVerification.id,
+              id: tradeId,
             },
 
-            data: {
-              status: "VERIFIED",
-              notes:
-                "Item verified by trader before handover.",
+            select: {
+              id: true,
+              tradeNumber: true,
+              status: true,
+
+              traderAId: true,
+              traderBId: true,
+
+              traderAConfirmed: true,
+              traderBConfirmed: true,
+
+              traderAConfirmedAt: true,
+              traderBConfirmedAt: true,
+
+              dispute: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
             },
           });
-      }
 
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT return here.
-       *
-       * confirmTradeStage() below must record the
-       * current trader's HANDOVER confirmation.
-       */
-    }
+        if (!trade) {
+          const error =
+            new Error(
+              "Trade not found."
+            );
 
-    /*
-     * =========================================================
-     * RECORD CONFIRMATION
-     * =========================================================
-     */
-    const result =
-      await confirmTradeStage(
-        id,
-        userId,
-        stage
-      );
+          error.statusCode = 404;
 
-    /*
-     * Always declare updatedTrade before any
-     * branch can use it.
-     */
-    let updatedTrade = trade;
+          throw error;
+        }
 
-    /*
-     * =========================================================
-     * ONE TRADER ONLY
-     * =========================================================
-     */
-    if (!result.bothConfirmed) {
-      const otherTraderId =
-        trade.traderAId === userId
-          ? trade.traderBId
-          : trade.traderAId;
+        /**
+         * ---------------------------------------------------
+         * PARTICIPANT SECURITY
+         * ---------------------------------------------------
+         */
 
-      let stageName =
-        stage.toLowerCase();
+        const isTraderA =
+          trade.traderAId === userId;
 
-      if (
-        stage ===
-        CONFIRMATION_STAGES.HANDOVER
-      ) {
-        stageName =
-          "item verification and handover readiness";
-      }
+        const isTraderB =
+          trade.traderBId === userId;
 
-      if (
-        stage ===
-        CONFIRMATION_STAGES.HANDOVER_STARTED
-      ) {
-        stageName = "handover started";
-      }
+        if (
+          !isTraderA &&
+          !isTraderB
+        ) {
+          const error =
+            new Error(
+              "You are not a participant in this trade."
+            );
 
-      if (
-        stage ===
-        CONFIRMATION_STAGES.COMPLETION
-      ) {
-        stageName = "completion";
-      }
+          error.statusCode = 403;
 
-      await createNotification({
-        userId: otherTraderId,
-        type: "TRADE",
-        title:
-          "Trade Confirmation Required",
-        referenceId: trade.id,
-        referenceType: "TRADE",
-        message:
-          `Your trade partner has confirmed the ${stageName} stage. Your confirmation is still required for Trade ${trade.tradeNumber}.`,
-      });
+          throw error;
+        }
 
-      /*
-       * Return the latest trade, including
-       * confirmations and verifications.
-       */
-      updatedTrade =
-        await prisma.trade.findUnique({
-          where: {
-            id,
-          },
+        /**
+         * ---------------------------------------------------
+         * DISPUTE SECURITY
+         * ---------------------------------------------------
+         *
+         * A disputed trade must never accept a normal
+         * confirmation.
+         * ---------------------------------------------------
+         */
 
-          include: {
-            traderA: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true,
-                barterScore: true,
-                completedTrades: true,
-              },
-            },
+        if (
+          trade.status ===
+          "DISPUTED"
+        ) {
+          const error =
+            new Error(
+              "This trade is currently under dispute. Confirmation is paused until the dispute is resolved."
+            );
 
-            traderB: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true,
-                barterScore: true,
-                completedTrades: true,
-              },
-            },
+          error.statusCode = 409;
 
-            items: {
-              include: {
-                listing: {
-                  include: {
-                    images: true,
-                    category: true,
-                  },
+          throw error;
+        }
+
+        /**
+         * ---------------------------------------------------
+         * DETERMINE REQUIRED STAGE
+         * ---------------------------------------------------
+         */
+
+        const stage =
+          getConfirmationStageForStatus(
+            trade.status
+          );
+
+        if (!stage) {
+          const error =
+            new Error(
+              "This trade does not currently require confirmation."
+            );
+
+          error.statusCode = 400;
+
+          throw error;
+        }
+
+        /**
+         * ---------------------------------------------------
+         * VERIFY REQUIRED VERIFICATION
+         *
+         * HANDOVER can only be confirmed after both traders
+         * have successfully verified their items.
+         * ---------------------------------------------------
+         */
+
+        if (
+          trade.status ===
+            "VERIFICATION" &&
+          stage ===
+            CONFIRMATION_STAGES.HANDOVER
+        ) {
+          const verifications =
+            await tx.verification.findMany({
+              where: {
+                tradeId,
+
+                userId: {
+                  in: [
+                    trade.traderAId,
+                    trade.traderBId,
+                  ],
                 },
               },
-            },
 
-            confirmations: {
               select: {
-                id: true,
                 userId: true,
-                stage: true,
-                confirmedAt: true,
-              },
-
-              orderBy: {
-                confirmedAt: "asc",
-              },
-            },
-
-            verifications: {
-              select: {
-                id: true,
-                userId: true,
-                tradeId: true,
-                type: true,
                 status: true,
-                documentUrl: true,
-                notes: true,
-                createdAt: true,
-                updatedAt: true,
-              },
-
-              orderBy: {
-                createdAt: "asc",
-              },
-            },
-          },
-        });
-
-      return res.status(200).json({
-        success: true,
-
-        message:
-          `Your ${stageName} confirmation has been recorded. Waiting for the other trader.`,
-
-        trade: updatedTrade,
-
-        stage,
-
-        traderAConfirmed:
-          result.traderAConfirmed,
-
-        traderBConfirmed:
-          result.traderBConfirmed,
-
-        bothConfirmed: false,
-      });
-    }
-
-    /*
-     * =========================================================
-     * BOTH TRADERS HAVE CONFIRMED
-     * =========================================================
-     */
-
-    /*
-     * COMPLETION IS SPECIAL.
-     *
-     * IN_PROGRESS
-     *      ↓
-     * BOTH COMPLETION CONFIRMATIONS
-     *      ↓
-     * COMPLETED
-     */
-    if (
-      stage ===
-      CONFIRMATION_STAGES.COMPLETION
-    ) {
-      const completedTrade =
-        await prisma.$transaction(
-          async (tx) => {
-            /*
-             * Atomically move the trade to COMPLETED.
-             */
-            const tradeUpdate =
-              await tx.trade.updateMany({
-                where: {
-                  id,
-                  status: "IN_PROGRESS",
-                },
-
-                data: {
-                  status: "COMPLETED",
-                  completedAt: new Date(),
-                },
-              });
-
-            /*
-             * Protect against concurrent completion.
-             */
-            if (
-              tradeUpdate.count !== 1
-            ) {
-              const error =
-                new Error(
-                  "The trade was updated by another request. Please refresh and try again."
-                );
-
-              error.statusCode =
-                409;
-
-              throw error;
-            }
-
-            /*
-             * Mark all trade listings as TRADED.
-             */
-            for (const item of trade.items ??
-              []) {
-              await tx.listing.updateMany({
-                where: {
-                  id: item.listingId,
-
-                  status: {
-                    in: [
-                      "RESERVED",
-                      "ACTIVE",
-                    ],
-                  },
-                },
-
-                data: {
-                  status: "TRADED",
-                },
-              });
-            }
-
-            /*
-             * Increment Trader A completed trades.
-             */
-            await tx.user.update({
-              where: {
-                id: trade.traderAId,
-              },
-
-              data: {
-                completedTrades: {
-                  increment: 1,
-                },
               },
             });
 
-            /*
-             * Increment Trader B completed trades.
-             */
-            await tx.user.update({
-              where: {
-                id: trade.traderBId,
-              },
+          const traderAVerified =
+            verifications.some(
+              (verification) =>
+                verification.userId ===
+                  trade.traderAId &&
+                verification.status ===
+                  "VERIFIED"
+            );
 
-              data: {
-                completedTrades: {
-                  increment: 1,
-                },
-              },
-            });
+          const traderBVerified =
+            verifications.some(
+              (verification) =>
+                verification.userId ===
+                  trade.traderBId &&
+                verification.status ===
+                  "VERIFIED"
+            );
 
-            /*
-             * Return the complete updated trade.
-             */
-            return tx.trade.findUnique({
-              where: {
-                id,
-              },
+          if (
+            !traderAVerified ||
+            !traderBVerified
+          ) {
+            const error =
+              new Error(
+                "Both traders must verify their items before handover readiness can be confirmed."
+              );
 
-              include: {
-                traderA: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    avatar: true,
-                    barterScore: true,
-                    completedTrades: true,
-                  },
-                },
+            error.statusCode = 400;
 
-                traderB: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    avatar: true,
-                    barterScore: true,
-                    completedTrades: true,
-                  },
-                },
+            error.verification = {
+              traderAVerified,
+              traderBVerified,
+            };
 
-                items: {
-                  include: {
-                    listing: {
-                      include: {
-                        images: true,
-                        category: true,
-                      },
-                    },
-                  },
-                },
-
-                confirmations: {
-                  select: {
-                    id: true,
-                    userId: true,
-                    stage: true,
-                    confirmedAt: true,
-                  },
-
-                  orderBy: {
-                    confirmedAt: "asc",
-                  },
-                },
-
-                verifications: {
-                  select: {
-                    id: true,
-                    userId: true,
-                    tradeId: true,
-                    type: true,
-                    status: true,
-                    documentUrl: true,
-                    notes: true,
-                    createdAt: true,
-                    updatedAt: true,
-                  },
-
-                  orderBy: {
-                    createdAt: "asc",
-                  },
-                },
-
-                ratings: true,
-
-                dispute: true,
-              },
-            });
+            throw error;
           }
-        );
+        }
 
-      const completionMessage =
-        `Both traders have confirmed completion. Trade ${trade.tradeNumber} is now completed.`;
+        /**
+         * ---------------------------------------------------
+         * PREVENT DUPLICATE CONFIRMATION
+         * ---------------------------------------------------
+         */
 
-      await createNotification({
-        userId: trade.traderAId,
-        type: "TRADE",
-        title: "Trade Completed",
-        message: completionMessage,
-        referenceId: trade.id,
-        referenceType: "TRADE",
-      });
-
-      await createNotification({
-        userId: trade.traderBId,
-        type: "TRADE",
-        title: "Trade Completed",
-        message: completionMessage,
-        referenceId: trade.id,
-        referenceType: "TRADE",
-      });
-
-      return res.status(200).json({
-        success: true,
-
-        message:
-          "Both traders confirmed completion. Trade completed successfully.",
-
-        trade: completedTrade,
-
-        stage,
-
-        traderAConfirmed: true,
-        traderBConfirmed: true,
-        bothConfirmed: true,
-      });
-    }
-
-    /*
-     * =========================================================
-     * NORMAL TWO-PARTY TRANSITIONS
-     * =========================================================
-     */
-    let nextStatus = null;
-
-    /*
-     * PENDING
-     *   ↓
-     * AGREED
-     */
-    if (
-      stage ===
-      CONFIRMATION_STAGES.AGREEMENT
-    ) {
-      nextStatus = "AGREED";
-    }
-
-    /*
-     * AGREED
-     *   ↓
-     * VERIFICATION
-     */
-    if (
-      stage ===
-      CONFIRMATION_STAGES.VERIFICATION
-    ) {
-      nextStatus = "VERIFICATION";
-    }
-
-    /*
-     * VERIFICATION
-     *   ↓
-     * READY_FOR_HANDOVER
-     */
-    if (
-      stage ===
-      CONFIRMATION_STAGES.HANDOVER
-    ) {
-      nextStatus =
-        "READY_FOR_HANDOVER";
-    }
-
-    /*
-     * READY_FOR_HANDOVER
-     *   ↓
-     * IN_PROGRESS
-     */
-    if (
-      stage ===
-      CONFIRMATION_STAGES.HANDOVER_STARTED
-    ) {
-      nextStatus = "IN_PROGRESS";
-    }
-
-    /*
-     * Atomically update the status.
-     */
-    if (nextStatus) {
-      const statusUpdate =
-        await prisma.trade.updateMany({
-          where: {
-            id,
-            status: trade.status,
-          },
-
-          data: {
-            status: nextStatus,
-          },
-        });
-
-      if (
-        statusUpdate.count !== 1
-      ) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "The trade was updated by another request. Please refresh and try again.",
-        });
-      }
-    }
-
-    /*
-     * Load the final updated trade including
-     * confirmations and verifications.
-     */
-    updatedTrade =
-      await prisma.trade.findUnique({
-        where: {
-          id,
-        },
-
-        include: {
-          traderA: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true,
-              barterScore: true,
-              completedTrades: true,
-            },
-          },
-
-          traderB: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true,
-              barterScore: true,
-              completedTrades: true,
-            },
-          },
-
-          offer: {
-            include: {
-              sender: {
-                select: {
-                  id: true,
-                  name: true,
-                  avatar: true,
-                },
-              },
-
-              receiver: {
-                select: {
-                  id: true,
-                  name: true,
-                  avatar: true,
-                },
-              },
-
-              offeredListing: {
-                include: {
-                  images: true,
-                  category: true,
-                },
-              },
-
-              requestedListing: {
-                include: {
-                  images: true,
-                  category: true,
-                },
+        const existingConfirmation =
+          await tx.tradeConfirmation.findUnique({
+            where: {
+              tradeId_userId_stage: {
+                tradeId,
+                userId,
+                stage,
               },
             },
-          },
+          });
 
-          items: {
-            include: {
-              listing: {
-                include: {
-                  images: true,
-                  category: true,
-                },
+        if (existingConfirmation) {
+          const error =
+            new Error(
+              "You have already confirmed this stage."
+            );
+
+          error.statusCode = 400;
+
+          throw error;
+        }
+
+        /**
+         * ---------------------------------------------------
+         * CREATE CONFIRMATION
+         * ---------------------------------------------------
+         */
+
+        let confirmation;
+
+        try {
+          confirmation =
+            await tx.tradeConfirmation.create({
+              data: {
+                tradeId,
+                userId,
+                stage,
               },
-            },
-          },
+            });
+        } catch (error) {
+          /**
+           * Composite unique constraint:
+           *
+           * tradeId + userId + stage
+           */
 
-          confirmations: {
+          if (
+            error.code ===
+            "P2002"
+          ) {
+            const duplicateError =
+              new Error(
+                "You have already confirmed this stage."
+              );
+
+            duplicateError.statusCode =
+              400;
+
+            throw duplicateError;
+          }
+
+          throw error;
+        }
+
+        /**
+         * ---------------------------------------------------
+         * CHECK BOTH TRADERS
+         * ---------------------------------------------------
+         */
+
+        const confirmations =
+          await tx.tradeConfirmation.findMany({
+            where: {
+              tradeId,
+
+              stage,
+            },
+
             select: {
               id: true,
               userId: true,
-              stage: true,
               confirmedAt: true,
             },
 
             orderBy: {
-              confirmedAt: "asc",
+              confirmedAt:
+                "asc",
             },
-          },
+          });
 
-          verifications: {
-            select: {
-              id: true,
-              userId: true,
-              tradeId: true,
-              type: true,
-              status: true,
-              documentUrl: true,
-              notes: true,
-              createdAt: true,
-              updatedAt: true,
+        const traderAConfirmed =
+          confirmations.some(
+            (item) =>
+              item.userId ===
+              trade.traderAId
+          );
+
+        const traderBConfirmed =
+          confirmations.some(
+            (item) =>
+              item.userId ===
+              trade.traderBId
+          );
+
+        const bothConfirmed =
+          traderAConfirmed &&
+          traderBConfirmed;
+
+        /**
+         * ---------------------------------------------------
+         * DETERMINE NEXT STATUS
+         * ---------------------------------------------------
+         */
+
+        let nextStatus =
+          trade.status;
+
+        if (
+          bothConfirmed
+        ) {
+          switch (stage) {
+            case CONFIRMATION_STAGES.AGREEMENT:
+              nextStatus =
+                "AGREED";
+              break;
+
+            case CONFIRMATION_STAGES.VERIFICATION:
+              nextStatus =
+                "VERIFICATION";
+              break;
+
+            case CONFIRMATION_STAGES.HANDOVER:
+              nextStatus =
+                "READY_FOR_HANDOVER";
+              break;
+
+            case CONFIRMATION_STAGES.HANDOVER_STARTED:
+              nextStatus =
+                "IN_PROGRESS";
+              break;
+
+            case CONFIRMATION_STAGES.COMPLETION:
+              nextStatus =
+                "COMPLETED";
+              break;
+
+            default:
+              nextStatus =
+                trade.status;
+          }
+        }
+
+        /**
+         * ---------------------------------------------------
+         * UPDATE TRADE WHEN BOTH CONFIRMED
+         * ---------------------------------------------------
+         */
+
+        if (
+          bothConfirmed &&
+          nextStatus !==
+            trade.status
+        ) {
+          const tradeUpdate =
+            await tx.trade.updateMany({
+              where: {
+                id: tradeId,
+
+                /**
+                 * Optimistic concurrency protection.
+                 */
+                status:
+                  trade.status,
+              },
+
+              data: {
+                status:
+                  nextStatus,
+
+                /**
+                 * Keep the legacy confirmation flags
+                 * synchronized with the current stage.
+                 *
+                 * These flags are not the source of truth;
+                 * TradeConfirmation records remain the
+                 * authoritative stage history.
+                 */
+
+                ...(stage ===
+                  CONFIRMATION_STAGES.AGREEMENT
+                  ? {
+                      traderAConfirmed:
+                        traderAConfirmed,
+
+                      traderBConfirmed:
+                        traderBConfirmed,
+
+                      traderAConfirmedAt:
+                        traderAConfirmed
+                          ? (
+                              confirmations.find(
+                                (item) =>
+                                  item.userId ===
+                                  trade.traderAId
+                              )?.confirmedAt ||
+                              null
+                            )
+                          : null,
+
+                      traderBConfirmedAt:
+                        traderBConfirmed
+                          ? (
+                              confirmations.find(
+                                (item) =>
+                                  item.userId ===
+                                  trade.traderBId
+                              )?.confirmedAt ||
+                              null
+                            )
+                          : null,
+                    }
+                  : {}),
+
+                /**
+                 * COMPLETED is the only point where
+                 * completedAt is populated.
+                 */
+
+                ...(stage ===
+                  CONFIRMATION_STAGES.COMPLETION
+                  ? {
+                      completedAt:
+                        new Date(),
+
+                      traderAConfirmed:
+                        traderAConfirmed,
+
+                      traderBConfirmed:
+                        traderBConfirmed,
+
+                      traderAConfirmedAt:
+                        traderAConfirmed
+                          ? (
+                              confirmations.find(
+                                (item) =>
+                                  item.userId ===
+                                  trade.traderAId
+                              )?.confirmedAt ||
+                              null
+                            )
+                          : null,
+
+                      traderBConfirmedAt:
+                        traderBConfirmed
+                          ? (
+                              confirmations.find(
+                                (item) =>
+                                  item.userId ===
+                                  trade.traderBId
+                              )?.confirmedAt ||
+                              null
+                            )
+                          : null,
+                    }
+                  : {}),
+              },
+            });
+
+          if (
+            tradeUpdate.count !==
+            1
+          ) {
+            const error =
+              new Error(
+                "The trade changed while confirmation was being processed. Please refresh and try again."
+              );
+
+            error.statusCode =
+              409;
+
+            throw error;
+          }
+        }
+
+        /**
+         * ---------------------------------------------------
+         * LOAD FINAL TRADE
+         * ---------------------------------------------------
+         *
+         * This gives the frontend the latest status and
+         * confirmation history immediately.
+         * ---------------------------------------------------
+         */
+
+        const updatedTrade =
+          await tx.trade.findUnique({
+            where: {
+              id: tradeId,
             },
 
-            orderBy: {
-              createdAt: "asc",
+            include: {
+              traderA: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                  phone: true,
+                  location: true,
+                  barterScore:
+                    true,
+                  completedTrades:
+                    true,
+                },
+              },
+
+              traderB: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatar: true,
+                  phone: true,
+                  location: true,
+                  barterScore:
+                    true,
+                  completedTrades:
+                    true,
+                },
+              },
+
+              offer: {
+                include: {
+                  sender: {
+                    select: {
+                      id: true,
+                      name: true,
+                      avatar: true,
+                    },
+                  },
+
+                  receiver: {
+                    select: {
+                      id: true,
+                      name: true,
+                      avatar: true,
+                    },
+                  },
+
+                  offeredListing: {
+                    include: {
+                      images: true,
+                      category: true,
+                    },
+                  },
+
+                  requestedListing: {
+                    include: {
+                      images: true,
+                      category: true,
+                    },
+                  },
+                },
+              },
+
+              items: {
+                include: {
+                  listing: {
+                    include: {
+                      images: true,
+                      category: true,
+                    },
+                  },
+                },
+              },
+
+              confirmations: {
+                select: {
+                  id: true,
+                  userId: true,
+                  stage: true,
+                  confirmedAt: true,
+                },
+
+                orderBy: {
+                  confirmedAt:
+                    "asc",
+                },
+              },
+
+              verifications: {
+                select: {
+                  id: true,
+                  userId: true,
+                  tradeId: true,
+                  type: true,
+                  status: true,
+                  documentUrl: true,
+                  notes: true,
+                  createdAt: true,
+                  updatedAt: true,
+                },
+
+                orderBy: {
+                  createdAt:
+                    "asc",
+                },
+              },
+
+              ratings: true,
+
+              dispute: true,
             },
-          },
+          });
 
-          ratings: true,
+        /**
+         * ---------------------------------------------------
+         * RETURN TRANSACTION RESULT
+         * ---------------------------------------------------
+         */
 
-          dispute: true,
-        },
-      });
+        return {
+          trade:
+            updatedTrade,
 
-    /*
-     * Notify both traders.
+          confirmation,
+
+          stage,
+
+          traderAConfirmed,
+
+          traderBConfirmed,
+
+          bothConfirmed,
+
+          previousStatus:
+            trade.status,
+
+          newStatus:
+            nextStatus,
+
+          otherTraderId:
+            isTraderA
+              ? trade.traderBId
+              : trade.traderAId,
+
+          tradeNumber:
+            trade.tradeNumber,
+        };
+      },
+
+      {
+        isolationLevel:
+          "Serializable",
+      }
+    );
+
+    /**
+     * =======================================================
+     * NOTIFICATIONS
+     *
+     * Notifications happen after the transaction commits.
+     * A notification failure must not undo the confirmation.
+     * =======================================================
      */
-    const notificationMessage =
-      `Both traders confirmed the ${stage.toLowerCase()} stage. Trade ${trade.tradeNumber} is now ${updatedTrade.status}.`;
 
-    await createNotification({
-      userId: trade.traderAId,
-      type: "TRADE",
-      title: "Trade Stage Confirmed",
-      referenceId: trade.id,
-      referenceType: "TRADE",
-      message: notificationMessage,
-    });
+    if (
+      !result.bothConfirmed
+    ) {
+      try {
+        await createNotification({
+          userId:
+            result.otherTraderId,
 
-    await createNotification({
-      userId: trade.traderBId,
-      type: "TRADE",
-      title: "Trade Stage Confirmed",
-      referenceId: trade.id,
-      referenceType: "TRADE",
-      message: notificationMessage,
-    });
+          type: "TRADE",
+
+          title:
+            "Trade Confirmation Required",
+
+          referenceId:
+            result.trade.id,
+
+          referenceType:
+            "TRADE",
+
+          message:
+            `Your trade partner has confirmed the ${result.stage.toLowerCase().replace(/_/g, " ")} stage. Your confirmation is still required for Trade ${result.tradeNumber}.`,
+        });
+      } catch (notificationError) {
+        console.error(
+          "CONFIRMATION NOTIFICATION ERROR:",
+          notificationError
+        );
+      }
+    }
+
+    /**
+     * =======================================================
+     * BOTH CONFIRMED
+     * =======================================================
+     */
+
+    if (
+      result.bothConfirmed
+    ) {
+      const message =
+        `Both traders confirmed the ${result.stage.toLowerCase().replace(/_/g, " ")} stage. Trade ${result.tradeNumber} is now ${result.newStatus}.`;
+
+      const notificationResults =
+        await Promise.allSettled([
+          createNotification({
+            userId:
+              result.trade
+                .traderAId,
+
+            type: "TRADE",
+
+            title:
+              "Trade Stage Confirmed",
+
+            referenceId:
+              result.trade.id,
+
+            referenceType:
+              "TRADE",
+
+            message,
+          }),
+
+          createNotification({
+            userId:
+              result.trade
+                .traderBId,
+
+            type: "TRADE",
+
+            title:
+              "Trade Stage Confirmed",
+
+            referenceId:
+              result.trade.id,
+
+            referenceType:
+              "TRADE",
+
+            message,
+          }),
+        ]);
+
+      notificationResults.forEach(
+        (notificationResult) => {
+          if (
+            notificationResult.status ===
+            "rejected"
+          ) {
+            console.error(
+              "TRADE STAGE NOTIFICATION ERROR:",
+              notificationResult.reason
+            );
+          }
+        }
+      );
+    }
+
+    /**
+     * =======================================================
+     * RESPONSE
+     * =======================================================
+     */
 
     return res.status(200).json({
       success: true,
 
       message:
-        `Both traders confirmed. Trade moved to ${updatedTrade.status}.`,
+        result.bothConfirmed
+          ? `Both traders confirmed. Trade moved to ${result.newStatus}.`
+          : `Your ${result.stage.toLowerCase().replace(/_/g, " ")} confirmation has been recorded. Waiting for the other trader.`,
 
-      trade: updatedTrade,
+      trade:
+        result.trade,
 
-      stage,
+      stage:
+        result.stage,
 
       traderAConfirmed:
         result.traderAConfirmed,
@@ -1270,7 +1297,8 @@ export const confirmTrade = async (req, res) => {
       traderBConfirmed:
         result.traderBConfirmed,
 
-      bothConfirmed: true,
+      bothConfirmed:
+        result.bothConfirmed,
     });
   } catch (error) {
     console.error(
@@ -1282,6 +1310,7 @@ export const confirmTrade = async (req, res) => {
       error.statusCode || 500
     ).json({
       success: false,
+
       message:
         error.message ||
         "Failed to confirm trade.",
@@ -1289,16 +1318,10 @@ export const confirmTrade = async (req, res) => {
   }
 };
 
-/**
- * UPDATE TRADE STATUS
- * PATCH /api/trades/:id/status
- *
- * Used for lifecycle transitions that are NOT
- * controlled by two-party confirmation.
- */
+
 export const updateTradeStatus = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id: tradeId } = req.params;
     const { status } = req.body;
     const userId = req.user.id;
 
