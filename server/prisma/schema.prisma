@@ -83,6 +83,7 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
+  CANCELLED
 }
 
 enum PaymentType {
@@ -90,6 +91,7 @@ enum PaymentType {
   SUBSCRIPTION
   VERIFICATION
   PROTECTED_TRADE
+  OTHER
 }
 
 model User {
@@ -131,6 +133,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
 
   disputeEvents DisputeEvent[]
+
 }
 
 model PasswordResetToken {
@@ -296,6 +299,7 @@ model Trade {
   dispute Dispute?
 
   verifications Verification[]
+  payments Payment[]
 }
 
 model TradeItem {
@@ -428,18 +432,35 @@ model Notification {
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  userId        String
-  amount        Float
-  currency      String        @default("KES")
-  type          PaymentType
-  status        PaymentStatus @default(PENDING)
-  reference     String?
-  transactionId String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id String @id @default(uuid())
+  userId String
+  tradeId String?
+  amount Float
+  currency String @default("KES")
+  status PaymentStatus @default(PENDING)
+  type PaymentType
+  provider String @default("MPESA")
+  phoneNumber String?
+  merchantRequestId String?
+  checkoutRequestId String?
+  receiptNumber String?
+  resultCode String?
+  resultDescription String?
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade Trade? @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+
+  
+  @@index([userId])
+  @@index([tradeId])
+  @@index([status])
+  @@index([type])
+  @@index([checkoutRequestId])
+  @@index([merchantRequestId])
 }
 
 model Promotion {
