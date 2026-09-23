@@ -13,6 +13,8 @@ import matchRoutes from "./routes/matchRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import ratingRoutes from "./routes/ratingRoutes.js";
 import disputeRoutes from "./routes/disputeRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
+import promotionRoutes from "./routes/promotionRoutes.js";
 
 
 
@@ -51,6 +53,9 @@ app.use("/api/matches", matchRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ratings", ratingRoutes);
 app.use("/api/disputes", disputeRoutes);
+
+app.use("/api/payments", paymentRoutes);
+app.use("/api/promotions", promotionRoutes);
 
 
 export default app;

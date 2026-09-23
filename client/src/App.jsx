@@ -27,6 +27,7 @@ import Matches from "./pages/Matches";
 import MatchDetails from "./pages/MatchDetails";
 import Notifications from "./pages/Notifications";
 import AdminDisputes from "./pages/AdminDisputes";
+import PaymentHistory from "./pages/PaymentHistory";
 
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -78,6 +79,7 @@ const App = () => {
             <Route path="/matches/:id" element={<MatchDetails />} />
             <Route path="/notifications" element={<Notifications />}/>
             <Route path="/admin/disputes" element={ <AdminDisputes />}/>
+            <Route path="/payments" element={ <PaymentHistory />  }/>
             
 
           </Route>

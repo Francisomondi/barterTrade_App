@@ -94,6 +94,19 @@ enum PaymentType {
   OTHER
 }
 
+enum PromotionType {
+  FEATURED
+  BOOST
+  HOMEPAGE
+}
+
+enum PromotionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
 model User {
   id              String     @id @default(uuid())
   name            String
@@ -133,6 +146,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
 
   disputeEvents DisputeEvent[]
+  
 
 }
 
@@ -433,28 +447,38 @@ model Notification {
 
 model Payment {
   id String @id @default(uuid())
+
   userId String
   tradeId String?
+
+  promotionId String? @unique
+
   amount Float
   currency String @default("KES")
   status PaymentStatus @default(PENDING)
   type PaymentType
+
   provider String @default("MPESA")
   phoneNumber String?
+
   merchantRequestId String?
   checkoutRequestId String?
   receiptNumber String?
+
   resultCode String?
   resultDescription String?
+
   description String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trade Trade? @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  user User @relation( fields: [userId], references: [id], onDelete: Cascade)
 
-  
+  trade Trade? @relation(fields: [tradeId],references: [id], onDelete: SetNull)
+
+  promotion Promotion[]
+
   @@index([userId])
   @@index([tradeId])
   @@index([status])
@@ -464,17 +488,28 @@ model Payment {
 }
 
 model Promotion {
-  id        String   @id @default(uuid())
-  userId    String
+  id String @id @default(uuid())
+  userId String
   listingId String
-  type      String
-  amount    Float
-  startsAt  DateTime
-  expiresAt DateTime
-  active    Boolean  @default(true)
+  type PromotionType
+  status PromotionStatus @default(PENDING)
+  amount Float
+  currency String @default("KES")
+  durationDays Int
+  startsAt DateTime?
+  endsAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation( fields: [listingId], references: [id], onDelete: Cascade)
 
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  payment Payment[]
+
+  @@index([userId])
+  @@index([listingId])
+  @@index([status])
+  @@index([type])
+  @@index([endsAt])
 }
 
 model Subscription {

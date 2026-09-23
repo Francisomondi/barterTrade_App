@@ -716,29 +716,57 @@ const Marketplace = () => {
 
           {/* LISTING GRID */}
 
-          {!loading &&
-            !error &&
-            listings.length > 0 && (
-              <div
-                className="
-                  grid
-                  grid-cols-1
-                  gap-4
-                  sm:grid-cols-2
-                  lg:grid-cols-3
-                  xl:grid-cols-4
-                "
-              >
+         
+        {/* LISTINGS */}
 
-                {listings.map((listing) => (
-                  <ListingCard
-                    key={listing.id}
-                    listing={listing}
-                  />
-                ))}
+        {!loading && !error && listings.length > 0 && (
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 
-              </div>
-            )}
+              {listings.map((listing) => (
+                <div
+                  key={listing.id}
+                  className="relative"
+                >
+
+                  {/* FEATURED BADGE */}
+                  {listing.promotionType ===
+                    "FEATURED" && (
+                    <div className="absolute left-3 top-3 z-10">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#8A2638] px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">
+                        ⭐ Featured
+                      </span>
+                    </div>
+                  )}
+
+                  {/* BOOST BADGE */}
+                  {listing.promotionType ===
+                    "BOOST" && (
+                    <div className="absolute left-3 top-3 z-10">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#5B1725] px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">
+                        🚀 Boosted
+                      </span>
+                    </div>
+                  )}
+
+                  {/* PROMOTED CARD */}
+                  <div
+                    className={
+                      listing.isPromoted
+                        ? "overflow-hidden rounded-2xl ring-2 ring-[#DCAEB7]/70"
+                        : ""
+                    }
+                  >
+                    <ListingCard
+                      listing={listing}
+                    />
+                  </div>
+
+                </div>
+              ))}
+
+            </div>
+        )}
+
 
         </section>
 

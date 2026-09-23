@@ -252,19 +252,13 @@ export const getListings = async (req, res) => {
       50
     );
 
-    /*
-     * --------------------------------------------------
-     * PAGINATION
-     * --------------------------------------------------
-     */
-
     const skip =
       (pageNumber - 1) * limitNumber;
 
     /*
-     * --------------------------------------------------
-     * DATABASE FILTER
-     * --------------------------------------------------
+     * ============================================================
+     * BASE LISTING FILTERS
+     * ============================================================
      */
 
     const where = {
@@ -303,54 +297,332 @@ export const getListings = async (req, res) => {
       ];
     }
 
-    /*
-     * --------------------------------------------------
-     * VALUE FILTER
-     * --------------------------------------------------
-     */
-
     if (minValue || maxValue) {
       where.estimatedValue = {};
 
       if (minValue) {
-        const minimum = Number(minValue);
-
-        if (Number.isFinite(minimum)) {
-          where.estimatedValue.gte = minimum;
-        }
+        where.estimatedValue.gte =
+          Number(minValue);
       }
 
       if (maxValue) {
-        const maximum = Number(maxValue);
-
-        if (Number.isFinite(maximum)) {
-          where.estimatedValue.lte = maximum;
-        }
+        where.estimatedValue.lte =
+          Number(maxValue);
       }
     }
 
     /*
-     * --------------------------------------------------
-     * FETCH FRESH DATA FROM DATABASE
-     * --------------------------------------------------
-     *
-     * IMPORTANT:
-     *
-     * The marketplace feed is intentionally NOT cached.
-     *
-     * This guarantees that a newly created ACTIVE listing
-     * becomes available immediately.
-     *
+     * ============================================================
+     * CURRENT TIME
+     * ============================================================
      */
 
-    const [listings, total] =
-      await prisma.$transaction([
-        prisma.listing.findMany({
-          where,
+    const now = new Date();
 
-          skip,
+    /*
+     * ============================================================
+     * ACTIVE MARKETPLACE PROMOTIONS
+     *
+     * HOMEPAGE promotions are intentionally excluded here.
+     *
+     * Marketplace ranking:
+     *
+     * FEATURED
+     *    ↓
+     * BOOST
+     *    ↓
+     * NORMAL
+     *
+     * Only promotions that are currently ACTIVE and
+     * have not expired are considered.
+     * ============================================================
+     */
 
-          take: limitNumber,
+    const promotedListings =
+      await prisma.listing.findMany({
+        where: {
+          ...where,
+
+          promotions: {
+            some: {
+              status: "ACTIVE",
+
+              endsAt: {
+                gte: now,
+              },
+
+              type: {
+                in: [
+                  "FEATURED",
+                  "BOOST",
+                ],
+              },
+            },
+          },
+        },
+
+        include: {
+          category: true,
+
+          images: {
+            take: 1,
+
+            orderBy: [
+              {
+                isPrimary: "desc",
+              },
+              {
+                sortOrder: "asc",
+              },
+            ],
+          },
+
+          user: {
+            select: {
+              id: true,
+              name: true,
+              avatar: true,
+              barterScore: true,
+              completedTrades: true,
+            },
+          },
+
+          promotions: {
+            where: {
+              status: "ACTIVE",
+
+              endsAt: {
+                gte: now,
+              },
+
+              type: {
+                in: [
+                  "FEATURED",
+                  "BOOST",
+                ],
+              },
+            },
+
+            orderBy: {
+              endsAt: "desc",
+            },
+          },
+        },
+      });
+
+    /*
+     * ============================================================
+     * DETERMINE THE STRONGEST ACTIVE PROMOTION
+     * ============================================================
+     *
+     * FEATURED = priority 2
+     * BOOST    = priority 1
+     */
+
+    const getPromotionPriority = (
+      promotion
+    ) => {
+      if (
+        promotion?.type ===
+        "FEATURED"
+      ) {
+        return 2;
+      }
+
+      if (
+        promotion?.type ===
+        "BOOST"
+      ) {
+        return 1;
+      }
+
+      return 0;
+    };
+
+    /*
+     * Attach a single marketplace promotion
+     * to each listing.
+     */
+
+    const promotedListingsWithMeta =
+      promotedListings.map(
+        (listing) => {
+          const activePromotion =
+            [...(listing.promotions || [])]
+              .sort(
+                (a, b) =>
+                  getPromotionPriority(b) -
+                  getPromotionPriority(a)
+              )[0] || null;
+
+          return {
+            ...listing,
+
+            activePromotion:
+              activePromotion
+                ? {
+                    id:
+                      activePromotion.id,
+
+                    type:
+                      activePromotion.type,
+
+                    endsAt:
+                      activePromotion.endsAt,
+
+                    durationDays:
+                      activePromotion.durationDays,
+                  }
+                : null,
+
+            isPromoted: true,
+
+            promotionType:
+              activePromotion?.type ||
+              null,
+          };
+        }
+      );
+
+    /*
+     * ============================================================
+     * SORT PROMOTED LISTINGS
+     *
+     * FEATURED first
+     * BOOST second
+     *
+     * If two listings have the same promotion type,
+     * the promotion ending later gets priority.
+     *
+     * If still equal, newest listing wins.
+     * ============================================================
+     */
+
+    promotedListingsWithMeta.sort(
+      (a, b) => {
+        const priorityDifference =
+          getPromotionPriority(
+            b.activePromotion
+          ) -
+          getPromotionPriority(
+            a.activePromotion
+          );
+
+        if (
+          priorityDifference !== 0
+        ) {
+          return priorityDifference;
+        }
+
+        const endA = a.activePromotion
+          ?.endsAt
+          ? new Date(
+              a.activePromotion.endsAt
+            ).getTime()
+          : 0;
+
+        const endB = b.activePromotion
+          ?.endsAt
+          ? new Date(
+              b.activePromotion.endsAt
+            ).getTime()
+          : 0;
+
+        if (endA !== endB) {
+          return endB - endA;
+        }
+
+        return (
+          new Date(b.createdAt).getTime() -
+          new Date(a.createdAt).getTime()
+        );
+      }
+    );
+
+    /*
+     * ============================================================
+     * NORMAL LISTINGS
+     *
+     * Exclude promoted listings so they don't appear twice.
+     * ============================================================
+     */
+
+    const promotedListingIds =
+      promotedListings.map(
+        (listing) => listing.id
+      );
+
+    const normalWhere = {
+      ...where,
+
+      ...(promotedListingIds.length > 0
+        ? {
+            id: {
+              notIn:
+                promotedListingIds,
+            },
+          }
+        : {}),
+    };
+
+    /*
+     * Count normal listings.
+     */
+
+    const normalTotal =
+      await prisma.listing.count({
+        where: normalWhere,
+      });
+
+    /*
+     * ============================================================
+     * PAGINATION
+     * ============================================================
+     *
+     * Promotions are placed first globally.
+     *
+     * Example:
+     *
+     * 5 promoted listings
+     * page size = 12
+     *
+     * Page 1:
+     *   promoted 1-5
+     *   normal 1-7
+     *
+     * Page 2:
+     *   normal 8-19
+     *
+     * This prevents promoted listings from being skipped
+     * because of normal-listing pagination.
+     */
+
+    const promotedPage =
+      promotedListingsWithMeta.slice(
+        skip,
+        skip + limitNumber
+      );
+
+    const normalSkip = Math.max(
+      skip -
+        promotedListingsWithMeta.length,
+      0
+    );
+
+    const remainingSlots =
+      limitNumber -
+      promotedPage.length;
+
+    let normalListings = [];
+
+    if (remainingSlots > 0) {
+      normalListings =
+        await prisma.listing.findMany({
+          where: normalWhere,
+
+          skip: normalSkip,
+
+          take: remainingSlots,
 
           orderBy: {
             createdAt: "desc",
@@ -381,19 +653,58 @@ export const getListings = async (req, res) => {
                 completedTrades: true,
               },
             },
-          },
-        }),
 
-        prisma.listing.count({
-          where,
-        }),
-      ]);
+            promotions: {
+              where: {
+                status: "ACTIVE",
+
+                endsAt: {
+                  gte: now,
+                },
+
+                type: {
+                  in: [
+                    "FEATURED",
+                    "BOOST",
+                  ],
+                },
+              },
+
+              orderBy: {
+                endsAt: "desc",
+              },
+            },
+          },
+        });
+
+      normalListings =
+        normalListings.map(
+          (listing) => ({
+            ...listing,
+
+            activePromotion: null,
+
+            isPromoted: false,
+
+            promotionType: null,
+          })
+        );
+    }
 
     /*
-     * --------------------------------------------------
-     * RESPONSE
-     * --------------------------------------------------
+     * ============================================================
+     * FINAL MARKETPLACE RESULTS
+     * ============================================================
      */
+
+    const listings = [
+      ...promotedPage,
+      ...normalListings,
+    ];
+
+    const total =
+      promotedListingsWithMeta.length +
+      normalTotal;
 
     return res.json({
       success: true,
@@ -404,13 +715,11 @@ export const getListings = async (req, res) => {
         page: pageNumber,
         limit: limitNumber,
         total,
-
         pages: Math.ceil(
           total / limitNumber
         ),
       },
     });
-
   } catch (error) {
     console.error(
       "GET LISTINGS ERROR:",
@@ -419,10 +728,12 @@ export const getListings = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Unable to fetch listings",
+      message:
+        "Unable to fetch listings",
     });
   }
 };
+
 
 
 export const getListingById = async (req, res) => {
