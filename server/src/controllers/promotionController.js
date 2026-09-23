@@ -52,10 +52,7 @@ export const getPackages = async (
  *
  * The promotion does NOT become active here.
  */
-export const createPromotion = async (
-  req,
-  res
-) => {
+export const createPromotion = async ( req,res) => {
   try {
     const userId = req.user.id;
 
@@ -129,8 +126,7 @@ export const createPromotion = async (
      * Make sure the listing belongs to
      * the authenticated user.
      */
-    const listing =
-      await prisma.listing.findUnique({
+    const listing = await prisma.listing.findUnique({
         where: {
           id: listingId,
         },
@@ -169,6 +165,29 @@ export const createPromotion = async (
           "Only active listings can be promoted.",
       });
     }
+
+    const now = new Date();
+    
+    const existingActivePromotion = await prisma.promotion.findFirst({
+        where: {
+          userId,
+          listingId,
+
+          status: "ACTIVE",
+
+          endsAt: {
+            gte: now,
+          },
+        },
+    });
+
+if (existingActivePromotion) {
+  return res.status(409).json({
+    success: false,
+    message:
+      "This listing already has an active promotion. Please wait until it expires before purchasing another promotion.",
+  });
+}
 
     /*
      * Prevent multiple simultaneously

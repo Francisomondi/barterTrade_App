@@ -220,25 +220,86 @@ export const activatePromotion = async (
 };
 
 /**
- * Expire promotions whose end date has passed.
+ * EXPIRE PROMOTIONS
+ *
+ * Changes all expired ACTIVE promotions to EXPIRED.
+ *
+ * A promotion is expired when:
+ *
+ * status = ACTIVE
+ *
+ * AND
+ *
+ * endsAt <= now
+ *
+ * This function is intentionally idempotent.
+ *
+ * Running it multiple times is safe because already-expired
+ * promotions are not selected again.
  */
 export const expirePromotions = async () => {
   const now = new Date();
 
+  const result = await prisma.promotion.updateMany({
+    where: {
+      status: "ACTIVE",
+
+      endsAt: {
+        lte: now,
+      },
+    },
+
+    data: {
+      status: "EXPIRED",
+    },
+  });
+
+  if (result.count > 0) {
+    console.log(
+      `[PROMOTIONS] Expired ${result.count} promotion(s).`
+    );
+  }
+
+  return result.count;
+};
+
+
+/**
+ * EXPIRE ABANDONED PENDING PROMOTIONS
+ *
+ * A promotion that remains PENDING for more than 24 hours
+ * is considered abandoned.
+ *
+ * The promotion is cancelled rather than expired because
+ * it never actually became active.
+ */
+export const cleanupPendingPromotions = async () => {
+  const cutoff = new Date(
+    Date.now() -
+      24 * 60 * 60 * 1000
+  );
+
   const result =
     await prisma.promotion.updateMany({
       where: {
-        status: "ACTIVE",
+        status: "PENDING",
 
-        endsAt: {
-          lt: now,
+        createdAt: {
+          lte: cutoff,
         },
       },
 
       data: {
-        status: "EXPIRED",
+        status: "CANCELLED",
       },
     });
 
+  if (result.count > 0) {
+    console.log(
+      `[PROMOTIONS] Cancelled ${result.count} abandoned pending promotion(s).`
+    );
+  }
+
   return result.count;
 };
+
