@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getMyListings } from "../api/listingApi";
 import { getReceivedOffers, getSentOffers,} from "../api/offerApi";
 import { getTrades } from "../api/tradeApi";
+import MyPromotions from "../components/MyPromotions";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -391,6 +392,11 @@ const Dashboard = () => {
     pendingReceivedOffers.length +
     pendingSentOffers.length;
 
+  const actionRequiredCount =
+    pendingReceivedOffers.length +
+    activeTrades.length +
+    disputedTrades.length;
+
   const totalListingValue = useMemo(
     () =>
       listings.reduce(
@@ -437,7 +443,7 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAF7F5]">
+      <div className="min-h-screen bg-gradient-to-b from-[#FAF7F5] via-[#FCFAF9] to-[#F7F1F2]">
         <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <div className="animate-pulse">
             <div className="h-56 rounded-3xl bg-[#3D0F18]/15" />
@@ -468,7 +474,7 @@ const Dashboard = () => {
   ========================================================= */
 
   return (
-    <div className="min-h-screen bg-[#FAF7F5]">
+    <div className="min-h-screen bg-gradient-to-b from-[#FAF7F5] via-[#FCFAF9] to-[#F7F1F2]">
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
 
         {/* =====================================================
@@ -516,14 +522,14 @@ const Dashboard = () => {
                     to="/marketplace"
                     className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
                   >
-                    Explore Marketplace
+                    Browse Marketplace
                   </Link>
 
                   <Link
                     to="/listings/create"
                     className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/15"
                   >
-                    + List an Item
+                    + Create Listing
                   </Link>
                 </div>
               </div>
@@ -740,6 +746,109 @@ const Dashboard = () => {
             </p>
           </div>
         </section>
+        
+      {/* =========================================================
+          PROMOTION MANAGEMENT
+      ========================================================= */}
+
+        <section className="mt-6 overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-[#EEE6E8] bg-[#FCF8F9] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
+                  Action Center
+                </p>
+                {actionRequiredCount > 0 && (
+                  <span className="rounded-full bg-[#5B1725] px-2.5 py-1 text-[10px] font-black text-white">
+                    {actionRequiredCount}
+                  </span>
+                )}
+              </div>
+              <h2 className="mt-1 text-xl font-black text-[#21191B]">
+                What needs your attention
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Review pending offers, active trades and disputes without hunting through the app.
+              </p>
+            </div>
+
+            {actionRequiredCount === 0 && (
+              <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">
+                ✓ You're all caught up
+              </span>
+            )}
+          </div>
+
+          <div className="grid gap-px bg-[#EEE6E8] sm:grid-cols-3">
+            {[
+              {
+                to: "/offers",
+                icon: "🤝",
+                value: pendingReceivedOffers.length,
+                title: "Offers to review",
+                text: "Pending offers received from other traders.",
+                iconClass: "bg-amber-50",
+              },
+              {
+                to: "/trades",
+                icon: "🔄",
+                value: activeTrades.length,
+                title: "Active trades",
+                text: "Exchanges currently moving through the trade process.",
+                iconClass: "bg-[#F5E8EB]",
+              },
+              {
+                to: "/trades",
+                icon: "⚠️",
+                value: disputedTrades.length,
+                title: "Disputes",
+                text: "Trades marked as disputed that may require attention.",
+                iconClass: "bg-red-50",
+              },
+            ].map((item) => (
+              <Link
+                key={item.title}
+                to={item.to}
+                className="group bg-white p-5 transition hover:bg-[#FCF8F9]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className={`flex h-11 w-11 items-center justify-center rounded-xl text-xl ${item.iconClass}`}>
+                    {item.icon}
+                  </div>
+                  <span className="text-[#C9A227] transition group-hover:translate-x-1">
+                    →
+                  </span>
+                </div>
+                <p className="mt-4 text-2xl font-black text-[#5B1725]">
+                  {item.value}
+                </p>
+                <p className="mt-1 text-sm font-bold text-[#21191B]">
+                  {item.title}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-gray-500">
+                  {item.text}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <div className="mb-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
+              Visibility
+            </p>
+            <h2 className="mt-1 text-xl font-black text-[#21191B]">
+              Promotion performance
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Manage promoted listings and follow their performance.
+            </p>
+          </div>
+
+          <MyPromotions />
+        </section>
+      
 
         {/* =====================================================
             ACTIVITY OVERVIEW

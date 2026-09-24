@@ -1,6 +1,6 @@
 import "dotenv/config";
 import redisClient from "./config/redis.js";
-import {  startPromotionCleanupJob,} from "../jobs/promotionCleanupJob.js";
+import {  startPromotionCleanupJob,} from "./jobs/promotionCleanupJob.js";
 
 import app from "./app.js";
 

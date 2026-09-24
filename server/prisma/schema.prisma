@@ -107,6 +107,11 @@ enum PromotionStatus {
   CANCELLED
 }
 
+enum PromotionAnalyticsEventType {
+  VIEW
+  CLICK
+}
+
 model User {
   id              String     @id @default(uuid())
   name            String
@@ -145,9 +150,8 @@ model User {
   tradeConfirmations  TradeConfirmation[]
   passwordResetTokens PasswordResetToken[]
 
-  disputeEvents DisputeEvent[]
-  
-
+  disputeEvents            DisputeEvent[]
+  promotionAnalyticsEvents PromotionAnalyticsEvent[]
 }
 
 model PasswordResetToken {
@@ -313,7 +317,7 @@ model Trade {
   dispute Dispute?
 
   verifications Verification[]
-  payments Payment[]
+  payments      Payment[]
 }
 
 model TradeItem {
@@ -448,24 +452,25 @@ model Notification {
 model Payment {
   id String @id @default(uuid())
 
-  userId String
-  tradeId String?
+  userId      String
+  tradeId     String?
+  promotionId String?
 
-  promotionId String? @unique
+  amount   Float
+  currency String        @default("KES")
+  status   PaymentStatus @default(PENDING)
+  type     PaymentType
 
-  amount Float
-  currency String @default("KES")
-  status PaymentStatus @default(PENDING)
-  type PaymentType
-
-  provider String @default("MPESA")
+  provider    String  @default("MPESA")
   phoneNumber String?
 
+  // M-Pesa identifiers
   merchantRequestId String?
   checkoutRequestId String?
-  receiptNumber String?
+  receiptNumber     String?
 
-  resultCode String?
+  // M-Pesa callback result
+  resultCode        String?
   resultDescription String?
 
   description String?
@@ -473,14 +478,13 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user User @relation( fields: [userId], references: [id], onDelete: Cascade)
-
-  trade Trade? @relation(fields: [tradeId],references: [id], onDelete: SetNull)
-
-  promotion Promotion[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade     Trade?     @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  promotion Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([tradeId])
+  @@index([promotionId])
   @@index([status])
   @@index([type])
   @@index([checkoutRequestId])
@@ -489,27 +493,36 @@ model Payment {
 
 model Promotion {
   id String @id @default(uuid())
-  userId String
+
+  userId    String
   listingId String
-  type PromotionType
+
+  type   PromotionType
   status PromotionStatus @default(PENDING)
-  amount Float
+
+  amount   Float
   currency String @default("KES")
+
   durationDays Int
+
   startsAt DateTime?
-  endsAt DateTime?
+  endsAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listing Listing @relation( fields: [listingId], references: [id], onDelete: Cascade)
 
-  payment Payment[]
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  payments        Payment[]
+  analyticsEvents PromotionAnalyticsEvent[]
 
   @@index([userId])
   @@index([listingId])
   @@index([status])
   @@index([type])
   @@index([endsAt])
+  @@index([listingId, status])
 }
 
 model Subscription {
@@ -522,4 +535,24 @@ model Subscription {
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PromotionAnalyticsEvent {
+  id String @id @default(uuid())
+
+  promotionId String
+  userId      String?
+
+  type PromotionAnalyticsEventType
+
+  createdAt DateTime @default(now())
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([promotionId])
+  @@index([promotionId, type])
+  @@index([promotionId, createdAt])
+  @@index([userId])
 }

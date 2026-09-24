@@ -15,6 +15,8 @@ import ratingRoutes from "./routes/ratingRoutes.js";
 import disputeRoutes from "./routes/disputeRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import promotionRoutes from "./routes/promotionRoutes.js";
+import promotionAnalyticsRoutes from "./routes/promotionAnalyticsRoutes.js";
+import mpesaCallbackRoutes from "./routes/mpesaCallbackRoutes.js";
 
 
 
@@ -60,6 +62,8 @@ app.use("/api/disputes", disputeRoutes);
 
 app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
+app.use( "/api/promotions", promotionAnalyticsRoutes);
+app.use( "/api/mpesa", mpesaCallbackRoutes);
 
 
 export default app;

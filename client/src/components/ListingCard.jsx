@@ -1,256 +1,360 @@
+
+import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
+import {recordPromotionView,recordPromotionClick,} from "../api/promotionApi";
+
 const ListingCard = ({ listing }) => {
-const primaryImage =
-listing.images?.find((image) => image.isPrimary) ||
-listing.images?.[0];
+  const cardRef = useRef(null);
 
-const image =
-primaryImage?.url ||
-"https://placehold.co/600x400?text=Barter+Trade";
+  /*
+   * Prevent the same promoted listing card from recording
+   * multiple impressions during this component's lifetime.
+   */
+  const viewRecordedRef = useRef(false);
 
-return (
-<Link
-to={`/listings/${listing.id}`}
-className="
-group flex h-full flex-col
-overflow-hidden
-rounded-xl
-border border-[#E7DDDF]
-bg-white
-shadow-sm
-transition-all duration-200
-hover:-translate-y-0.5
-hover:border-[#C9A3AB]
-hover:shadow-md
-"
->
+  /*
+   * ============================================================
+   * PROMOTION VIEW / IMPRESSION TRACKING
+   * ============================================================
+   *
+   * A promotion view is recorded only when the card actually
+   * enters the user's viewport.
+   *
+   * We do NOT record the view simply because ListingCard mounted.
+   */
+  useEffect(() => {
+    const promotionId = listing?.activePromotion?.id;
 
+    if (!promotionId || !listing?.isPromoted) {
+      return;
+    }
 
-  {/* =====================================================
-      IMAGE
-  ====================================================== */}
+    const element = cardRef.current;
 
-  <div
-    className="
-      relative
-      aspect-[4/3]
-      w-full
-      overflow-hidden
-      bg-[#F3EEEF]
-    "
-  >
+    if (!element) {
+      return;
+    }
 
-    <img
-      src={image}
-      alt={listing.title}
+    /*
+     * If this card has already recorded its impression,
+     * do nothing.
+     */
+    if (viewRecordedRef.current) {
+      return;
+    }
+
+    /*
+     * IntersectionObserver tells us when the listing card
+     * becomes visible in the user's viewport.
+     */
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+
+        if (!entry?.isIntersecting) {
+          return;
+        }
+
+        /*
+         * Mark immediately so multiple observer callbacks
+         * cannot create duplicate VIEW events.
+         */
+        viewRecordedRef.current = true;
+
+        /*
+         * Analytics must never block the marketplace.
+         */
+        recordPromotionView(promotionId).catch(() => {
+          /*
+           * Analytics failure must never break the UI.
+           */
+        });
+
+        /*
+         * We only need the first impression for this
+         * mounted card.
+         */
+        observer.disconnect();
+      },
+      {
+        /*
+         * The card must be meaningfully visible before
+         * we count it as an impression.
+         *
+         * 0.5 = at least 50% of the card is visible.
+         */
+        threshold: 0.5,
+      }
+    );
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    listing?.activePromotion?.id,
+    listing?.isPromoted,
+  ]);
+
+  /*
+   * ============================================================
+   * PROMOTION CLICK TRACKING
+   * ============================================================
+   *
+   * The analytics request is intentionally fire-and-forget.
+   *
+   * Navigation must not wait for analytics.
+   */
+  const handleListingClick = () => {
+    const promotionId =
+      listing?.activePromotion?.id;
+
+    if (promotionId && listing?.isPromoted) {
+      recordPromotionClick(promotionId).catch(() => {
+        /*
+         * Analytics failure must never prevent
+         * the user from opening the listing.
+         */
+      });
+    }
+  };
+
+  const primaryImage =
+    listing.images?.find(
+      (image) => image.isPrimary
+    ) || listing.images?.[0];
+
+  const image =
+    primaryImage?.url ||
+    "https://placehold.co/600x400?text=Barter+Trade";
+
+  return (
+    <Link
+      ref={cardRef}
+      to={`/listings/${listing.id}`}
+      onClick={handleListingClick}
       className="
-        h-full
-        w-full
-        object-cover
-        transition-transform
-        duration-300
-        ease-out
-        group-hover:scale-[1.03]
+        group flex h-full flex-col
+        overflow-hidden
+        rounded-xl
+        border border-[#E7DDDF]
+        bg-white
+        shadow-sm
+        transition-all duration-200
+        hover:-translate-y-0.5
+        hover:border-[#C9A3AB]
+        hover:shadow-md
       "
-    />
+    >
+      {/* =====================================================
+          IMAGE
+      ====================================================== */}
 
-    {/* Subtle image overlay */}
-    <div
-      className="
-        pointer-events-none
-        absolute inset-0
-        bg-gradient-to-t
-        from-black/10
-        via-transparent
-        to-transparent
-        opacity-0
-        transition-opacity
-        duration-300
-        group-hover:opacity-100
-      "
-    />
-
-  </div>
-
-
-  {/* =====================================================
-      CONTENT
-  ====================================================== */}
-
-  <div className="flex flex-1 flex-col p-3.5 sm:p-4">
-
-    {/* CATEGORY + CONDITION */}
-
-    <div className="flex items-center justify-between gap-2">
-
-      <span
+      <div
         className="
-          max-w-[65%]
-          truncate
-          rounded-md
-          bg-[#F5E8EB]
-          px-2.5 py-1
-          text-[10px]
-          font-bold
-          uppercase
-          tracking-wide
-          text-[#5B1725]
-          sm:text-[11px]
+          relative
+          aspect-[4/3]
+          w-full
+          overflow-hidden
+          bg-[#F3EEEF]
         "
       >
-        {listing.category?.name || "Other"}
-      </span>
-
-      <span
-        className="
-          shrink-0
-          text-[10px]
-          font-medium
-          capitalize
-          text-gray-500
-          sm:text-[11px]
-        "
-      >
-        {listing.condition?.replace("_", " ")}
-      </span>
-
-    </div>
-
-
-    {/* TITLE */}
-
-    <h3
-      className="
-        mt-2.5
-        truncate
-        text-sm
-        font-bold
-        leading-5
-        text-[#21191B]
-        transition-colors
-        group-hover:text-[#5B1725]
-        sm:text-[15px]
-      "
-    >
-      {listing.title}
-    </h3>
-
-
-    {/* DESCRIPTION */}
-
-    <p
-      className="
-        mt-1
-        line-clamp-2
-        min-h-[2.25rem]
-        text-xs
-        leading-[1.125rem]
-        text-gray-500
-        sm:text-[13px]
-      "
-    >
-      {listing.description}
-    </p>
-
-
-    {/* =================================================
-        BOTTOM INFORMATION
-    ================================================== */}
-
-    <div
-      className="
-        mt-auto
-        flex
-        items-end
-        justify-between
-        gap-3
-        border-t
-        border-[#F0E8EA]
-        pt-3
-      "
-    >
-
-      {/* VALUE */}
-
-      <div className="min-w-0">
-
-        <p
+        <img
+          src={image}
+          alt={listing.title}
           className="
-            text-[10px]
-            font-medium
-            uppercase
-            tracking-wide
-            text-gray-400
+            h-full
+            w-full
+            object-cover
+            transition-transform
+            duration-300
+            ease-out
+            group-hover:scale-[1.03]
           "
-        >
-          Barter value
-        </p>
+        />
 
-        <p
+        <div
           className="
-            mt-0.5
-            truncate
-            text-base
-            font-extrabold
-            leading-5
-            text-[#5B1725]
-            sm:text-lg
+            pointer-events-none
+            absolute inset-0
+            bg-gradient-to-t
+            from-black/10
+            via-transparent
+            to-transparent
+            opacity-0
+            transition-opacity
+            duration-300
+            group-hover:opacity-100
           "
-        >
-          KES{" "}
-          {Number(listing.estimatedValue).toLocaleString()}
-        </p>
-
+        />
       </div>
 
+      {/* =====================================================
+          CONTENT
+      ====================================================== */}
 
-      {/* VIEW */}
+      <div className="flex flex-1 flex-col p-3.5 sm:p-4">
 
-      <span
-        className="
-          flex
-          shrink-0
-          items-center
-          gap-1
-          rounded-lg
-          bg-[#5B1725]
-          px-2.5
-          py-1.5
-          text-[11px]
-          font-bold
-          text-white
-          transition-all
-          duration-200
-          group-hover:bg-[#3D0F18]
-          sm:px-3
-          sm:text-xs
-        "
-      >
-        View
+        {/* CATEGORY + CONDITION */}
 
-        <span
+        <div className="flex items-center justify-between gap-2">
+          <span
+            className="
+              max-w-[65%]
+              truncate
+              rounded-md
+              bg-[#F5E8EB]
+              px-2.5 py-1
+              text-[10px]
+              font-bold
+              uppercase
+              tracking-wide
+              text-[#5B1725]
+              sm:text-[11px]
+            "
+          >
+            {listing.category?.name || "Other"}
+          </span>
+
+          <span
+            className="
+              shrink-0
+              text-[10px]
+              font-medium
+              capitalize
+              text-gray-500
+              sm:text-[11px]
+            "
+          >
+            {listing.condition?.replace("_", " ")}
+          </span>
+        </div>
+
+        {/* TITLE */}
+
+        <h3
           className="
+            mt-2.5
+            truncate
             text-sm
-            leading-none
-            transition-transform
-            duration-200
-            group-hover:translate-x-0.5
+            font-bold
+            leading-5
+            text-[#21191B]
+            transition-colors
+            group-hover:text-[#5B1725]
+            sm:text-[15px]
           "
         >
-          →
-        </span>
+          {listing.title}
+        </h3>
 
-      </span>
+        {/* DESCRIPTION */}
 
-    </div>
+        <p
+          className="
+            mt-1
+            line-clamp-2
+            min-h-[2.25rem]
+            text-xs
+            leading-[1.125rem]
+            text-gray-500
+            sm:text-[13px]
+          "
+        >
+          {listing.description}
+        </p>
 
-  </div>
+        {/* =================================================
+            BOTTOM INFORMATION
+        ================================================== */}
 
-</Link>
+        <div
+          className="
+            mt-auto
+            flex
+            items-end
+            justify-between
+            gap-3
+            border-t
+            border-[#F0E8EA]
+            pt-3
+          "
+        >
+          {/* VALUE */}
 
+          <div className="min-w-0">
+            <p
+              className="
+                text-[10px]
+                font-medium
+                uppercase
+                tracking-wide
+                text-gray-400
+              "
+            >
+              Barter value
+            </p>
 
-);
+            <p
+              className="
+                mt-0.5
+                truncate
+                text-base
+                font-extrabold
+                leading-5
+                text-[#5B1725]
+                sm:text-lg
+              "
+            >
+              KES{" "}
+              {Number(
+                listing.estimatedValue
+              ).toLocaleString()}
+            </p>
+          </div>
+
+          {/* VIEW */}
+
+          <span
+            className="
+              flex
+              shrink-0
+              items-center
+              gap-1
+              rounded-lg
+              bg-[#5B1725]
+              px-2.5
+              py-1.5
+              text-[11px]
+              font-bold
+              text-white
+              transition-all
+              duration-200
+              group-hover:bg-[#3D0F18]
+              sm:px-3
+              sm:text-xs
+            "
+          >
+            View
+
+            <span
+              className="
+                text-sm
+                leading-none
+                transition-transform
+                duration-200
+                group-hover:translate-x-0.5
+              "
+            >
+              →
+            </span>
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
 };
 
 export default ListingCard;

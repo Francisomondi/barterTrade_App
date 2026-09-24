@@ -1,17 +1,68 @@
-
 import express from "express";
-import { getPackages, createPromotion, getMyPromotions, getPromotion, payForPromotion,} from "../controllers/promotionController.js";
+
+import {
+  getPromotionPlans,
+  createPromotion,
+  getMyPromotions,
+  getPromotion,
+  payForPromotion,
+  getPromotionPaymentStatus,
+} from "../controllers/promotionController.js";
+
 import { protect } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.get( "/packages", getPackages);
+/**
+ * =========================================================
+ * PUBLIC ROUTES
+ * =========================================================
+ */
+
+/**
+ * Get available promotion plans.
+ */
+router.get("/plans", getPromotionPlans);
+
+/**
+ * =========================================================
+ * PROTECTED ROUTES
+ * =========================================================
+ */
 
 router.use(protect);
 
-router.post("/",createPromotion);
-router.get( "/my",getMyPromotions);
-router.get( "/:id",getPromotion);
-router.post("/:id/pay",payForPromotion);
+/**
+ * Create or reuse a promotion.
+ */
+router.post("/", createPromotion);
+
+/**
+ * Get current user's promotions.
+ */
+router.get("/my", getMyPromotions);
+
+/**
+ * Check M-PESA promotion payment status.
+ *
+ * IMPORTANT:
+ * Keep this before /:id.
+ */
+router.get(
+  "/payments/:paymentId/status",
+  getPromotionPaymentStatus
+);
+
+/**
+ * Initiate M-PESA payment.
+ */
+router.post("/:id/pay", payForPromotion);
+
+/**
+ * Get single promotion.
+ *
+ * Keep dynamic /:id last.
+ */
+router.get("/:id", getPromotion);
 
 export default router;
