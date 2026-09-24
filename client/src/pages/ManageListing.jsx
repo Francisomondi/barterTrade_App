@@ -43,62 +43,44 @@ const ManageListing = () => {
   // IMAGE STATE
   // ======================================================
 
-  const [deletingImageId, setDeletingImageId] =
-    useState(null);
+  const [deletingImageId, setDeletingImageId] = useState(null);
 
-  const [settingPrimaryId, setSettingPrimaryId] =
-    useState(null);
+  const [settingPrimaryId, setSettingPrimaryId] = useState(null);
 
-  const [reorderingImages, setReorderingImages] =
-    useState(false);
+  const [reorderingImages, setReorderingImages] = useState(false);
 
-  const [selectedImages, setSelectedImages] =
-    useState([]);
+  const [selectedImages, setSelectedImages] =useState([]);
 
-  const [uploadingImages, setUploadingImages] =
-    useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
   // ======================================================
   // PROMOTION STATE
   // ======================================================
 
-  const [promotionPlans, setPromotionPlans] =
-    useState([]);
+  const [promotionPlans, setPromotionPlans] = useState([]);
 
-  const [plansLoading, setPlansLoading] =
-    useState(false);
+  const [plansLoading, setPlansLoading] = useState(false);
 
-  const [
-    promotionModalOpen,
-    setPromotionModalOpen,
-  ] = useState(false);
+  const [ promotionModalOpen, setPromotionModalOpen,] = useState(false);
 
-  const [selectedListing, setSelectedListing] =
-    useState(null);
+  const [selectedListing, setSelectedListing] = useState(null);
 
-  const [selectedPlan, setSelectedPlan] =
-    useState(null);
+  const [selectedPlan, setSelectedPlan] = useState(null);
 
-  const [phoneNumber, setPhoneNumber] =
-    useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
 
-  const [promotionStep, setPromotionStep] =
-    useState("SELECT");
+  const [promotionStep, setPromotionStep] = useState("SELECT");
 
-  const [promotionLoading, setPromotionLoading] =
-    useState(false);
+  const [promotionLoading, setPromotionLoading] = useState(false);
 
-  const [promotionError, setPromotionError] =
-    useState("");
+  const [promotionError, setPromotionError] = useState("");
 
-  const [promotionResult, setPromotionResult] =
-    useState(null);
-
-  const [retryAfterSeconds, setRetryAfterSeconds] =
-    useState(0);
-
-  const [continuePaymentHandled, setContinuePaymentHandled] =
-    useState(false);
+  const [promotionResult, setPromotionResult] = useState(null);
+  const [promotionPricing, setPromotionPricing] = useState(null);
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
+  
+  const [continuePaymentHandled, setContinuePaymentHandled] = useState(false);
+  
 
   // ======================================================
   // LOAD LISTING
@@ -210,6 +192,10 @@ const ManageListing = () => {
     setPhoneNumber("");
     setPromotionError("");
     setPromotionResult(null);
+
+    // Reset old Premium pricing
+    setPromotionPricing(null);
+
     setRetryAfterSeconds(0);
     setPromotionStep("PHONE");
     setPromotionLoading(false);
@@ -253,16 +239,17 @@ const ManageListing = () => {
   const openPromotionModal = () => {
     if (!listing) return;
 
-    setSelectedListing(listing);
-    setSelectedPlan(null);
-    setPhoneNumber("");
-    setPromotionError("");
-    setPromotionResult(null);
-    setRetryAfterSeconds(0);
-    setPromotionStep("SELECT");
-    setPromotionLoading(false);
-    setPromotionModalOpen(true);
-  };
+     setSelectedListing(listing);
+      setSelectedPlan(null);
+      setPhoneNumber("");
+      setPromotionError("");
+      setPromotionResult(null);
+      setPromotionPricing(null);
+      setRetryAfterSeconds(0);
+      setPromotionStep("SELECT");
+      setPromotionLoading(false);
+      setPromotionModalOpen(true);
+      };
 
   const closePromotionModal = () => {
     if (
@@ -271,16 +258,16 @@ const ManageListing = () => {
     ) {
       return;
     }
-
-    setPromotionModalOpen(false);
-    setSelectedListing(null);
-    setSelectedPlan(null);
-    setPhoneNumber("");
-    setPromotionError("");
-    setPromotionResult(null);
-    setRetryAfterSeconds(0);
-    setPromotionStep("SELECT");
-    setPromotionLoading(false);
+  setPromotionModalOpen(false);
+  setSelectedListing(null);
+  setSelectedPlan(null);
+  setPhoneNumber("");
+  setPromotionError("");
+  setPromotionResult(null);
+  setPromotionPricing(null);
+  setRetryAfterSeconds(0);
+  setPromotionStep("SELECT");
+  setPromotionLoading(false);
   };
 
   const handleSelectPromotionPlan = (
@@ -295,8 +282,7 @@ const ManageListing = () => {
   // PROMOTION PAYMENT
   // ======================================================
 
-  const handlePromotionPayment =
-    async () => {
+  const handlePromotionPayment = async () => {
       if (!selectedListing) {
         setPromotionError(
           "No listing selected."
@@ -341,6 +327,11 @@ const ManageListing = () => {
 
         const promotion =
           promotionResponse?.promotion;
+
+        const pricing =
+          promotionResponse?.pricing || null;
+
+        setPromotionPricing(pricing);
 
         if (!promotion?.id) {
           throw new Error(
@@ -1602,6 +1593,9 @@ const ManageListing = () => {
                               0
                           ).toLocaleString()}
                         </p>
+                        <p className="mt-1 text-right text-[11px] font-medium text-gray-500">
+                          Premium discount, if eligible, is applied securely before M-PESA payment.
+                        </p>
                       </div>
                     </div>
 
@@ -1669,14 +1663,9 @@ const ManageListing = () => {
                       }
                       className="mt-6 w-full rounded-xl bg-[#5B1725] px-5 py-3.5 font-bold text-white transition hover:bg-[#3D0F18] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {promotionLoading
-                        ? "Sending STK Push..."
-                        : `Pay ${
-                            selectedPlan.currency
-                          } ${Number(
-                            selectedPlan.amount ||
-                              0
-                          ).toLocaleString()} with M-PESA`}
+                     {promotionLoading
+                      ? "Applying benefits & sending STK Push..."
+                      : "Continue to M-PESA Payment"}
                     </button>
                   </>
                 )}
@@ -1685,23 +1674,60 @@ const ManageListing = () => {
               {/* WAITING */}
               {/* =========================================== */}
 
-              {promotionStep ===
-                "WAITING" && (
+              {promotionStep === "WAITING" && (
                 <div className="py-8 text-center">
+
+                  {promotionPricing && (
+                    <div className="mx-auto mb-7 max-w-sm rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
+                      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                        M-PESA Amount
+                      </p>
+
+                      {promotionPricing.isPremium &&
+                        promotionPricing.discountPercent > 0 && (
+                          <div className="mt-3">
+                            <p className="text-sm text-gray-400 line-through">
+                              {promotionPricing.currency || "KES"}{" "}
+                              {Number(
+                                promotionPricing.baseAmount || 0
+                              ).toLocaleString("en-KE")}
+                            </p>
+
+                            <span className="mt-2 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                              Premium -{promotionPricing.discountPercent}%
+                            </span>
+                          </div>
+                        )}
+
+                      <p className="mt-3 text-2xl font-extrabold text-[#8A2638]">
+                        {promotionPricing.currency || "KES"}{" "}
+                        {Number(
+                          promotionPricing.finalAmount || 0
+                        ).toLocaleString("en-KE")}
+                      </p>
+
+                      {promotionPricing.isPremium &&
+                        promotionPricing.discountAmount > 0 && (
+                          <p className="mt-2 text-xs font-bold text-green-700">
+                            You saved{" "}
+                            {promotionPricing.currency || "KES"}{" "}
+                            {Number(
+                              promotionPricing.discountAmount
+                            ).toLocaleString("en-KE")}
+                          </p>
+                        )}
+                    </div>
+                  )}
+
                   <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-[#E7DDDF] border-t-[#8A2638]" />
 
                   <h3 className="mt-6 text-xl font-extrabold text-[#3D0F18]">
-                    Waiting for
-                    payment
+                    Waiting for payment
                   </h3>
 
                   <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-gray-500">
-                    Check your phone
-                    for the M-PESA
-                    prompt and enter
-                    your PIN to
-                    complete the
-                    payment.
+                    Check your phone for the M-PESA prompt and enter
+                    your PIN to complete the payment.
                   </p>
 
                   <div className="mt-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm leading-6 text-yellow-800">
@@ -1716,8 +1742,7 @@ const ManageListing = () => {
               {/* SUCCESS */}
               {/* =========================================== */}
 
-              {promotionStep ===
-                "SUCCESS" && (
+              {promotionStep === "SUCCESS" && (
                 <div className="py-6 text-center">
                   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-3xl font-bold text-green-600">
                     ✓
@@ -1733,6 +1758,32 @@ const ManageListing = () => {
                     now being
                     promoted.
                   </p>
+
+                  {promotionPricing && (
+                    <div className="mt-6 rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                        Amount Paid
+                      </p>
+
+                      <p className="mt-1 text-xl font-extrabold text-[#3D0F18]">
+                        {promotionPricing.currency || "KES"}{" "}
+                        {Number(
+                          promotionPricing.finalAmount || 0
+                        ).toLocaleString("en-KE")}
+                      </p>
+
+                      {promotionPricing.isPremium &&
+                        promotionPricing.discountAmount > 0 && (
+                          <p className="mt-2 text-xs font-bold text-green-700">
+                            Premium saved you{" "}
+                            {promotionPricing.currency || "KES"}{" "}
+                            {Number(
+                              promotionPricing.discountAmount
+                            ).toLocaleString("en-KE")}
+                          </p>
+                        )}
+                    </div>
+                  )}
 
                   {promotionResult
                     ?.payment
