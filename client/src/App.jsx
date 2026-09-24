@@ -29,6 +29,10 @@ import Notifications from "./pages/Notifications";
 import AdminDisputes from "./pages/AdminDisputes";
 import PaymentHistory from "./pages/PaymentHistory";
 import PromotionManagement from "./pages/PromotionManagement";
+import PromotionAnalytics from "./components/PromotionAnalytics";
+import Premium from "./pages/Premium";
+import MySubscription from "./pages/MySubscription";
+
 
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -82,8 +86,10 @@ const App = () => {
             <Route path="/admin/disputes" element={ <AdminDisputes />}/>
             <Route path="/payments" element={ <PaymentHistory />  }/>
             <Route path="/promotions" element={<PromotionManagement /> } />
-
-            
+            <Route path="/promotions/:promotionId/analytics" element={<PromotionAnalytics />}/>
+            <Route path="/premium" element={<Premium />}/>
+            <Route path="/account/subscription" element={<MySubscription />} />
+        
 
           </Route>
 

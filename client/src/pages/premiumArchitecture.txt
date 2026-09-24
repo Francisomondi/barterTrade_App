@@ -1,0 +1,48 @@
+| Feature                         |     Free | Premium |
+| ------------------------------- | -------: | ------: |
+| Browse & barter                 |        ✓ |       ✓ |
+| Create listings                 |        ✓ |       ✓ |
+| Make/receive offers             |        ✓ |       ✓ |
+| Standard marketplace visibility |        ✓ |       ✓ |
+| Premium profile badge           |        — |       ✓ |
+| Advanced listing analytics      |        — |       ✓ |
+| Promotion discount              |        — |       ✓ |
+| Higher active-listing limit     | Standard |  Higher |
+| Priority support                |        — |       ✓ |
+| Premium features added later    |        — |       ✓ |
+
+
+
+
+
+FREE
+ │
+ ▼
+Select Premium
+ │
+ ▼
+Create PENDING subscription
+ │
+ ▼
+Enter M-Pesa number
+ │
+ ▼
+STK Push
+ │
+ ├──── Failed/Cancelled
+ │
+ ▼
+Payment COMPLETED
+ │
+ ▼
+Subscription ACTIVE
+ │
+ ├── startsAt
+ │
+ └── endsAt
+        │
+        ▼
+      EXPIRED
+        │
+        ▼
+      Renew

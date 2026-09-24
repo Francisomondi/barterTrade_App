@@ -1,92 +1,85 @@
-
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 
-import {recordPromotionView,recordPromotionClick,} from "../api/promotionApi";
+import {
+  recordPromotionView,
+  recordPromotionClick,
+} from "../api/promotionApi";
 
 const ListingCard = ({ listing }) => {
   const cardRef = useRef(null);
-
-  /*
-   * Prevent the same promoted listing card from recording
-   * multiple impressions during this component's lifetime.
-   */
   const viewRecordedRef = useRef(false);
 
   /*
    * ============================================================
-   * PROMOTION VIEW / IMPRESSION TRACKING
+   * PROMOTION INFORMATION
    * ============================================================
-   *
-   * A promotion view is recorded only when the card actually
-   * enters the user's viewport.
-   *
-   * We do NOT record the view simply because ListingCard mounted.
    */
+
+  const promotionId =
+    listing?.activePromotion?.id ||
+    listing?.promotionId ||
+    null;
+
+  const promotionType =
+    listing?.promotionType ||
+    listing?.activePromotion?.type ||
+    null;
+
+  const isPromoted = Boolean(
+    listing?.isPromoted &&
+      promotionId
+  );
+
+  /*
+   * ============================================================
+   * PROMOTION IMPRESSION
+   * ============================================================
+   */
+
   useEffect(() => {
-    const promotionId = listing?.activePromotion?.id;
-
-    if (!promotionId || !listing?.isPromoted) {
+    if (
+      !promotionId ||
+      !isPromoted
+    ) {
       return;
     }
 
-    const element = cardRef.current;
+    const element =
+      cardRef.current;
 
-    if (!element) {
+    if (
+      !element ||
+      viewRecordedRef.current
+    ) {
       return;
     }
 
-    /*
-     * If this card has already recorded its impression,
-     * do nothing.
-     */
-    if (viewRecordedRef.current) {
-      return;
-    }
+    const observer =
+      new IntersectionObserver(
+        (entries) => {
+          const entry =
+            entries[0];
 
-    /*
-     * IntersectionObserver tells us when the listing card
-     * becomes visible in the user's viewport.
-     */
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
+          if (
+            !entry?.isIntersecting
+          ) {
+            return;
+          }
 
-        if (!entry?.isIntersecting) {
-          return;
+          viewRecordedRef.current =
+            true;
+
+          recordPromotionView(
+            promotionId
+          ).catch(() => {});
+
+          observer.disconnect();
+        },
+        {
+          threshold: 0.5,
         }
-
-        /*
-         * Mark immediately so multiple observer callbacks
-         * cannot create duplicate VIEW events.
-         */
-        viewRecordedRef.current = true;
-
-        /*
-         * Analytics must never block the marketplace.
-         */
-        recordPromotionView(promotionId).catch(() => {
-          /*
-           * Analytics failure must never break the UI.
-           */
-        });
-
-        /*
-         * We only need the first impression for this
-         * mounted card.
-         */
-        observer.disconnect();
-      },
-      {
-        /*
-         * The card must be meaningfully visible before
-         * we count it as an impression.
-         *
-         * 0.5 = at least 50% of the card is visible.
-         */
-        threshold: 0.5,
-      }
-    );
+      );
 
     observer.observe(element);
 
@@ -94,63 +87,146 @@ const ListingCard = ({ listing }) => {
       observer.disconnect();
     };
   }, [
-    listing?.activePromotion?.id,
-    listing?.isPromoted,
+    promotionId,
+    isPromoted,
   ]);
 
   /*
    * ============================================================
-   * PROMOTION CLICK TRACKING
+   * PROMOTION CLICK
    * ============================================================
-   *
-   * The analytics request is intentionally fire-and-forget.
-   *
-   * Navigation must not wait for analytics.
    */
-  const handleListingClick = () => {
-    const promotionId =
-      listing?.activePromotion?.id;
 
-    if (promotionId && listing?.isPromoted) {
-      recordPromotionClick(promotionId).catch(() => {
-        /*
-         * Analytics failure must never prevent
-         * the user from opening the listing.
-         */
-      });
-    }
-  };
+  const handleListingClick =
+    () => {
+      if (
+        promotionId &&
+        isPromoted
+      ) {
+        recordPromotionClick(
+          promotionId
+        ).catch(() => {});
+      }
+    };
+
+  /*
+   * ============================================================
+   * IMAGE
+   * ============================================================
+   */
 
   const primaryImage =
-    listing.images?.find(
-      (image) => image.isPrimary
-    ) || listing.images?.[0];
+    listing?.images?.find(
+      (image) =>
+        image.isPrimary
+    ) ||
+    listing?.images?.[0];
 
   const image =
     primaryImage?.url ||
     "https://placehold.co/600x400?text=Barter+Trade";
 
+  /*
+   * ============================================================
+   * PROMOTION BADGE
+   * ============================================================
+   */
+
+  const getPromotionBadge =
+    () => {
+      switch (
+        promotionType
+      ) {
+        case "HOMEPAGE":
+          return {
+            icon: "★",
+            label: "Premium",
+            className:
+              "bg-[#D6B15E] text-[#3D0F18]",
+          };
+
+        case "FEATURED":
+          return {
+            icon: "★",
+            label: "Featured",
+            className:
+              "bg-[#8A2638] text-white",
+          };
+
+        case "BOOST":
+          return {
+            icon: "↑",
+            label: "Boosted",
+            className:
+              "bg-[#3D0F18] text-white",
+          };
+
+        default:
+          return null;
+      }
+    };
+
+  const promotionBadge =
+    getPromotionBadge();
+
+  /*
+   * ============================================================
+   * DISPLAY DATA
+   * ============================================================
+   */
+
+  const formattedValue =
+    Number(
+      listing?.estimatedValue ||
+        0
+    ).toLocaleString();
+
+  const condition =
+    listing?.condition
+      ? listing.condition
+          .replaceAll("_", " ")
+          .toLowerCase()
+      : null;
+
   return (
     <Link
       ref={cardRef}
       to={`/listings/${listing.id}`}
-      onClick={handleListingClick}
-      className="
-        group flex h-full flex-col
+      onClick={
+        handleListingClick
+      }
+      className={`
+        group
+        flex
+        h-full
+        min-w-0
+        flex-col
         overflow-hidden
         rounded-xl
-        border border-[#E7DDDF]
+        border
         bg-white
-        shadow-sm
-        transition-all duration-200
-        hover:-translate-y-0.5
-        hover:border-[#C9A3AB]
-        hover:shadow-md
-      "
+        transition-all
+        duration-300
+        hover:-translate-y-1
+
+        ${
+          isPromoted
+            ? `
+              border-[#D8C3C8]
+              shadow-[0_4px_18px_rgba(61,15,24,0.08)]
+              hover:border-[#C99DA6]
+              hover:shadow-[0_8px_24px_rgba(61,15,24,0.13)]
+            `
+            : `
+              border-[#E9E2E3]
+              shadow-sm
+              hover:border-[#D4BEC3]
+              hover:shadow-md
+            `
+        }
+      `}
     >
-      {/* =====================================================
-          IMAGE
-      ====================================================== */}
+      {/* IMAGE */}
 
       <div
         className="
@@ -158,96 +234,163 @@ const ListingCard = ({ listing }) => {
           aspect-[4/3]
           w-full
           overflow-hidden
-          bg-[#F3EEEF]
+          bg-[#F1ECEC]
         "
       >
         <img
           src={image}
-          alt={listing.title}
+          alt={listing?.title || "Listing"}
+          loading="lazy"
           className="
             h-full
             w-full
             object-cover
             transition-transform
-            duration-300
+            duration-500
             ease-out
-            group-hover:scale-[1.03]
+            group-hover:scale-105
           "
         />
 
         <div
           className="
             pointer-events-none
-            absolute inset-0
+            absolute
+            inset-0
             bg-gradient-to-t
-            from-black/10
+            from-black/25
             via-transparent
-            to-transparent
-            opacity-0
-            transition-opacity
-            duration-300
-            group-hover:opacity-100
+            to-black/5
           "
         />
+
+        {/* PROMOTION */}
+
+        {promotionBadge && (
+          <div className="absolute left-2 top-2 z-10">
+            <span
+              className={`
+                inline-flex
+                items-center
+                gap-1
+                rounded-md
+                px-2
+                py-1
+                text-[8px]
+                font-black
+                uppercase
+                tracking-wide
+                shadow-md
+                sm:text-[9px]
+
+                ${promotionBadge.className}
+              `}
+            >
+              <span>
+                {
+                  promotionBadge.icon
+                }
+              </span>
+
+              {
+                promotionBadge.label
+              }
+            </span>
+          </div>
+        )}
+
+        {/* CONDITION */}
+
+        {condition && (
+          <div
+            className="
+              absolute
+              bottom-2
+              right-2
+              rounded-md
+              bg-black/60
+              px-1.5
+              py-0.5
+              text-[8px]
+              font-bold
+              capitalize
+              text-white
+              shadow-sm
+              backdrop-blur-sm
+              sm:px-2
+              sm:py-1
+              sm:text-[9px]
+            "
+          >
+            {condition}
+          </div>
+        )}
       </div>
 
-      {/* =====================================================
-          CONTENT
-      ====================================================== */}
+      {/* CONTENT */}
 
-      <div className="flex flex-1 flex-col p-3.5 sm:p-4">
+      <div
+        className="
+          flex
+          flex-1
+          flex-col
+          p-2.5
+          sm:p-3
+        "
+      >
+        {/* CATEGORY */}
 
-        {/* CATEGORY + CONDITION */}
-
-        <div className="flex items-center justify-between gap-2">
+        <div
+          className="
+            flex
+            min-w-0
+            items-center
+            gap-1.5
+          "
+        >
           <span
             className="
-              max-w-[65%]
               truncate
-              rounded-md
-              bg-[#F5E8EB]
-              px-2.5 py-1
-              text-[10px]
-              font-bold
+              text-[8px]
+              font-black
               uppercase
-              tracking-wide
-              text-[#5B1725]
-              sm:text-[11px]
+              tracking-[0.08em]
+              text-[#8A2638]
+              sm:text-[9px]
             "
           >
-            {listing.category?.name || "Other"}
+            {listing?.category
+              ?.name ||
+              "Other"}
           </span>
 
           <span
             className="
+              h-1
+              w-1
               shrink-0
-              text-[10px]
-              font-medium
-              capitalize
-              text-gray-500
-              sm:text-[11px]
+              rounded-full
+              bg-[#D6B15E]
             "
-          >
-            {listing.condition?.replace("_", " ")}
-          </span>
+          />
         </div>
 
         {/* TITLE */}
 
         <h3
           className="
-            mt-2.5
-            truncate
-            text-sm
-            font-bold
-            leading-5
+            mt-1.5
+            line-clamp-1
+            text-[12px]
+            font-extrabold
+            leading-[1.1rem]
             text-[#21191B]
             transition-colors
-            group-hover:text-[#5B1725]
-            sm:text-[15px]
+            group-hover:text-[#6D1D2D]
+            sm:text-[13px]
           "
         >
-          {listing.title}
+          {listing?.title}
         </h3>
 
         {/* DESCRIPTION */}
@@ -256,19 +399,43 @@ const ListingCard = ({ listing }) => {
           className="
             mt-1
             line-clamp-2
-            min-h-[2.25rem]
-            text-xs
-            leading-[1.125rem]
+            min-h-[2rem]
+            text-[9px]
+            leading-4
             text-gray-500
-            sm:text-[13px]
+            sm:text-[10px]
           "
         >
-          {listing.description}
+          {listing?.description}
         </p>
 
-        {/* =================================================
-            BOTTOM INFORMATION
-        ================================================== */}
+        {/* LOCATION */}
+
+        {listing?.location && (
+          <div
+            className="
+              mt-1.5
+              flex
+              min-w-0
+              items-center
+              gap-1
+              text-[8px]
+              font-medium
+              text-gray-400
+              sm:text-[9px]
+            "
+          >
+            <span className="shrink-0">
+              ◉
+            </span>
+
+            <span className="truncate">
+              {listing.location}
+            </span>
+          </div>
+        )}
+
+        {/* VALUE */}
 
         <div
           className="
@@ -276,22 +443,21 @@ const ListingCard = ({ listing }) => {
             flex
             items-end
             justify-between
-            gap-3
+            gap-2
             border-t
-            border-[#F0E8EA]
-            pt-3
+            border-[#F0E9EA]
+            pt-2.5
           "
         >
-          {/* VALUE */}
-
           <div className="min-w-0">
             <p
               className="
-                text-[10px]
-                font-medium
+                text-[7px]
+                font-bold
                 uppercase
-                tracking-wide
+                tracking-[0.08em]
                 text-gray-400
+                sm:text-[8px]
               "
             >
               Barter value
@@ -301,55 +467,51 @@ const ListingCard = ({ listing }) => {
               className="
                 mt-0.5
                 truncate
-                text-base
-                font-extrabold
-                leading-5
+                text-[12px]
+                font-black
+                leading-none
                 text-[#5B1725]
-                sm:text-lg
+                sm:text-[14px]
               "
             >
-              KES{" "}
-              {Number(
-                listing.estimatedValue
-              ).toLocaleString()}
+              <span
+                className="
+                  mr-1
+                  text-[8px]
+                  font-extrabold
+                  text-[#8A2638]
+                  sm:text-[9px]
+                "
+              >
+                KES
+              </span>
+
+              {formattedValue}
             </p>
           </div>
-
-          {/* VIEW */}
 
           <span
             className="
               flex
+              h-6
+              w-6
               shrink-0
               items-center
-              gap-1
+              justify-center
               rounded-lg
-              bg-[#5B1725]
-              px-2.5
-              py-1.5
-              text-[11px]
-              font-bold
-              text-white
+              bg-[#F5E8EB]
+              text-xs
+              font-black
+              text-[#5B1725]
               transition-all
-              duration-200
-              group-hover:bg-[#3D0F18]
-              sm:px-3
-              sm:text-xs
+              duration-300
+              group-hover:bg-[#5B1725]
+              group-hover:text-white
+              sm:h-7
+              sm:w-7
             "
           >
-            View
-
-            <span
-              className="
-                text-sm
-                leading-none
-                transition-transform
-                duration-200
-                group-hover:translate-x-0.5
-              "
-            >
-              →
-            </span>
+            →
           </span>
         </div>
       </div>

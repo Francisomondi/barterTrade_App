@@ -6,6 +6,7 @@ import { getMyListings } from "../api/listingApi";
 import { getReceivedOffers, getSentOffers,} from "../api/offerApi";
 import { getTrades } from "../api/tradeApi";
 import MyPromotions from "../components/MyPromotions";
+import { Crown} from "lucide-react";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -520,16 +521,28 @@ const Dashboard = () => {
                 <div className="mt-6 flex flex-wrap gap-3">
                   <Link
                     to="/marketplace"
-                    className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
+                    className="rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
                   >
                     Browse Marketplace
                   </Link>
 
                   <Link
                     to="/listings/create"
-                    className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-bold text-white backdrop-blur transition hover:bg-white/15"
+                    className="rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
                   >
                     + Create Listing
+                  </Link>
+
+                  <Link
+                    to="/account/subscription"
+                   className="flex items-center gap-2 rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3] "
+                  >
+                    <Crown
+                      size={22}
+                      className="text-amber-500"
+                    />
+
+                    My Subscription
                   </Link>
                 </div>
               </div>

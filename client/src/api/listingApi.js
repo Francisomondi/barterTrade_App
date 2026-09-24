@@ -153,3 +153,13 @@ export const reorderListingImages = async (
 
   return response.data;
 };
+
+export const getHomepagePromotedListings =
+  async () => {
+    const response =
+      await api.get(
+        "/listings/homepage-promoted"
+      );
+
+    return response.data;
+  };

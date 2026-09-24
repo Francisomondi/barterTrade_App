@@ -3,6 +3,7 @@ import {useCallback, useEffect, useState,} from "react";
 import { Link, useLocation, } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getUserRatings } from "../api/ratingApi";
+import { Crown } from "lucide-react";
 
 const formatRatingDate = (date) => {  
   if (!date) return "—";
@@ -360,12 +361,14 @@ const Profile = () => {
                 {user.email}
               </p>
 
-              {user.location && (
-                <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-gray-500">
-                  <span>📍</span>
-                  <span>{user.location}</span>
-                </p>
-              )}
+             
+                <p className=" flex items-center gap-2 mt-4 break-all text-sm  text-gray-500">
+                  <span >📍</span>
+                  <span className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                  
+                      {user?.location|| <h2>Add Location</h2> }
+                  </span>
+                </p>  
 
               {user.bio ? (
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-gray-600">
@@ -377,6 +380,35 @@ const Profile = () => {
                   help other traders know more about you.
                 </p>
               )}
+
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                  <Link
+                    to="/marketplace"
+                    className="rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
+                  >
+                    Browse Marketplace
+                  </Link>
+              
+                  <Link
+                    to="/listings/create"
+                    className="rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
+                  >
+                    + Create Listing
+                  </Link>
+
+                  <Link
+                    to="/account/subscription"
+                   className="flex items-center gap-2 rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3] "
+                  >
+                    <Crown
+                      size={22}
+                      className="text-amber-500"
+                    />
+
+                    My Subscription
+                  </Link>
+                </div>
             </div>
           </div>
         </section>

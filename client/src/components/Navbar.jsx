@@ -5,6 +5,7 @@ import { getUnreadNotificationCount } from "../api/notificationApi";
 import {NOTIFICATION_COUNT_EVENT,} from "../utils/notificationEvents";
 import logo from "../assets/logo4.png";
 import { showSuccess } from "../utils/toast";
+import { Crown} from "lucide-react";
 
 const Navbar = () => {
 const navigate = useNavigate();
@@ -159,6 +160,18 @@ return ( <header className="sticky top-0 z-50 border-b border-[#e7dddf] bg-white
             "
           >
             Dashboard
+          </Link>
+
+          <Link
+            to="/premium"
+            className="flex items-center gap-2"
+          >
+            <Crown
+              size={17}
+              className="text-amber-500"
+            />
+
+            Premium
           </Link>
 
           {/* Matches */}
