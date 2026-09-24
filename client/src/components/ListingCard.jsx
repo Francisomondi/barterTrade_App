@@ -1,14 +1,27 @@
-import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import {
+  useEffect,
+  useRef,
+} from "react";
+
+import {
+  Link,
+} from "react-router-dom";
 
 import {
   recordPromotionView,
   recordPromotionClick,
 } from "../api/promotionApi";
 
-const ListingCard = ({ listing }) => {
-  const cardRef = useRef(null);
-  const viewRecordedRef = useRef(false);
+import PremiumBadge from "./PremiumBadge";
+
+const ListingCard = ({
+  listing,
+}) => {
+  const cardRef =
+    useRef(null);
+
+  const viewRecordedRef =
+    useRef(false);
 
   /*
    * ============================================================
@@ -17,19 +30,37 @@ const ListingCard = ({ listing }) => {
    */
 
   const promotionId =
-    listing?.activePromotion?.id ||
+    listing?.activePromotion
+      ?.id ||
     listing?.promotionId ||
     null;
 
   const promotionType =
     listing?.promotionType ||
-    listing?.activePromotion?.type ||
+    listing?.activePromotion
+      ?.type ||
     null;
 
-  const isPromoted = Boolean(
-    listing?.isPromoted &&
-      promotionId
-  );
+  const isPromoted =
+    Boolean(
+      listing?.isPromoted &&
+        promotionId
+    );
+
+  /*
+   * ============================================================
+   * SELLER PREMIUM INFORMATION
+   * ============================================================
+   */
+
+  const seller =
+    listing?.user ||
+    null;
+
+  const sellerIsPremium =
+    Boolean(
+      seller?.isPremium
+    );
 
   /*
    * ============================================================
@@ -62,7 +93,8 @@ const ListingCard = ({ listing }) => {
             entries[0];
 
           if (
-            !entry?.isIntersecting
+            !entry
+              ?.isIntersecting
           ) {
             return;
           }
@@ -72,16 +104,21 @@ const ListingCard = ({ listing }) => {
 
           recordPromotionView(
             promotionId
-          ).catch(() => {});
+          ).catch(
+            () => {}
+          );
 
           observer.disconnect();
         },
         {
-          threshold: 0.5,
+          threshold:
+            0.5,
         }
       );
 
-    observer.observe(element);
+    observer.observe(
+      element
+    );
 
     return () => {
       observer.disconnect();
@@ -105,7 +142,9 @@ const ListingCard = ({ listing }) => {
       ) {
         recordPromotionClick(
           promotionId
-        ).catch(() => {});
+        ).catch(
+          () => {}
+        );
       }
     };
 
@@ -140,7 +179,8 @@ const ListingCard = ({ listing }) => {
         case "HOMEPAGE":
           return {
             icon: "★",
-            label: "Premium",
+            label:
+              "Premium",
             className:
               "bg-[#D6B15E] text-[#3D0F18]",
           };
@@ -148,7 +188,8 @@ const ListingCard = ({ listing }) => {
         case "FEATURED":
           return {
             icon: "★",
-            label: "Featured",
+            label:
+              "Featured",
             className:
               "bg-[#8A2638] text-white",
           };
@@ -156,7 +197,8 @@ const ListingCard = ({ listing }) => {
         case "BOOST":
           return {
             icon: "↑",
-            label: "Boosted",
+            label:
+              "Boosted",
             className:
               "bg-[#3D0F18] text-white",
           };
@@ -177,14 +219,18 @@ const ListingCard = ({ listing }) => {
 
   const formattedValue =
     Number(
-      listing?.estimatedValue ||
+      listing
+        ?.estimatedValue ||
         0
     ).toLocaleString();
 
   const condition =
     listing?.condition
       ? listing.condition
-          .replaceAll("_", " ")
+          .replaceAll(
+            "_",
+            " "
+          )
           .toLowerCase()
       : null;
 
@@ -226,7 +272,9 @@ const ListingCard = ({ listing }) => {
         }
       `}
     >
-      {/* IMAGE */}
+      {/* =========================
+          IMAGE
+      ========================== */}
 
       <div
         className="
@@ -239,7 +287,10 @@ const ListingCard = ({ listing }) => {
       >
         <img
           src={image}
-          alt={listing?.title || "Listing"}
+          alt={
+            listing?.title ||
+            "Listing"
+          }
           loading="lazy"
           className="
             h-full
@@ -264,7 +315,7 @@ const ListingCard = ({ listing }) => {
           "
         />
 
-        {/* PROMOTION */}
+        {/* LISTING PROMOTION */}
 
         {promotionBadge && (
           <div className="absolute left-2 top-2 z-10">
@@ -327,7 +378,9 @@ const ListingCard = ({ listing }) => {
         )}
       </div>
 
-      {/* CONTENT */}
+      {/* =========================
+          CONTENT
+      ========================== */}
 
       <div
         className="
@@ -359,7 +412,8 @@ const ListingCard = ({ listing }) => {
               sm:text-[9px]
             "
           >
-            {listing?.category
+            {listing
+              ?.category
               ?.name ||
               "Other"}
           </span>
@@ -406,8 +460,86 @@ const ListingCard = ({ listing }) => {
             sm:text-[10px]
           "
         >
-          {listing?.description}
+          {
+            listing
+              ?.description
+          }
         </p>
+
+        {/* SELLER */}
+
+        {seller && (
+          <div
+            className="
+              mt-2
+              flex
+              min-w-0
+              items-center
+              gap-2
+            "
+          >
+            {seller?.avatar ? (
+              <img
+                src={
+                  seller.avatar
+                }
+                alt={
+                  seller?.name ||
+                  "Seller"
+                }
+                className="
+                  h-5
+                  w-5
+                  shrink-0
+                  rounded-full
+                  object-cover
+                "
+              />
+            ) : (
+              <div
+                className="
+                  flex
+                  h-5
+                  w-5
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#F5E8EB]
+                  text-[8px]
+                  font-black
+                  text-[#5B1725]
+                "
+              >
+                {seller?.name
+                  ?.charAt(0)
+                  ?.toUpperCase() ||
+                  "U"}
+              </div>
+            )}
+
+            <span
+              className="
+                min-w-0
+                truncate
+                text-[9px]
+                font-bold
+                text-stone-600
+                sm:text-[10px]
+              "
+            >
+              {seller?.name ||
+                "BarterTrade Member"}
+            </span>
+
+            {sellerIsPremium && (
+              <PremiumBadge
+                size="sm"
+                compact
+              />
+            )}
+          </div>
+        )}
 
         {/* LOCATION */}
 
@@ -430,7 +562,9 @@ const ListingCard = ({ listing }) => {
             </span>
 
             <span className="truncate">
-              {listing.location}
+              {
+                listing.location
+              }
             </span>
           </div>
         )}
@@ -486,7 +620,9 @@ const ListingCard = ({ listing }) => {
                 KES
               </span>
 
-              {formattedValue}
+              {
+                formattedValue
+              }
             </p>
           </div>
 

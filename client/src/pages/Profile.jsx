@@ -3,7 +3,8 @@ import {useCallback, useEffect, useState,} from "react";
 import { Link, useLocation, } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getUserRatings } from "../api/ratingApi";
-import { Crown } from "lucide-react";
+import {  Crown,} from "lucide-react";
+import PremiumBadge from "../components/PremiumBadge";
 
 const formatRatingDate = (date) => {  
   if (!date) return "—";
@@ -353,9 +354,18 @@ const Profile = () => {
             {/* Identity */}
 
             <div className="mt-5">
-              <h2 className="text-2xl font-black tracking-tight text-[#21191B] sm:text-3xl">
-                {user.name || "BarterConnect User"}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-2xl font-black tracking-tight text-[#21191B] sm:text-3xl">
+                  {user.name ||
+                    "BarterConnect User"}
+                </h2>
+
+                {user?.isPremium && (
+                  <PremiumBadge
+                    size="lg"
+                  />
+                )}
+              </div>
 
               <p className="mt-1 break-all text-sm text-gray-500">
                 {user.email}
@@ -398,15 +408,25 @@ const Profile = () => {
                   </Link>
 
                   <Link
-                    to="/account/subscription"
-                   className="flex items-center gap-2 rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3] "
+                    to={
+                      user?.isPremium
+                        ? "/account/subscription"
+                        : "/premium"
+                    }
+                    className="flex items-center gap-2 rounded-xl bg-white/30 border-white/20 px-5 py-3 text-sm font-bold text-[#3D0F18] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F8F5F3]"
                   >
                     <Crown
                       size={22}
-                      className="text-amber-500"
+                      className={
+                        user?.isPremium
+                          ? "text-amber-500"
+                          : "text-[#8A2638]"
+                      }
                     />
 
-                    My Subscription
+                    {user?.isPremium
+                      ? "My Premium"
+                      : "Get Premium"}
                   </Link>
                 </div>
             </div>

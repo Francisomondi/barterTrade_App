@@ -32,6 +32,8 @@ import {
   payForSubscription,
 } from "../api/subscriptionApi";
 
+import {useAuth} from "../context/AuthContext";
+
 /**
  * ============================================================
  * CONFIG
@@ -49,60 +51,21 @@ const PAYMENT_MAX_ATTEMPTS = 40;
  */
 
 export default function Premium() {
-  const [plan, setPlan] =
-    useState(null);
+    const {refreshUser} = useAuth();
 
-  const [
-    subscriptionData,
-    setSubscriptionData,
-  ] = useState(null);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [
-    pageError,
-    setPageError,
-  ] = useState("");
-
-  const [
-    showPaymentModal,
-    setShowPaymentModal,
-  ] = useState(false);
-
-  const [phoneNumber, setPhoneNumber] =
-    useState("");
-
-  const [
-    paymentState,
-    setPaymentState,
-  ] = useState("IDLE");
-
-  const [
-    paymentMessage,
-    setPaymentMessage,
-  ] = useState("");
-
-  const [
-    paymentError,
-    setPaymentError,
-  ] = useState("");
-
-  const [
-    currentPayment,
-    setCurrentPayment,
-  ] = useState(null);
-
-  const [
-    currentSubscription,
-    setCurrentSubscription,
-  ] = useState(null);
-
-  const pollingRef =
-    useRef(false);
-
-  const mountedRef =
-    useRef(true);
+  const [plan, setPlan] = useState(null);
+  const [ subscriptionData, setSubscriptionData,] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [ pageError,setPageError,] = useState("");
+  const [ showPaymentModal, setShowPaymentModal,] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [ paymentState, setPaymentState,] = useState("IDLE");
+  const [ paymentMessage, setPaymentMessage,] = useState("");
+  const [ paymentError, setPaymentError,] = useState("");
+  const [ currentPayment, setCurrentPayment,] = useState(null);
+  const [ currentSubscription, setCurrentSubscription,] = useState(null);
+  const pollingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   /**
    * ==========================================================
@@ -318,8 +281,10 @@ export default function Premium() {
             setPaymentMessage(
               "Payment confirmed. Premium is now active."
             );
-
-            await loadPremiumData();
+            await Promise.all([
+            loadPremiumData(),
+            refreshUser(),
+            ]);
 
             return;
           }
@@ -533,9 +498,12 @@ export default function Premium() {
             "Your Premium membership is already active."
           );
 
-          await loadPremiumData();
+          await Promise.all([
+            loadPremiumData(),
+            refreshUser(),
+            ]);
 
-          return;
+            return;
         }
 
         /**
@@ -598,7 +566,10 @@ export default function Premium() {
     setPaymentError("");
     setPaymentMessage("");
 
-    await loadPremiumData();
+    await Promise.all([
+    loadPremiumData(),
+    refreshUser(),
+    ]);
   };
 
   /**
