@@ -32,6 +32,13 @@ import PromotionManagement from "./pages/PromotionManagement";
 import PromotionAnalytics from "./components/PromotionAnalytics";
 import Premium from "./pages/Premium";
 import MySubscription from "./pages/MySubscription";
+import PremiumAnalytics from "./pages/PremiumAnalytics";
+import BusinessStorefront from "./pages/BusinessStorefront";
+import BusinessDashboard from "./pages/BusinessDashboard";
+
+import CreateBusiness from "./pages/CreateBusiness";
+import ManageBusiness from "./pages/ManageBusiness";
+
 
 
 import { ToastContainer } from "react-toastify";
@@ -65,6 +72,8 @@ const App = () => {
           <Route path="/forgot-password" element={<ForgotPassword />}/>
           <Route path="/reset-password/:token" element={<ResetPassword />} />
 
+          <Route path="/business/:slug" element={<BusinessStorefront />}/>
+
           <Route element={<ProtectedRoute />}>
 
             <Route path="/dashboard" element={<Dashboard />} />
@@ -89,6 +98,11 @@ const App = () => {
             <Route path="/promotions/:promotionId/analytics" element={<PromotionAnalytics />}/>
             <Route path="/premium" element={<Premium />}/>
             <Route path="/account/subscription" element={<MySubscription />} />
+            <Route path="/account/analytics" element={ <PremiumAnalytics />}/>
+            <Route path="/business/dashboard" element={<BusinessDashboard />}/>
+            <Route path="/business/create" element={<CreateBusiness /> }/>
+            <Route path="/business/dashboard" element={<BusinessDashboard />}/>
+            <Route path="/business/manage"element={ <ManageBusiness />}/>
         
 
           </Route>

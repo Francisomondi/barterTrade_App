@@ -3,8 +3,10 @@ import bcrypt from "bcryptjs";
 import prisma from "../config/prisma.js";
 import { generateToken } from "../utils/auth.js";
 
+
 import crypto from "crypto";
 import { sendEmail } from "../utils/sendEmail.js";
+import { getPremiumStatus,} from "../services/subscriptionService.js";
 
 export const register = async (req, res) => {
   try {
@@ -167,13 +169,21 @@ export const login = async (req, res) => {
 
 export const getMe = async (req, res) => {
   try {
+    /*
+     * ========================================================
+     * COMPLETED TRADES
+     * ========================================================
+     */
+
     const completedTrades = await prisma.trade.count({
       where: {
         status: "COMPLETED",
+
         OR: [
           {
             traderAId: req.user.id,
           },
+
           {
             traderBId: req.user.id,
           },
@@ -181,32 +191,88 @@ export const getMe = async (req, res) => {
       },
     });
 
+    /*
+     * ========================================================
+     * PREMIUM STATUS
+     * ========================================================
+     *
+     * Premium is calculated from the Subscription table.
+     *
+     * We DO NOT store isPremium on the User table.
+     */
+
+    const premiumStatus = await getPremiumStatus(
+      req.user.id
+    );
+
+    /*
+     * ========================================================
+     * RESPONSE
+     * ========================================================
+     */
+
     return res.json({
       success: true,
+
       user: {
         id: req.user.id,
+
         name: req.user.name,
+
         email: req.user.email,
+
         phone: req.user.phone,
+
         avatar: req.user.avatar,
+
         bio: req.user.bio,
+
         location: req.user.location,
+
         role: req.user.role,
+
         barterScore: req.user.barterScore,
 
-        // Always reflects the actual database trades
+        /*
+         * Always reflects the actual database trades.
+         */
+
         completedTrades,
 
         authProvider: req.user.authProvider,
+
         createdAt: req.user.createdAt,
+
+        /*
+         * ====================================================
+         * PREMIUM
+         * ====================================================
+         */
+
+        isPremium:
+          premiumStatus.isPremium,
+
+        premiumPlan:
+          premiumStatus.premiumPlan,
+
+        premiumStartedAt:
+          premiumStatus.premiumStartedAt,
+
+        premiumEndsAt:
+          premiumStatus.premiumEndsAt,
       },
     });
   } catch (error) {
-    console.error("GET ME ERROR:", error);
+    console.error(
+      "GET ME ERROR:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Unable to fetch user profile.",
+
+      message:
+        "Unable to fetch user profile.",
     });
   }
 };

@@ -3,9 +3,15 @@ import {
   getPromotionAnalytics,
 } from "../services/promotionAnalyticsService.js";
 
+import {
+  expirePromotionIfNeeded,
+} from "../services/promotionExpiryService.js";
+
 /**
+ * =====================================================
  * RECORD PROMOTION VIEW
  * POST /api/promotions/:id/analytics/view
+ * =====================================================
  */
 export const recordPromotionView = async (
   req,
@@ -17,15 +23,31 @@ export const recordPromotionView = async (
     const userId =
       req.user?.id || null;
 
-    await recordPromotionEvent({
-      promotionId: id,
-      userId,
-      type: "VIEW",
-    });
+    const result =
+      await recordPromotionEvent({
+        promotionId: id,
+        userId,
+        type: "VIEW",
+      });
+
+    /*
+     * An expired/inactive promotion is not an error.
+     * It simply means the event should not be counted.
+     */
+    if (!result?.recorded) {
+      return res.status(200).json({
+        success: true,
+        recorded: false,
+        message:
+          "Promotion view was not recorded because the promotion is not currently active.",
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Promotion view recorded.",
+      recorded: true,
+      message:
+        "Promotion view recorded.",
     });
   } catch (error) {
     console.error(
@@ -34,12 +56,12 @@ export const recordPromotionView = async (
     );
 
     /*
-     * Analytics should never break the marketplace.
-     *
-     * If tracking fails, the listing can still be viewed.
+     * Analytics must never break
+     * marketplace browsing.
      */
     return res.status(200).json({
       success: false,
+      recorded: false,
       message:
         "Promotion view could not be recorded.",
     });
@@ -47,8 +69,10 @@ export const recordPromotionView = async (
 };
 
 /**
+ * =====================================================
  * RECORD PROMOTION CLICK
  * POST /api/promotions/:id/analytics/click
+ * =====================================================
  */
 export const recordPromotionClick = async (
   req,
@@ -60,15 +84,27 @@ export const recordPromotionClick = async (
     const userId =
       req.user?.id || null;
 
-    await recordPromotionEvent({
-      promotionId: id,
-      userId,
-      type: "CLICK",
-    });
+    const result =
+      await recordPromotionEvent({
+        promotionId: id,
+        userId,
+        type: "CLICK",
+      });
+
+    if (!result?.recorded) {
+      return res.status(200).json({
+        success: true,
+        recorded: false,
+        message:
+          "Promotion click was not recorded because the promotion is not currently active.",
+      });
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Promotion click recorded.",
+      recorded: true,
+      message:
+        "Promotion click recorded.",
     });
   } catch (error) {
     console.error(
@@ -77,11 +113,12 @@ export const recordPromotionClick = async (
     );
 
     /*
-     * Analytics failure must not stop the user
-     * from opening the listing.
+     * Analytics failure must not stop
+     * the user from opening the listing.
      */
     return res.status(200).json({
       success: false,
+      recorded: false,
       message:
         "Promotion click could not be recorded.",
     });
@@ -89,8 +126,10 @@ export const recordPromotionClick = async (
 };
 
 /**
+ * =====================================================
  * GET PROMOTION ANALYTICS
  * GET /api/promotions/:id/analytics
+ * =====================================================
  */
 export const getAnalytics = async (
   req,
@@ -98,7 +137,20 @@ export const getAnalytics = async (
 ) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+
+    const userId =
+      req.user.id;
+
+    /*
+     * Synchronize the promotion lifecycle
+     * before returning analytics.
+     *
+     * ACTIVE + endsAt <= now
+     * becomes EXPIRED.
+     */
+    await expirePromotionIfNeeded(
+      id
+    );
 
     const result =
       await getPromotionAnalytics({
@@ -116,13 +168,16 @@ export const getAnalytics = async (
       error
     );
 
-    return res.status(
-      error.statusCode || 500
-    ).json({
-      success: false,
-      message:
-        error.message ||
-        "Unable to load promotion analytics.",
-    });
+    return res
+      .status(
+        error.statusCode || 500
+      )
+      .json({
+        success: false,
+
+        message:
+          error.message ||
+          "Unable to load promotion analytics.",
+      });
   }
 };

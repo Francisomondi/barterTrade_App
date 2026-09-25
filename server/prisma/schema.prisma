@@ -112,6 +112,30 @@ enum PromotionAnalyticsEventType {
   CLICK
 }
 
+enum SubscriptionStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum SubscriptionPlanType {
+  PREMIUM
+}
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum BusinessVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
 model User {
   id              String     @id @default(uuid())
   name            String
@@ -150,6 +174,8 @@ model User {
   tradeConfirmations  TradeConfirmation[]
   passwordResetTokens PasswordResetToken[]
 
+  businessProfile BusinessProfile?
+
   disputeEvents            DisputeEvent[]
   promotionAnalyticsEvents PromotionAnalyticsEvent[]
 }
@@ -165,6 +191,37 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model BusinessProfile {
+  id                 String                     @id @default(uuid())
+  userId             String                     @unique
+  businessName       String
+  slug               String                     @unique
+  description        String?
+  logo               String?
+  coverImage         String?
+  logoPublicId       String?
+  coverImagePublicId String?
+  phone              String?
+  email              String?
+  website            String?
+  category           String?
+  location           String?
+  address            String?
+  status             BusinessStatus             @default(ACTIVE)
+  verificationStatus BusinessVerificationStatus @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([verificationStatus])
+  @@index([businessName])
+  @@index([category])
+  @@index([createdAt])
 }
 
 model Category {
@@ -452,9 +509,10 @@ model Notification {
 model Payment {
   id String @id @default(uuid())
 
-  userId      String
-  tradeId     String?
-  promotionId String?
+  userId         String
+  tradeId        String?
+  promotionId    String?
+  subscriptionId String?
 
   amount   Float
   currency String        @default("KES")
@@ -478,9 +536,10 @@ model Payment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  trade     Trade?     @relation(fields: [tradeId], references: [id], onDelete: SetNull)
-  promotion Promotion? @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trade        Trade?        @relation(fields: [tradeId], references: [id], onDelete: SetNull)
+  promotion    Promotion?    @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
 
   @@index([userId])
   @@index([tradeId])
@@ -525,18 +584,6 @@ model Promotion {
   @@index([listingId, status])
 }
 
-model Subscription {
-  id        String    @id @default(uuid())
-  userId    String
-  plan      String
-  status    String    @default("ACTIVE")
-  startsAt  DateTime  @default(now())
-  expiresAt DateTime?
-  createdAt DateTime  @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
 model PromotionAnalyticsEvent {
   id String @id @default(uuid())
 
@@ -555,4 +602,34 @@ model PromotionAnalyticsEvent {
   @@index([promotionId, type])
   @@index([promotionId, createdAt])
   @@index([userId])
+}
+
+model Subscription {
+  id String @id @default(uuid())
+
+  userId String
+
+  plan SubscriptionPlanType
+
+  status SubscriptionStatus @default(PENDING)
+
+  amount   Float
+  currency String @default("KES")
+
+  durationDays Int
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  payments Payment[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([endsAt])
+  @@index([userId, status])
 }

@@ -13,6 +13,7 @@ import {
 } from "../api/promotionApi";
 
 import PremiumBadge from "./PremiumBadge";
+import BusinessBadge from "./business/BusinessBadge";
 
 const ListingCard = ({
   listing,
@@ -49,7 +50,7 @@ const ListingCard = ({
 
   /*
    * ============================================================
-   * SELLER PREMIUM INFORMATION
+   * SELLER INFORMATION
    * ============================================================
    */
 
@@ -57,10 +58,51 @@ const ListingCard = ({
     listing?.user ||
     null;
 
+  /*
+   * Premium and Business are independent seller identities.
+   */
+
   const sellerIsPremium =
     Boolean(
       seller?.isPremium
     );
+
+  const sellerBusiness =
+    seller?.business ||
+    null;
+
+  const sellerIsBusiness =
+    Boolean(
+      sellerBusiness?.isBusiness
+    );
+
+  /*
+   * Business listings should visually represent the Business
+   * rather than pretending the Business itself is the personal
+   * seller.
+   *
+   * Listing ownership still belongs to seller.id.
+   */
+
+  const sellerDisplayName =
+    sellerIsBusiness &&
+    sellerBusiness?.businessName
+      ? sellerBusiness.businessName
+      : seller?.name ||
+        "BarterTrade Member";
+
+  const sellerDisplayImage =
+    sellerIsBusiness &&
+    sellerBusiness?.logo
+      ? sellerBusiness.logo
+      : seller?.avatar ||
+        null;
+
+  const sellerInitial =
+    sellerDisplayName
+      ?.charAt(0)
+      ?.toUpperCase() ||
+    "U";
 
   /*
    * ============================================================
@@ -279,7 +321,7 @@ const ListingCard = ({
       <div
         className="
           relative
-          aspect-[4/3]
+          aspect-4/3
           w-full
           overflow-hidden
           bg-[#F1ECEC]
@@ -308,7 +350,7 @@ const ListingCard = ({
             pointer-events-none
             absolute
             inset-0
-            bg-gradient-to-t
+            bg-linear-to-t
             from-black/25
             via-transparent
             to-black/5
@@ -453,7 +495,7 @@ const ListingCard = ({
           className="
             mt-1
             line-clamp-2
-            min-h-[2rem]
+            min-h-8
             text-[9px]
             leading-4
             text-gray-500
@@ -466,77 +508,138 @@ const ListingCard = ({
           }
         </p>
 
-        {/* SELLER */}
+        {/* =========================
+            SELLER
+        ========================== */}
 
         {seller && (
           <div
             className="
               mt-2
-              flex
               min-w-0
-              items-center
-              gap-2
             "
           >
-            {seller?.avatar ? (
-              <img
-                src={
-                  seller.avatar
-                }
-                alt={
-                  seller?.name ||
-                  "Seller"
-                }
-                className="
-                  h-5
-                  w-5
-                  shrink-0
-                  rounded-full
-                  object-cover
-                "
-              />
-            ) : (
-              <div
-                className="
-                  flex
-                  h-5
-                  w-5
-                  shrink-0
-                  items-center
-                  justify-center
-                  rounded-full
-                  bg-[#F5E8EB]
-                  text-[8px]
-                  font-black
-                  text-[#5B1725]
-                "
-              >
-                {seller?.name
-                  ?.charAt(0)
-                  ?.toUpperCase() ||
-                  "U"}
-              </div>
-            )}
-
-            <span
+            <div
               className="
+                flex
                 min-w-0
-                truncate
-                text-[9px]
-                font-bold
-                text-stone-600
-                sm:text-[10px]
+                items-center
+                gap-2
               "
             >
-              {seller?.name ||
-                "BarterTrade Member"}
-            </span>
+              {/* SELLER / BUSINESS IMAGE */}
 
-            {sellerIsPremium && (
-              <PremiumBadge
-                size="sm"
-                compact
-              />
+              {sellerDisplayImage ? (
+                <img
+                  src={
+                    sellerDisplayImage
+                  }
+                  alt={
+                    sellerDisplayName
+                  }
+                  loading="lazy"
+                  className={`
+                    h-5
+                    w-5
+                    shrink-0
+                    object-cover
+
+                    ${
+                      sellerIsBusiness
+                        ? "rounded-md border border-[#D6B15E]/40"
+                        : "rounded-full"
+                    }
+                  `}
+                />
+              ) : (
+                <div
+                  className={`
+                    flex
+                    h-5
+                    w-5
+                    shrink-0
+                    items-center
+                    justify-center
+                    bg-[#F5E8EB]
+                    text-[8px]
+                    font-black
+                    text-[#5B1725]
+
+                    ${
+                      sellerIsBusiness
+                        ? "rounded-md border border-[#D6B15E]/40"
+                        : "rounded-full"
+                    }
+                  `}
+                >
+                  {
+                    sellerInitial
+                  }
+                </div>
+              )}
+
+              {/* SELLER / BUSINESS NAME */}
+
+              <span
+                className="
+                  min-w-0
+                  flex-1
+                  truncate
+                  text-[9px]
+                  font-bold
+                  text-stone-600
+                  sm:text-[10px]
+                "
+                title={
+                  sellerDisplayName
+                }
+              >
+                {
+                  sellerDisplayName
+                }
+              </span>
+            </div>
+
+            {/* =========================
+                ACCOUNT BADGES
+            ========================== */}
+
+            {(sellerIsBusiness ||
+              sellerIsPremium) && (
+              <div
+                className="
+                  mt-1.5
+                  flex
+                  flex-wrap
+                  items-center
+                  gap-1
+                "
+              >
+                {/*
+                 * IMPORTANT:
+                 *
+                 * Do NOT use linkToStore here.
+                 *
+                 * The entire ListingCard is already a Link
+                 * to /listings/:id. Nesting another Link
+                 * would create invalid nested <a> elements.
+                 */}
+
+                <BusinessBadge
+                  business={
+                    sellerBusiness
+                  }
+                  size="sm"
+                  showVerified
+                />
+
+                {sellerIsPremium && (
+                  <PremiumBadge
+                    size="sm"
+                    compact
+                  />
+                )}
+              </div>
             )}
           </div>
         )}

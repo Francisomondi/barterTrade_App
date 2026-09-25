@@ -6,35 +6,37 @@ import {
 } from "react";
 
 import {
+  AlertCircle,
   ArrowRight,
   BadgeCheck,
+  BarChart3,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock3,
   Crown,
   CreditCard,
   History,
-  Loader2,
+  LayoutDashboard,
   ReceiptText,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Smartphone,
+  TrendingUp,
+  WalletCards,
   XCircle,
-  AlertCircle,
 } from "lucide-react";
+
+import { Link } from "react-router-dom";
 
 import {
   getMySubscription,
 } from "../api/subscriptionApi";
 
-import {
-  Link,
-} from "react-router-dom";
-
-/**
+/*
  * ============================================================
- * MY SUBSCRIPTION DASHBOARD
+ * MY SUBSCRIPTION
  * ============================================================
  */
 
@@ -51,7 +53,7 @@ export default function MySubscription() {
   const [error, setError] =
     useState("");
 
-  /**
+  /*
    * ==========================================================
    * LOAD SUBSCRIPTION
    * ==========================================================
@@ -75,14 +77,15 @@ export default function MySubscription() {
             await getMySubscription();
 
           setData(response);
-        } catch (error) {
+        } catch (err) {
           console.error(
-            "LOAD SUBSCRIPTION DASHBOARD ERROR:",
-            error
+            "LOAD SUBSCRIPTION ERROR:",
+            err
           );
 
           setError(
-            error.response?.data?.message ||
+            err?.response?.data
+              ?.message ||
               "Unable to load your subscription information."
           );
         } finally {
@@ -97,7 +100,7 @@ export default function MySubscription() {
     loadSubscription();
   }, [loadSubscription]);
 
-  /**
+  /*
    * ==========================================================
    * SUBSCRIPTION DATA
    * ==========================================================
@@ -120,18 +123,9 @@ export default function MySubscription() {
         activeSubscription
     );
 
-  /**
-   * Latest subscription of any status.
-   */
-
   const latestSubscription =
     subscriptions[0] ||
     null;
-
-  /**
-   * If there is no active subscription,
-   * find the latest expired membership.
-   */
 
   const latestExpiredSubscription =
     useMemo(() => {
@@ -144,7 +138,14 @@ export default function MySubscription() {
       );
     }, [subscriptions]);
 
-  /**
+  const displayedSubscription =
+    activeSubscription ||
+    pendingSubscription ||
+    latestExpiredSubscription ||
+    latestSubscription ||
+    null;
+
+  /*
    * ==========================================================
    * LOADING
    * ==========================================================
@@ -156,36 +157,36 @@ export default function MySubscription() {
     );
   }
 
-  /**
+  /*
    * ==========================================================
-   * ERROR
+   * INITIAL ERROR
    * ==========================================================
    */
 
   if (error && !data) {
     return (
-      <div className="min-h-[75vh] bg-[#faf8f5] px-4 py-16">
-        <div className="mx-auto max-w-lg rounded-3xl border border-red-100 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50">
+      <main className="min-h-screen bg-[#F8F5F3] px-4 py-16">
+        <div className="mx-auto max-w-lg rounded-[32px] border border-red-100 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-red-50 text-red-600">
             <AlertCircle
               size={28}
-              className="text-red-600"
             />
           </div>
 
-          <h1 className="mt-5 text-2xl font-black text-stone-950">
+          <h1 className="mt-5 text-2xl font-black text-[#3D0F18]">
             Unable to load subscription
           </h1>
 
-          <p className="mt-3 text-sm leading-6 text-stone-500">
+          <p className="mt-3 text-sm leading-6 text-gray-500">
             {error}
           </p>
 
           <button
+            type="button"
             onClick={() =>
               loadSubscription()
             }
-            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#5a0b22] px-5 py-3 text-sm font-black text-white transition hover:bg-[#450719]"
+            className="mt-7 inline-flex items-center justify-center gap-2 rounded-xl bg-[#8A2638] px-5 py-3 text-sm font-black text-white transition hover:bg-[#6F1D2D]"
           >
             <RefreshCw
               size={17}
@@ -194,88 +195,96 @@ export default function MySubscription() {
             Try Again
           </button>
         </div>
-      </div>
+      </main>
     );
   }
 
+  /*
+   * ==========================================================
+   * PAGE
+   * ==========================================================
+   */
+
   return (
-    <main className="min-h-screen bg-[#faf8f5]">
-      {/* =====================================================
-          HEADER
-      ===================================================== */}
+    <main className="min-h-screen bg-[#F8F5F3]">
 
-      <section className="border-b border-stone-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#7b1538]">
-              <Crown
-                size={15}
-              />
+      {/* =================================================== */}
+      {/* HEADER */}
+      {/* =================================================== */}
 
-              BarterTrade Premium
+      <section className="border-b border-[#E7DDDF] bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+
+            <div>
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-[#8A2638]">
+                <Crown
+                  size={15}
+                  fill="currentColor"
+                />
+
+                BarterTrade Membership
+              </div>
+
+              <h1 className="mt-2 text-3xl font-black tracking-tight text-[#3D0F18] sm:text-4xl">
+                My Subscription
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+                Manage your membership,
+                Premium tools, billing
+                information and subscription
+                history.
+              </p>
             </div>
 
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-stone-950">
-              My Subscription
-            </h1>
-
-            <p className="mt-2 text-sm text-stone-500">
-              Manage your Premium
-              membership and view
-              your subscription
-              history.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            disabled={
-              refreshing
-            }
-            onClick={() =>
-              loadSubscription({
-                silent: true,
-              })
-            }
-            className="inline-flex w-fit items-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw
-              size={16}
-              className={
-                refreshing
-                  ? "animate-spin"
-                  : ""
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={() =>
+                loadSubscription({
+                  silent: true,
+                })
               }
-            />
+              className="inline-flex w-fit items-center justify-center gap-2 rounded-xl border border-[#E7DDDF] bg-white px-4 py-2.5 text-sm font-bold text-[#3D0F18] shadow-sm transition hover:bg-[#F8F5F3] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                size={16}
+                className={
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }
+              />
 
-            {refreshing
-              ? "Refreshing..."
-              : "Refresh"}
-          </button>
+              {refreshing
+                ? "Refreshing..."
+                : "Refresh"}
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* =====================================================
-          CONTENT
-      ===================================================== */}
+      {/* =================================================== */}
+      {/* CONTENT */}
+      {/* =================================================== */}
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+
         {error && (
-          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+          <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
             <AlertCircle
               size={18}
               className="mt-0.5 shrink-0"
             />
 
-            <span>
-              {error}
-            </span>
+            {error}
           </div>
         )}
 
-        {/* ===================================================
-            ACTIVE SUBSCRIPTION
-        =================================================== */}
+        {/* ================================================= */}
+        {/* MAIN MEMBERSHIP STATE */}
+        {/* ================================================= */}
 
         {isPremium &&
           activeSubscription && (
@@ -286,10 +295,6 @@ export default function MySubscription() {
             />
           )}
 
-        {/* ===================================================
-            PENDING SUBSCRIPTION
-        =================================================== */}
-
         {!isPremium &&
           pendingSubscription && (
             <PendingMembership
@@ -298,10 +303,6 @@ export default function MySubscription() {
               }
             />
           )}
-
-        {/* ===================================================
-            EXPIRED
-        =================================================== */}
 
         {!isPremium &&
           !pendingSubscription &&
@@ -313,109 +314,195 @@ export default function MySubscription() {
             />
           )}
 
-        {/* ===================================================
-            NEVER SUBSCRIBED
-        =================================================== */}
-
         {!isPremium &&
           !pendingSubscription &&
           !latestExpiredSubscription && (
-            <NoSubscription />
+            <FreeMembership />
           )}
 
-        {/* ===================================================
-            OVERVIEW
-        =================================================== */}
+        {/* ================================================= */}
+        {/* QUICK ACTIONS */}
+        {/* ================================================= */}
 
-        <section className="mt-8 grid gap-5 lg:grid-cols-3">
-          <OverviewCard
-            icon={Crown}
-            label="Membership"
-            value={
-              isPremium
-                ? "Premium"
-                : pendingSubscription
-                ? "Pending"
-                : "Free"
-            }
-            description={
-              isPremium
-                ? "Premium benefits are active."
-                : pendingSubscription
-                ? "Premium is awaiting successful payment."
-                : "Upgrade anytime from the Premium page."
-            }
+        <section className="mt-8">
+          <SectionHeading
+            title="Quick actions"
+            description="Access the most important membership and marketplace tools."
           />
 
-          <OverviewCard
-            icon={CalendarDays}
-            label="Premium until"
-            value={
-              isPremium
-                ? formatDate(
-                    activeSubscription
-                      ?.endsAt
-                  )
-                : "—"
-            }
-            description={
-              isPremium
-                ? `${getDaysRemaining(
-                    activeSubscription
-                      ?.endsAt
-                  )} days remaining`
-                : "No active Premium expiry date."
-            }
-          />
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-          <OverviewCard
-            icon={ReceiptText}
-            label="Latest payment"
-            value={
-              getLatestPayment(
-                latestSubscription
-              )?.status ||
-              "No payment"
-            }
-            description={
-              getLatestPayment(
-                latestSubscription
-              )?.receiptNumber
-                ? `Receipt ${getLatestPayment(
-                    latestSubscription
-                  ).receiptNumber}`
-                : "Your latest payment information."
-            }
-          />
+            {isPremium ? (
+              <ActionCard
+                to="/account/analytics"
+                icon={BarChart3}
+                title="Advanced Analytics"
+                description="Track promotion views, clicks, offers, conversions and spending."
+                action="View analytics"
+                featured
+              />
+            ) : (
+              <ActionCard
+                to="/premium"
+                icon={Crown}
+                title="Upgrade to Premium"
+                description="Unlock advanced analytics, higher listing limits and promotion benefits."
+                action="Explore Premium"
+                featured
+              />
+            )}
+
+            <ActionCard
+              to="/premium"
+              icon={Sparkles}
+              title="Premium Benefits"
+              description="Review everything included with your BarterTrade Premium membership."
+              action="View benefits"
+            />
+
+            <ActionCard
+              to="/my-listings"
+              icon={LayoutDashboard}
+              title="My Listings"
+              description="Manage your marketplace listings and promotion activity."
+              action="Manage listings"
+            />
+
+            <ActionCard
+              to="/promotions"
+              icon={TrendingUp}
+              title="Promotions"
+              description="Manage paid promotions and improve listing visibility."
+              action="View promotions"
+            />
+          </div>
         </section>
 
-        {/* ===================================================
-            MEMBERSHIP DETAILS
-        =================================================== */}
+        {/* ================================================= */}
+        {/* ACCOUNT OVERVIEW */}
+        {/* ================================================= */}
 
-        {(activeSubscription ||
-          pendingSubscription ||
-          latestExpiredSubscription) && (
-          <section className="mt-8 grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <MembershipDetails
-              subscription={
-                activeSubscription ||
-                pendingSubscription ||
-                latestExpiredSubscription
+        <section className="mt-10">
+          <SectionHeading
+            title="Membership overview"
+            description="A quick look at your current subscription status."
+          />
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+            <OverviewCard
+              icon={Crown}
+              label="Membership"
+              value={
+                isPremium
+                  ? "Premium"
+                  : pendingSubscription
+                  ? "Pending"
+                  : "Free"
+              }
+              description={
+                isPremium
+                  ? "Premium benefits are active."
+                  : pendingSubscription
+                  ? "Waiting for successful payment."
+                  : "Standard BarterTrade account."
               }
             />
+
+            <OverviewCard
+              icon={CalendarDays}
+              label="Premium until"
+              value={
+                isPremium
+                  ? formatDate(
+                      activeSubscription
+                        ?.endsAt
+                    )
+                  : "—"
+              }
+              description={
+                isPremium
+                  ? `${getDaysRemaining(
+                      activeSubscription
+                        ?.endsAt
+                    )} days remaining`
+                  : "No active Premium expiry date."
+              }
+            />
+
+            <OverviewCard
+              icon={WalletCards}
+              label="Plan price"
+              value={
+                displayedSubscription
+                  ? `${
+                      displayedSubscription.currency ||
+                      "KES"
+                    } ${formatMoney(
+                      displayedSubscription.amount
+                    )}`
+                  : "—"
+              }
+              description={
+                displayedSubscription
+                  ? `${displayedSubscription.durationDays || 30} day membership`
+                  : "No subscription purchased yet."
+              }
+            />
+
+            <OverviewCard
+              icon={ReceiptText}
+              label="Latest payment"
+              value={
+                getLatestPayment(
+                  latestSubscription
+                )?.status ||
+                "No payment"
+              }
+              description={
+                getLatestPayment(
+                  latestSubscription
+                )?.receiptNumber
+                  ? `Receipt ${getLatestPayment(
+                      latestSubscription
+                    ).receiptNumber}`
+                  : "Latest subscription payment status."
+              }
+            />
+          </div>
+        </section>
+
+        {/* ================================================= */}
+        {/* DETAILS + BENEFITS */}
+        {/* ================================================= */}
+
+        <section className="mt-10">
+          <SectionHeading
+            title="Subscription details"
+            description="Plan information, payment details and Premium entitlements."
+          />
+
+          <div className="mt-5 grid items-start gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+
+            {displayedSubscription ? (
+              <MembershipDetails
+                subscription={
+                  displayedSubscription
+                }
+              />
+            ) : (
+              <NoMembershipDetails />
+            )}
 
             <PremiumBenefits
-              isPremium={
-                isPremium
-              }
+              isPremium={isPremium}
             />
-          </section>
-        )}
+          </div>
+        </section>
 
-        {/* ===================================================
-            HISTORY
-        =================================================== */}
+        {/* ================================================= */}
+        {/* HISTORY */}
+        {/* ================================================= */}
 
         <SubscriptionHistory
           subscriptions={
@@ -427,7 +514,7 @@ export default function MySubscription() {
   );
 }
 
-/**
+/*
  * ============================================================
  * ACTIVE MEMBERSHIP
  * ============================================================
@@ -448,72 +535,94 @@ function ActiveMembership({
     );
 
   return (
-    <section className="relative overflow-hidden rounded-[2rem] bg-[#4b0a20] p-6 text-white shadow-xl shadow-[#4b0a20]/10 sm:p-8 lg:p-10">
+    <section className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-[#3D0F18] via-[#5B1725] to-[#8A2638] text-white shadow-xl">
+
       <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-amber-300/10 blur-3xl" />
 
-      <div className="absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-[#9d3156]/20 blur-3xl" />
+      <div className="absolute -bottom-24 -left-20 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
 
-      <div className="relative">
-        <div className="flex flex-col gap-7 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-300">
+      <div className="relative p-6 sm:p-8 lg:p-10">
+
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+
+          <div className="max-w-2xl">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-emerald-300">
               <CheckCircle2
                 size={14}
               />
 
-              ACTIVE
+              Active Membership
             </span>
 
             <div className="mt-5 flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-300 text-[#4b0a20]">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-300 text-[#3D0F18] shadow-lg">
                 <Crown
                   size={28}
+                  fill="currentColor"
                 />
               </div>
 
               <div>
                 <h2 className="text-2xl font-black sm:text-3xl">
-                  BarterTrade
-                  Premium
+                  BarterTrade Premium
                 </h2>
 
-                <p className="mt-1 text-sm text-white/60">
-                  Your Premium
-                  membership is
+                <p className="mt-1 text-sm leading-6 text-white/65">
+                  Your Premium tools
+                  and marketplace
+                  benefits are currently
                   active.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 lg:min-w-[240px]">
-            <p className="text-xs font-bold uppercase tracking-wider text-white/45">
-              Time remaining
-            </p>
+          <div className="grid grid-cols-2 gap-3 sm:min-w-[340px]">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <p className="text-[10px] font-black uppercase tracking-wider text-white/45">
+                Remaining
+              </p>
 
-            <div className="mt-2 flex items-end gap-2">
-              <span className="text-4xl font-black text-amber-300">
+              <p className="mt-2 text-3xl font-black text-amber-300">
                 {daysRemaining}
-              </span>
+              </p>
 
-              <span className="pb-1 text-sm font-semibold text-white/60">
+              <p className="mt-1 text-xs text-white/50">
                 {daysRemaining === 1
                   ? "day"
                   : "days"}
-              </span>
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur">
+              <p className="text-[10px] font-black uppercase tracking-wider text-white/45">
+                Listing limit
+              </p>
+
+              <p className="mt-2 text-3xl font-black text-white">
+                30
+              </p>
+
+              <p className="mt-1 text-xs text-white/50">
+                active listings
+              </p>
             </div>
           </div>
         </div>
 
+        {/* PROGRESS */}
+
         <div className="mt-8">
-          <div className="mb-2 flex justify-between text-xs font-semibold text-white/50">
+          <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs font-semibold text-white/50">
             <span>
+              Started{" "}
               {formatDate(
                 subscription.startsAt
               )}
             </span>
 
             <span>
+              Expires{" "}
               {formatDate(
                 subscription.endsAt
               )}
@@ -530,10 +639,28 @@ function ActiveMembership({
           </div>
         </div>
 
-        <div className="mt-7 flex flex-wrap gap-3">
+        {/* BUTTONS */}
+
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+
+          <Link
+            to="/account/analytics"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 py-3 text-sm font-black text-[#3D0F18] shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-200"
+          >
+            <BarChart3
+              size={18}
+            />
+
+            Advanced Analytics
+
+            <ArrowRight
+              size={16}
+            />
+          </Link>
+
           <Link
             to="/premium"
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-[#4b0a20] transition hover:bg-stone-100"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-bold text-white transition hover:bg-white/15"
           >
             <Sparkles
               size={17}
@@ -542,20 +669,23 @@ function ActiveMembership({
             View Premium Benefits
           </Link>
 
-          <span className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white/60">
-            <ShieldCheck
+          <Link
+            to="/my-listings"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-transparent px-5 py-3 text-sm font-bold text-white/80 transition hover:bg-white/10 hover:text-white"
+          >
+            <LayoutDashboard
               size={17}
             />
 
-            Premium benefits active
-          </span>
+            Manage Listings
+          </Link>
         </div>
       </div>
     </section>
   );
 }
 
-/**
+/*
  * ============================================================
  * PENDING MEMBERSHIP
  * ============================================================
@@ -570,58 +700,66 @@ function PendingMembership({
     );
 
   return (
-    <section className="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 sm:p-8">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-[32px] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-6 shadow-sm sm:p-8">
+
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+
         <div className="flex items-start gap-4">
-          <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-amber-200 p-3 text-amber-800">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
             <Clock3
-              size={25}
+              size={26}
             />
           </div>
 
           <div>
             <span className="text-xs font-black uppercase tracking-wider text-amber-700">
-              Payment pending
+              Payment Pending
             </span>
 
-            <h2 className="mt-1 text-2xl font-black text-stone-950">
-              Premium is not
-              active yet
+            <h2 className="mt-1 text-2xl font-black text-[#3D0F18]">
+              Complete your Premium payment
             </h2>
 
-            <p className="mt-2 max-w-xl text-sm leading-6 text-stone-600">
+            <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
               Your Premium
               subscription has been
-              created, but it still
-              requires a successful
-              M-Pesa payment.
+              created but will only
+              activate after a
+              successful M-PESA
+              payment.
             </p>
 
             {payment?.status && (
-              <p className="mt-3 text-xs font-bold text-amber-800">
-                Latest payment:{" "}
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-800">
+                <Smartphone
+                  size={13}
+                />
+
+                Payment{" "}
                 {payment.status}
-              </p>
+              </div>
             )}
           </div>
         </div>
 
-        <Link
-          to="/premium"
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#5a0b22] px-5 py-3 text-sm font-black text-white transition hover:bg-[#450719]"
-        >
-          Complete Payment
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Link
+            to="/premium"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8A2638] px-5 py-3 text-sm font-black text-white transition hover:bg-[#6F1D2D]"
+          >
+            Complete Payment
 
-          <ArrowRight
-            size={17}
-          />
-        </Link>
+            <ArrowRight
+              size={17}
+            />
+          </Link>
+        </div>
       </div>
     </section>
   );
 }
 
-/**
+/*
  * ============================================================
  * EXPIRED MEMBERSHIP
  * ============================================================
@@ -631,41 +769,44 @@ function ExpiredMembership({
   subscription,
 }) {
   return (
-    <section className="rounded-[2rem] border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-[32px] border border-[#E7DDDF] bg-white p-6 shadow-sm sm:p-8">
+
+      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+
         <div className="flex items-start gap-4">
-          <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-stone-100 p-3 text-stone-500">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gray-100 text-gray-500">
             <XCircle
-              size={25}
+              size={26}
             />
           </div>
 
           <div>
-            <span className="text-xs font-black uppercase tracking-wider text-stone-400">
-              Expired
+            <span className="text-xs font-black uppercase tracking-wider text-gray-400">
+              Membership Expired
             </span>
 
-            <h2 className="mt-1 text-2xl font-black text-stone-950">
-              Your Premium
-              membership has ended
+            <h2 className="mt-1 text-2xl font-black text-[#3D0F18]">
+              Your Premium membership
+              has ended
             </h2>
 
-            <p className="mt-2 text-sm leading-6 text-stone-500">
-              Your previous
+            <p className="mt-2 max-w-xl text-sm leading-6 text-gray-500">
+              Your previous Premium
               membership expired on{" "}
-              <strong className="text-stone-700">
+              <strong className="text-gray-700">
                 {formatDate(
                   subscription.endsAt
                 )}
               </strong>
-              .
+              . Renew to restore your
+              Premium entitlements.
             </p>
           </div>
         </div>
 
         <Link
           to="/premium"
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#5a0b22] px-5 py-3 text-sm font-black text-white transition hover:bg-[#450719]"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#8A2638] px-5 py-3 text-sm font-black text-white transition hover:bg-[#6F1D2D]"
         >
           <RefreshCw
             size={16}
@@ -678,64 +819,107 @@ function ExpiredMembership({
   );
 }
 
-/**
+/*
  * ============================================================
- * NO SUBSCRIPTION
+ * FREE MEMBERSHIP
  * ============================================================
  */
 
-function NoSubscription() {
+function FreeMembership() {
   return (
-    <section className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white shadow-sm">
-      <div className="grid lg:grid-cols-[1fr_0.8fr]">
-        <div className="p-7 sm:p-10">
+    <section className="overflow-hidden rounded-[32px] border border-[#E7DDDF] bg-white shadow-sm">
+      <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
+
+        <div className="p-7 sm:p-9 lg:p-10">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <Crown size={27} />
+            <Crown
+              size={27}
+            />
           </div>
 
-          <h2 className="mt-6 text-3xl font-black text-stone-950">
-            You are currently
-            using BarterTrade Free
-          </h2>
-
-          <p className="mt-4 max-w-xl text-sm leading-7 text-stone-500">
-            Upgrade to Premium to
-            unlock additional
-            marketplace tools,
-            analytics and member
-            benefits.
+          <p className="mt-6 text-xs font-black uppercase tracking-[0.18em] text-[#8A2638]">
+            BarterTrade Free
           </p>
 
-          <Link
-            to="/premium"
-            className="mt-7 inline-flex items-center gap-2 rounded-xl bg-[#5a0b22] px-6 py-3.5 text-sm font-black text-white transition hover:bg-[#450719]"
-          >
-            <Crown
-              size={17}
-            />
+          <h2 className="mt-2 max-w-xl text-3xl font-black tracking-tight text-[#3D0F18]">
+            Unlock more tools for your
+            marketplace activity.
+          </h2>
 
-            Explore Premium
+          <p className="mt-4 max-w-xl text-sm leading-7 text-gray-500">
+            Premium gives you advanced
+            analytics, a higher active
+            listing allowance, promotion
+            discounts, a Premium badge
+            and priority support.
+          </p>
 
-            <ArrowRight
-              size={17}
-            />
-          </Link>
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <Link
+              to="/premium"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#8A2638] px-6 py-3.5 text-sm font-black text-white transition hover:bg-[#6F1D2D]"
+            >
+              <Crown
+                size={17}
+              />
+
+              Explore Premium
+
+              <ArrowRight
+                size={17}
+              />
+            </Link>
+
+            <Link
+              to="/my-listings"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E7DDDF] bg-white px-6 py-3.5 text-sm font-bold text-[#3D0F18] transition hover:bg-[#F8F5F3]"
+            >
+              <LayoutDashboard
+                size={17}
+              />
+
+              My Listings
+            </Link>
+          </div>
         </div>
 
-        <div className="flex items-center justify-center bg-[#4b0a20] p-8">
-          <div className="text-center">
+        <div className="flex items-center bg-gradient-to-br from-[#3D0F18] to-[#8A2638] p-7 text-white sm:p-9">
+          <div className="w-full">
             <Sparkles
-              size={36}
-              className="mx-auto text-amber-300"
+              size={34}
+              className="text-amber-300"
             />
 
-            <p className="mt-4 text-sm font-black uppercase tracking-[0.18em] text-amber-300">
-              Premium
+            <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+              Premium includes
             </p>
 
-            <p className="mt-2 text-4xl font-black text-white">
-              More from barter.
-            </p>
+            <div className="mt-5 space-y-4">
+              {[
+                "30 active listings",
+                "Advanced analytics",
+                "20% promotion discount",
+                "Premium profile badge",
+                "Priority support",
+              ].map(
+                (benefit) => (
+                  <div
+                    key={benefit}
+                    className="flex items-center gap-3"
+                  >
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-amber-300">
+                      <Check
+                        size={13}
+                      />
+                    </div>
+
+                    <span className="text-sm font-semibold text-white/85">
+                      {benefit}
+                    </span>
+                  </div>
+                )
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -743,9 +927,76 @@ function NoSubscription() {
   );
 }
 
-/**
+/*
  * ============================================================
- * OVERVIEW CARD
+ * QUICK ACTION
+ * ============================================================
+ */
+
+function ActionCard({
+  to,
+  icon: Icon,
+  title,
+  description,
+  action,
+  featured = false,
+}) {
+  return (
+    <Link
+      to={to}
+      className={`group flex min-h-[210px] flex-col rounded-3xl border p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-md ${
+        featured
+          ? "border-[#8A2638]/20 bg-[#3D0F18] text-white"
+          : "border-[#E7DDDF] bg-white text-[#3D0F18]"
+      }`}
+    >
+      <div
+        className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
+          featured
+            ? "bg-amber-300 text-[#3D0F18]"
+            : "bg-[#F8ECEF] text-[#8A2638]"
+        }`}
+      >
+        <Icon
+          size={21}
+        />
+      </div>
+
+      <h3 className="mt-5 text-base font-black">
+        {title}
+      </h3>
+
+      <p
+        className={`mt-2 flex-1 text-xs leading-5 ${
+          featured
+            ? "text-white/60"
+            : "text-gray-500"
+        }`}
+      >
+        {description}
+      </p>
+
+      <div
+        className={`mt-5 flex items-center gap-2 text-xs font-black ${
+          featured
+            ? "text-amber-300"
+            : "text-[#8A2638]"
+        }`}
+      >
+        {action}
+
+        <ArrowRight
+          size={14}
+          className="transition-transform group-hover:translate-x-1"
+        />
+      </div>
+    </Link>
+  );
+}
+
+/*
+ * ============================================================
+ * OVERVIEW
  * ============================================================
  */
 
@@ -756,33 +1007,35 @@ function OverviewCard({
   description,
 }) {
   return (
-    <article className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#5a0b22]/10 text-[#6d1030]">
-          <Icon size={20} />
-        </div>
-
+    <article className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wider text-stone-400">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-gray-400">
             {label}
           </p>
 
-          <p className="mt-1 truncate text-lg font-black text-stone-900">
+          <p className="mt-3 break-words text-xl font-black text-[#3D0F18]">
             {formatStatusValue(
               value
             )}
           </p>
+        </div>
 
-          <p className="mt-1 text-xs leading-5 text-stone-500">
-            {description}
-          </p>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#F8ECEF] text-[#8A2638]">
+          <Icon
+            size={20}
+          />
         </div>
       </div>
+
+      <p className="mt-3 text-xs leading-5 text-gray-500">
+        {description}
+      </p>
     </article>
   );
 }
 
-/**
+/*
  * ============================================================
  * MEMBERSHIP DETAILS
  * ============================================================
@@ -797,27 +1050,29 @@ function MembershipDetails({
     );
 
   return (
-    <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-7">
+    <section className="rounded-[28px] border border-[#E7DDDF] bg-white p-6 shadow-sm sm:p-7">
+
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#5a0b22]/10 text-[#6d1030]">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F8ECEF] text-[#8A2638]">
           <CreditCard
-            size={19}
+            size={20}
           />
         </div>
 
         <div>
-          <h2 className="font-black text-stone-950">
+          <h3 className="font-black text-[#3D0F18]">
             Membership details
-          </h2>
+          </h3>
 
-          <p className="text-xs text-stone-400">
-            Your current or most
-            recent subscription.
+          <p className="mt-0.5 text-xs text-gray-400">
+            Current or most recent
+            subscription information.
           </p>
         </div>
       </div>
 
-      <div className="mt-6 divide-y divide-stone-100">
+      <div className="mt-6 divide-y divide-[#F0E8EA]">
+
         <DetailRow
           label="Plan"
           value={
@@ -839,14 +1094,17 @@ function MembershipDetails({
 
         <DetailRow
           label="Price"
-          value={`${subscription.currency || "KES"} ${formatMoney(
+          value={`${
+            subscription.currency ||
+            "KES"
+          } ${formatMoney(
             subscription.amount
           )}`}
         />
 
         <DetailRow
           label="Duration"
-          value={`${subscription.durationDays} days`}
+          value={`${subscription.durationDays || 30} days`}
         />
 
         <DetailRow
@@ -873,7 +1131,7 @@ function MembershipDetails({
         {payment && (
           <>
             <DetailRow
-              label="Payment"
+              label="Payment status"
               value={
                 <PaymentStatus
                   status={
@@ -893,15 +1151,13 @@ function MembershipDetails({
 
             <DetailRow
               label="Phone"
-              value={
-                formatPhone(
-                  payment.phoneNumber
-                )
-              }
+              value={formatPhone(
+                payment.phoneNumber
+              )}
             />
 
             <DetailRow
-              label="M-Pesa receipt"
+              label="M-PESA receipt"
               value={
                 payment.receiptNumber ||
                 "—"
@@ -914,7 +1170,36 @@ function MembershipDetails({
   );
 }
 
-/**
+/*
+ * ============================================================
+ * NO DETAILS
+ * ============================================================
+ */
+
+function NoMembershipDetails() {
+  return (
+    <section className="rounded-[28px] border border-[#E7DDDF] bg-white p-7 text-center shadow-sm">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
+        <CreditCard
+          size={22}
+        />
+      </div>
+
+      <h3 className="mt-4 font-black text-[#3D0F18]">
+        No subscription yet
+      </h3>
+
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-gray-500">
+        Your subscription and payment
+        information will appear here
+        after you start a Premium
+        membership.
+      </p>
+    </section>
+  );
+}
+
+/*
  * ============================================================
  * PREMIUM BENEFITS
  * ============================================================
@@ -924,68 +1209,137 @@ function PremiumBenefits({
   isPremium,
 }) {
   const benefits = [
-    "Premium profile badge",
-    "Advanced listing analytics",
-    "Higher active listing allowance",
-    "Promotion benefits",
-    "Priority support",
+    {
+      title:
+        "30 active listings",
+      description:
+        "Increase your active listing allowance from 10 to 30.",
+    },
+    {
+      title:
+        "Advanced analytics",
+      description:
+        "Track promotion views, clicks, offers and conversion performance.",
+    },
+    {
+      title:
+        "20% promotion discount",
+      description:
+        "Receive Premium pricing on eligible paid listing promotions.",
+    },
+    {
+      title:
+        "Premium profile badge",
+      description:
+        "Show buyers and sellers your active Premium membership.",
+    },
+    {
+      title:
+        "Priority support",
+      description:
+        "Premium support entitlement while your membership remains active.",
+    },
   ];
 
   return (
-    <section className="rounded-3xl bg-[#4b0a20] p-6 text-white shadow-sm sm:p-7">
-      <BadgeCheck
-        size={26}
-        className="text-amber-300"
-      />
+    <section className="rounded-[28px] bg-gradient-to-br from-[#3D0F18] to-[#6F1D2D] p-6 text-white shadow-sm sm:p-7">
 
-      <h2 className="mt-4 text-xl font-black">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-300 text-[#3D0F18]">
+          <BadgeCheck
+            size={22}
+          />
+        </div>
+
+        <span
+          className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider ${
+            isPremium
+              ? "bg-emerald-400/15 text-emerald-300"
+              : "bg-white/10 text-white/50"
+          }`}
+        >
+          {isPremium
+            ? "Unlocked"
+            : "Locked"}
+        </span>
+      </div>
+
+      <h3 className="mt-5 text-xl font-black">
         Premium benefits
-      </h2>
+      </h3>
 
       <p className="mt-2 text-sm leading-6 text-white/55">
         {isPremium
-          ? "These benefits are available while your membership remains active."
-          : "Activate Premium to unlock these benefits."}
+          ? "Your Premium entitlements are currently available."
+          : "Upgrade your account to unlock these marketplace benefits."}
       </p>
 
-      <div className="mt-6 space-y-4">
+      <div className="mt-6 space-y-5">
         {benefits.map(
-          (benefit) => (
+          ({
+            title,
+            description,
+          }) => (
             <div
-              key={benefit}
-              className="flex items-center gap-3"
+              key={title}
+              className="flex items-start gap-3"
             >
               <div
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                   isPremium
                     ? "bg-emerald-400/15 text-emerald-300"
                     : "bg-white/10 text-white/40"
                 }`}
               >
-                <CheckCircle2
-                  size={14}
+                <Check
+                  size={13}
                 />
               </div>
 
-              <span
-                className={`text-sm font-semibold ${
-                  isPremium
-                    ? "text-white"
-                    : "text-white/50"
-                }`}
-              >
-                {benefit}
-              </span>
+              <div>
+                <p
+                  className={`text-sm font-bold ${
+                    isPremium
+                      ? "text-white"
+                      : "text-white/60"
+                  }`}
+                >
+                  {title}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-white/45">
+                  {description}
+                </p>
+              </div>
             </div>
           )
         )}
       </div>
 
-      {!isPremium && (
+      {isPremium ? (
+        <Link
+          to="/account/analytics"
+          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 py-3 text-sm font-black text-[#3D0F18] transition hover:bg-amber-200"
+        >
+          <BarChart3
+            size={17}
+          />
+
+          Open Advanced Analytics
+
+          <ArrowRight
+            size={16}
+          />
+        </Link>
+      ) : (
         <Link
           to="/premium"
-          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 py-3 text-sm font-black text-[#4b0a20] transition hover:bg-amber-200"
+          className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-300 px-5 py-3 text-sm font-black text-[#3D0F18] transition hover:bg-amber-200"
         >
+          <Crown
+            size={17}
+          />
+
           Get Premium
 
           <ArrowRight
@@ -997,7 +1351,7 @@ function PremiumBenefits({
   );
 }
 
-/**
+/*
  * ============================================================
  * SUBSCRIPTION HISTORY
  * ============================================================
@@ -1007,271 +1361,282 @@ function SubscriptionHistory({
   subscriptions,
 }) {
   return (
-    <section className="mt-8 rounded-3xl border border-stone-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-stone-100 px-6 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-100 text-stone-600">
-            <History
-              size={19}
-            />
+    <section className="mt-10">
+
+      <SectionHeading
+        title="Subscription history"
+        description="Previous and current Premium memberships and payment records."
+      />
+
+      <div className="mt-5 overflow-hidden rounded-[28px] border border-[#E7DDDF] bg-white shadow-sm">
+
+        <div className="flex items-center justify-between border-b border-[#F0E8EA] px-5 py-5 sm:px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F8ECEF] text-[#8A2638]">
+              <History
+                size={19}
+              />
+            </div>
+
+            <div>
+              <p className="text-sm font-black text-[#3D0F18]">
+                Membership records
+              </p>
+
+              <p className="mt-0.5 text-xs text-gray-400">
+                Your Premium subscription
+                activity.
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h2 className="font-black text-stone-950">
-              Subscription history
-            </h2>
+          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">
+            {subscriptions.length}
+          </span>
+        </div>
 
-            <p className="text-xs text-stone-400">
-              Previous and current
-              Premium memberships.
+        {subscriptions.length ===
+        0 ? (
+          <div className="px-6 py-14 text-center">
+            <ReceiptText
+              size={30}
+              className="mx-auto text-gray-300"
+            />
+
+            <p className="mt-3 text-sm font-bold text-gray-600">
+              No subscription history
+              yet.
             </p>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* DESKTOP */}
 
-        <span className="rounded-full bg-stone-100 px-3 py-1 text-xs font-black text-stone-600">
-          {subscriptions.length}
-        </span>
-      </div>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full">
+                <thead className="bg-[#FCFAF9]">
+                  <tr className="border-b border-[#F0E8EA]">
 
-      {subscriptions.length ===
-      0 ? (
-        <div className="px-6 py-14 text-center">
-          <ReceiptText
-            size={30}
-            className="mx-auto text-stone-300"
-          />
+                    <TableHeading>
+                      Plan
+                    </TableHeading>
 
-          <p className="mt-3 text-sm font-bold text-stone-600">
-            No subscription
-            history yet.
-          </p>
-        </div>
-      ) : (
-        <>
-          {/* DESKTOP */}
+                    <TableHeading>
+                      Status
+                    </TableHeading>
 
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-stone-100 text-left">
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Plan
-                  </th>
+                    <TableHeading>
+                      Started
+                    </TableHeading>
 
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Status
-                  </th>
+                    <TableHeading>
+                      Expires
+                    </TableHeading>
 
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Started
-                  </th>
+                    <TableHeading>
+                      Payment
+                    </TableHeading>
 
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Expires
-                  </th>
+                    <TableHeading>
+                      Receipt
+                    </TableHeading>
+                  </tr>
+                </thead>
 
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Payment
-                  </th>
+                <tbody>
+                  {subscriptions.map(
+                    (
+                      subscription
+                    ) => {
+                      const payment =
+                        getLatestPayment(
+                          subscription
+                        );
 
-                  <th className="px-6 py-4 text-[11px] font-black uppercase tracking-wider text-stone-400">
-                    Receipt
-                  </th>
-                </tr>
-              </thead>
+                      return (
+                        <tr
+                          key={
+                            subscription.id
+                          }
+                          className="border-b border-[#F0E8EA] transition last:border-0 hover:bg-[#FCFAF9]"
+                        >
+                          <td className="px-6 py-5">
+                            <div className="flex items-center gap-2">
+                              <Crown
+                                size={16}
+                                className="text-amber-500"
+                              />
 
-              <tbody>
-                {subscriptions.map(
-                  (
-                    subscription
-                  ) => {
-                    const payment =
-                      getLatestPayment(
-                        subscription
-                      );
+                              <span className="text-sm font-black text-[#3D0F18]">
+                                {subscription.plan ||
+                                  "PREMIUM"}
+                              </span>
+                            </div>
+                          </td>
 
-                    return (
-                      <tr
-                        key={
-                          subscription.id
-                        }
-                        className="border-b border-stone-100 last:border-0"
-                      >
-                        <td className="px-6 py-5">
-                          <div className="flex items-center gap-2">
-                            <Crown
-                              size={
-                                16
+                          <td className="px-6 py-5">
+                            <StatusBadge
+                              status={
+                                subscription.status
                               }
-                              className="text-amber-500"
                             />
+                          </td>
 
-                            <span className="text-sm font-black text-stone-800">
-                              {
-                                subscription.plan
-                              }
-                            </span>
-                          </div>
-                        </td>
+                          <td className="px-6 py-5 text-sm font-semibold text-gray-600">
+                            {formatDate(
+                              subscription.startsAt
+                            )}
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <StatusBadge
-                            status={
-                              subscription.status
-                            }
+                          <td className="px-6 py-5 text-sm font-semibold text-gray-600">
+                            {formatDate(
+                              subscription.endsAt
+                            )}
+                          </td>
+
+                          <td className="px-6 py-5">
+                            {payment ? (
+                              <PaymentStatus
+                                status={
+                                  payment.status
+                                }
+                              />
+                            ) : (
+                              <span className="text-sm text-gray-400">
+                                —
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-6 py-5 text-sm font-bold text-gray-700">
+                            {payment
+                              ?.receiptNumber ||
+                              "—"}
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* MOBILE */}
+
+            <div className="divide-y divide-[#F0E8EA] md:hidden">
+              {subscriptions.map(
+                (
+                  subscription
+                ) => {
+                  const payment =
+                    getLatestPayment(
+                      subscription
+                    );
+
+                  return (
+                    <div
+                      key={
+                        subscription.id
+                      }
+                      className="p-5"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <Crown
+                            size={16}
+                            className="text-amber-500"
                           />
-                        </td>
 
-                        <td className="px-6 py-5 text-sm font-semibold text-stone-600">
-                          {formatDate(
+                          <span className="text-sm font-black text-[#3D0F18]">
+                            {subscription.plan ||
+                              "PREMIUM"}
+                          </span>
+                        </div>
+
+                        <StatusBadge
+                          status={
+                            subscription.status
+                          }
+                        />
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-5">
+
+                        <MobileHistoryValue
+                          label="Started"
+                          value={formatDate(
                             subscription.startsAt
                           )}
-                        </td>
-
-                        <td className="px-6 py-5 text-sm font-semibold text-stone-600">
-                          {formatDate(
-                            subscription.endsAt
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5">
-                          {payment ? (
-                            <PaymentStatus
-                              status={
-                                payment.status
-                              }
-                            />
-                          ) : (
-                            <span className="text-sm text-stone-400">
-                              —
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-6 py-5 text-sm font-bold text-stone-700">
-                          {payment
-                            ?.receiptNumber ||
-                            "—"}
-                        </td>
-                      </tr>
-                    );
-                  }
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* MOBILE */}
-
-          <div className="divide-y divide-stone-100 md:hidden">
-            {subscriptions.map(
-              (
-                subscription
-              ) => {
-                const payment =
-                  getLatestPayment(
-                    subscription
-                  );
-
-                return (
-                  <div
-                    key={
-                      subscription.id
-                    }
-                    className="p-5"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <Crown
-                          size={16}
-                          className="text-amber-500"
                         />
 
-                        <span className="text-sm font-black text-stone-900">
-                          {
-                            subscription.plan
-                          }
-                        </span>
-                      </div>
-
-                      <StatusBadge
-                        status={
-                          subscription.status
-                        }
-                      />
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <p className="font-bold uppercase tracking-wider text-stone-400">
-                          Started
-                        </p>
-
-                        <p className="mt-1 font-semibold text-stone-700">
-                          {formatDate(
-                            subscription.startsAt
-                          )}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="font-bold uppercase tracking-wider text-stone-400">
-                          Expires
-                        </p>
-
-                        <p className="mt-1 font-semibold text-stone-700">
-                          {formatDate(
+                        <MobileHistoryValue
+                          label="Expires"
+                          value={formatDate(
                             subscription.endsAt
                           )}
-                        </p>
-                      </div>
+                        />
 
-                      <div>
-                        <p className="font-bold uppercase tracking-wider text-stone-400">
-                          Payment
-                        </p>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                            Payment
+                          </p>
 
-                        <div className="mt-1">
-                          {payment ? (
-                            <PaymentStatus
-                              status={
-                                payment.status
-                              }
-                            />
-                          ) : (
-                            "—"
-                          )}
+                          <div className="mt-1.5">
+                            {payment ? (
+                              <PaymentStatus
+                                status={
+                                  payment.status
+                                }
+                              />
+                            ) : (
+                              "—"
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      <div>
-                        <p className="font-bold uppercase tracking-wider text-stone-400">
-                          Receipt
-                        </p>
-
-                        <p className="mt-1 font-semibold text-stone-700">
-                          {payment
-                            ?.receiptNumber ||
-                            "—"}
-                        </p>
+                        <MobileHistoryValue
+                          label="Receipt"
+                          value={
+                            payment
+                              ?.receiptNumber ||
+                            "—"
+                          }
+                        />
                       </div>
                     </div>
-                  </div>
-                );
-              }
-            )}
-          </div>
-        </>
-      )}
+                  );
+                }
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }
 
-/**
+/*
  * ============================================================
- * DETAIL ROW
+ * SMALL COMPONENTS
  * ============================================================
  */
+
+function SectionHeading({
+  title,
+  description,
+}) {
+  return (
+    <div>
+      <h2 className="text-xl font-black text-[#3D0F18]">
+        {title}
+      </h2>
+
+      <p className="mt-1 text-sm leading-6 text-gray-500">
+        {description}
+      </p>
+    </div>
+  );
+}
 
 function DetailRow({
   label,
@@ -1279,20 +1644,47 @@ function DetailRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-5 py-4">
-      <span className="text-sm text-stone-500">
+      <span className="text-sm text-gray-500">
         {label}
       </span>
 
-      <div className="text-right text-sm font-bold text-stone-800">
+      <div className="max-w-[65%] break-words text-right text-sm font-bold text-gray-800">
         {value ?? "—"}
       </div>
     </div>
   );
 }
 
-/**
+function TableHeading({
+  children,
+}) {
+  return (
+    <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-[0.14em] text-gray-400">
+      {children}
+    </th>
+  );
+}
+
+function MobileHistoryValue({
+  label,
+  value,
+}) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+        {label}
+      </p>
+
+      <p className="mt-1.5 break-words text-xs font-semibold text-gray-700">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+/*
  * ============================================================
- * SUBSCRIPTION STATUS BADGE
+ * STATUS BADGE
  * ============================================================
  */
 
@@ -1316,7 +1708,7 @@ function StatusBadge({
 
     EXPIRED: {
       className:
-        "bg-stone-100 text-stone-600",
+        "bg-gray-100 text-gray-600",
       icon:
         XCircle,
     },
@@ -1340,14 +1732,16 @@ function StatusBadge({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${selected.className}`}
     >
-      <Icon size={12} />
+      <Icon
+        size={12}
+      />
 
       {status || "UNKNOWN"}
     </span>
   );
 }
 
-/**
+/*
  * ============================================================
  * PAYMENT STATUS
  * ============================================================
@@ -1367,7 +1761,7 @@ function PaymentStatus({
       "text-red-600",
 
     CANCELLED:
-      "text-stone-500",
+      "text-gray-500",
 
     REFUNDED:
       "text-blue-600",
@@ -1377,7 +1771,7 @@ function PaymentStatus({
     <span
       className={`text-xs font-black uppercase ${
         styles[status] ||
-        "text-stone-500"
+        "text-gray-500"
       }`}
     >
       {status || "—"}
@@ -1385,46 +1779,58 @@ function PaymentStatus({
   );
 }
 
-/**
+/*
  * ============================================================
- * LOADING SKELETON
+ * LOADING
  * ============================================================
  */
 
 function SubscriptionSkeleton() {
   return (
-    <div className="min-h-screen animate-pulse bg-[#faf8f5]">
-      <div className="border-b border-stone-200 bg-white">
+    <main className="min-h-screen animate-pulse bg-[#F8F5F3]">
+      <div className="border-b border-[#E7DDDF] bg-white">
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <div className="h-4 w-40 rounded bg-stone-200" />
+          <div className="h-4 w-40 rounded bg-gray-200" />
 
-          <div className="mt-3 h-9 w-64 rounded bg-stone-200" />
+          <div className="mt-3 h-9 w-64 rounded bg-gray-200" />
 
-          <div className="mt-3 h-4 w-80 max-w-full rounded bg-stone-100" />
+          <div className="mt-3 h-4 w-80 max-w-full rounded bg-gray-100" />
         </div>
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="h-72 rounded-[2rem] bg-stone-200" />
 
-        <div className="mt-8 grid gap-5 lg:grid-cols-3">
-          {[1, 2, 3].map(
+        <div className="h-80 rounded-[32px] bg-gray-200" />
+
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map(
             (item) => (
               <div
                 key={item}
-                className="h-32 rounded-2xl bg-stone-200"
+                className="h-48 rounded-3xl bg-gray-200"
               />
             )
           )}
         </div>
 
-        <div className="mt-8 h-96 rounded-3xl bg-stone-200" />
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map(
+            (item) => (
+              <div
+                key={item}
+                className="h-32 rounded-3xl bg-gray-200"
+              />
+            )
+          )}
+        </div>
+
+        <div className="mt-8 h-96 rounded-[28px] bg-gray-200" />
       </div>
-    </div>
+    </main>
   );
 }
 
-/**
+/*
  * ============================================================
  * HELPERS
  * ============================================================
@@ -1535,9 +1941,7 @@ function formatPhone(value) {
     String(value);
 
   if (
-    phone.startsWith(
-      "254"
-    ) &&
+    phone.startsWith("254") &&
     phone.length === 12
   ) {
     return `+254 ${phone.slice(
@@ -1620,17 +2024,12 @@ function getSubscriptionProgress(
     return 100;
   }
 
-  const elapsed =
-    now - start;
-
-  const duration =
-    end - start;
-
   return Math.min(
     100,
     Math.max(
       0,
-      (elapsed / duration) *
+      ((now - start) /
+        (end - start)) *
         100
     )
   );
@@ -1645,6 +2044,18 @@ function formatStatusValue(
 
   const string =
     String(value);
+
+  /*
+   * Don't modify formatted dates, money,
+   * receipt numbers etc.
+   */
+  if (
+    string.includes(" ") ||
+    string.includes(",") ||
+    /\d/.test(string)
+  ) {
+    return string;
+  }
 
   return (
     string.charAt(0) +

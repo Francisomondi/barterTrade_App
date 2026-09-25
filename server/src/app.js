@@ -17,7 +17,10 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import promotionRoutes from "./routes/promotionRoutes.js";
 import promotionAnalyticsRoutes from "./routes/promotionAnalyticsRoutes.js";
 import mpesaCallbackRoutes from "./routes/mpesaCallbackRoutes.js";
-
+import subscriptionRoutes from "./routes/subscriptionRoutes.js";
+import entitlementRoutes from "./routes/entitlementRoutes.js";
+import premiumAnalyticsRoutes from "./routes/premiumAnalyticsRoutes.js";
+import businessRoutes from "./routes/businessRoutes.js";
 
 
 
@@ -62,8 +65,12 @@ app.use("/api/disputes", disputeRoutes);
 
 app.use("/api/payments", paymentRoutes);
 app.use("/api/promotions", promotionRoutes);
-app.use( "/api/promotions", promotionAnalyticsRoutes);
-app.use( "/api/mpesa", mpesaCallbackRoutes);
+app.use("/api/promotions", promotionAnalyticsRoutes);
+app.use("/api/mpesa", mpesaCallbackRoutes);
+app.use("/api/subscriptions", subscriptionRoutes);
+app.use( "/api/entitlements", entitlementRoutes);
+app.use("/api/premium-analytics", premiumAnalyticsRoutes);
+app.use("/api/business", businessRoutes);
 
 
 export default app;

@@ -10,6 +10,7 @@ deleteListingImage,
 addListingImages,
 setPrimaryListingImage,
 reorderListingImages,
+getHomepagePromotedListings,
 } from "../controllers/listingController.js";
 
 import { protect } from "../middleware/authMiddleware.js";
@@ -23,8 +24,7 @@ router.get("/", getListings);
 // Create listing with up to 8 images
 router.post("/",protect,upload.array("images", 8),createListing);
 
-// Get current user's listings
-router.get("/user/me",protect,getMyListings);
+
 
 router.patch("/:id/images/:imageId/primary",protect,setPrimaryListingImage);
 
@@ -36,6 +36,10 @@ router.post("/:id/images",protect,upload.array("images", 8),addListingImages);
 router.delete("/:id/images/:imageId", protect, deleteListingImage, );
 
 router.patch("/:id/images/reorder",protect,reorderListingImages);
+router.get("/homepage-promoted", getHomepagePromotedListings);
+
+// Get current user's listings
+router.get("/user/me",protect,getMyListings);
 
 // Get listing by ID
 router.get("/:id", getListingById);

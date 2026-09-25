@@ -9,6 +9,13 @@ import {
   initiateStkPush,
   normalizeMpesaPhone,
 } from "../services/mpesaService.js";
+import {
+  expirePromotions,
+  expirePromotionIfNeeded,
+} from "../services/promotionExpiryService.js";
+import {
+  calculatePromotionPrice,
+} from "../services/premiumEntitlementService.js";
 
 /**
  * How long an initiated STK request is protected
@@ -70,45 +77,83 @@ export const createPromotion = async (
   res
 ) => {
   try {
-    const userId = req.user.id;
+    const userId =
+      req.user.id;
 
-    const { listingId, type } = req.body;
+    const {
+      listingId,
+      type,
+    } = req.body;
 
-    // -----------------------------------------------------
-    // 1. Validate request
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 1. VALIDATE
+     * ========================================================
+     */
 
     if (!listingId) {
-      return res.status(400).json({
-        success: false,
-        message: "Listing ID is required.",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            "Listing ID is required.",
+        });
     }
 
     if (!type) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Promotion type is required.",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            "Promotion type is required.",
+        });
     }
 
-    // -----------------------------------------------------
-    // 2. Get trusted promotion plan
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 2. TRUSTED SERVER PLAN
+     * ========================================================
+     */
 
-    const plan = getPromotionPlan(type);
+    const plan =
+      getPromotionPlan(
+        type
+      );
 
     if (!plan) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid promotion type.",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            "Invalid promotion type.",
+        });
     }
 
-    // -----------------------------------------------------
-    // 3. Find listing
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 3. SERVER-CALCULATED PRICE
+     * ========================================================
+     */
+
+    const pricing =
+      await calculatePromotionPrice({
+        userId,
+
+        baseAmount:
+          plan.amount,
+      });
+
+    /*
+     * ========================================================
+     * 4. FIND LISTING
+     * ========================================================
+     */
 
     const listing =
       await prisma.listing.findUnique({
@@ -125,120 +170,265 @@ export const createPromotion = async (
       });
 
     if (!listing) {
-      return res.status(404).json({
-        success: false,
-        message: "Listing not found.",
-      });
+      return res
+        .status(404)
+        .json({
+          success: false,
+
+          message:
+            "Listing not found.",
+        });
     }
 
-    // -----------------------------------------------------
-    // 4. Verify listing ownership
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 5. OWNERSHIP
+     * ========================================================
+     */
 
-    if (listing.userId !== userId) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "You can only promote your own listings.",
-      });
+    if (
+      listing.userId !==
+      userId
+    ) {
+      return res
+        .status(403)
+        .json({
+          success: false,
+
+          message:
+            "You can only promote your own listings.",
+        });
     }
 
-    // -----------------------------------------------------
-    // 5. Listing must be ACTIVE
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 6. ACTIVE LISTING
+     * ========================================================
+     */
 
-    if (listing.status !== "ACTIVE") {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Only active listings can be promoted.",
-      });
+    if (
+      listing.status !==
+      "ACTIVE"
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+
+          message:
+            "Only active listings can be promoted.",
+        });
     }
 
-    // -----------------------------------------------------
-    // 6. Check ACTIVE promotion
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 7. EXISTING ACTIVE PROMOTION
+     * ========================================================
+     */
 
     const activePromotion =
       await prisma.promotion.findFirst({
         where: {
           userId,
           listingId,
-          type: plan.type,
-          status: "ACTIVE",
+
+          type:
+            plan.type,
+
+          status:
+            "ACTIVE",
         },
 
         orderBy: {
-          createdAt: "desc",
+          createdAt:
+            "desc",
         },
       });
 
     if (activePromotion) {
-      return res.status(409).json({
-        success: false,
-        code: "PROMOTION_ALREADY_ACTIVE",
-        message:
-          `This listing already has an active ${plan.name} promotion.`,
-        promotion: activePromotion,
-      });
+      return res
+        .status(409)
+        .json({
+          success: false,
+
+          code:
+            "PROMOTION_ALREADY_ACTIVE",
+
+          message:
+            `This listing already has an active ${plan.name} promotion.`,
+
+          promotion:
+            activePromotion,
+        });
     }
 
-    // -----------------------------------------------------
-    // 7. Check existing PENDING promotion
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 8. EXISTING PENDING PROMOTION
+     * ========================================================
+     */
 
     const pendingPromotion =
       await prisma.promotion.findFirst({
         where: {
           userId,
           listingId,
-          type: plan.type,
-          status: "PENDING",
+
+          type:
+            plan.type,
+
+          status:
+            "PENDING",
         },
 
         orderBy: {
-          createdAt: "desc",
+          createdAt:
+            "desc",
         },
 
         include: {
           payments: {
             orderBy: {
-              createdAt: "desc",
+              createdAt:
+                "desc",
             },
           },
         },
       });
 
-    // -----------------------------------------------------
-    // 8. Reuse PENDING promotion
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 9. REUSE / REPRICE PENDING PROMOTION
+     * ========================================================
+     *
+     * Only reprice when there is no completed payment.
+     *
+     * This means:
+     *
+     * Free → Premium:
+     * old pending promotion receives Premium price.
+     *
+     * Premium expires:
+     * unpaid pending promotion returns to normal price.
+     */
 
     if (pendingPromotion) {
-      return res.status(200).json({
-        success: true,
-        reused: true,
+      const completedPayment =
+        pendingPromotion.payments.some(
+          (payment) =>
+            payment.status ===
+            "COMPLETED"
+        );
 
-        message:
-          "A pending promotion already exists. Continue with payment.",
+      let reusablePromotion =
+        pendingPromotion;
 
-        promotion: pendingPromotion,
+      if (!completedPayment) {
+        reusablePromotion =
+          await prisma.promotion.update({
+            where: {
+              id:
+                pendingPromotion.id,
+            },
 
-        plan: {
-          type: plan.type,
-          name: plan.name,
-          description: plan.description,
-          amount: plan.amount,
-          currency: plan.currency,
-          durationDays:
-            plan.durationDays,
-          features: plan.features,
-        },
-      });
+            data: {
+              amount:
+                pricing.finalAmount,
+
+              currency:
+                plan.currency,
+
+              durationDays:
+                plan.durationDays,
+            },
+
+            include: {
+              listing: {
+                select: {
+                  id: true,
+                  title: true,
+                  status: true,
+                },
+              },
+
+              payments: {
+                orderBy: {
+                  createdAt:
+                    "desc",
+                },
+              },
+            },
+          });
+      }
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          reused: true,
+
+          message:
+            "A pending promotion already exists. Continue with payment.",
+
+          promotion:
+            reusablePromotion,
+
+          pricing: {
+            ...pricing,
+
+            currency:
+              plan.currency,
+          },
+
+          plan: {
+            type:
+              plan.type,
+
+            name:
+              plan.name,
+
+            description:
+              plan.description,
+
+            /*
+             * Base server price.
+             */
+            amount:
+              plan.amount,
+
+            baseAmount:
+              pricing.baseAmount,
+
+            discountPercent:
+              pricing.discountPercent,
+
+            discountAmount:
+              pricing.discountAmount,
+
+            finalAmount:
+              pricing.finalAmount,
+
+            isPremium:
+              pricing.isPremium,
+
+            currency:
+              plan.currency,
+
+            durationDays:
+              plan.durationDays,
+
+            features:
+              plan.features,
+          },
+        });
     }
 
-    // -----------------------------------------------------
-    // 9. Create new PENDING promotion
-    // -----------------------------------------------------
+    /*
+     * ========================================================
+     * 10. CREATE PENDING PROMOTION
+     * ========================================================
+     */
 
     const promotion =
       await prisma.promotion.create({
@@ -246,12 +436,23 @@ export const createPromotion = async (
           userId,
           listingId,
 
-          type: plan.type,
-          status: "PENDING",
+          type:
+            plan.type,
 
-          // Never trust frontend price/duration.
-          amount: plan.amount,
-          currency: plan.currency,
+          status:
+            "PENDING",
+
+          /*
+           * Store FINAL amount.
+           *
+           * This is what Payment and M-Pesa will use.
+           */
+          amount:
+            pricing.finalAmount,
+
+          currency:
+            plan.currency,
+
           durationDays:
             plan.durationDays,
         },
@@ -269,36 +470,79 @@ export const createPromotion = async (
         },
       });
 
-    return res.status(201).json({
-      success: true,
-      reused: false,
+    return res
+      .status(201)
+      .json({
+        success: true,
 
-      message:
-        "Promotion created. Continue with payment.",
+        reused: false,
 
-      promotion,
+        message:
+          pricing.isPremium
+            ? `Promotion created with your ${pricing.discountPercent}% Premium discount. Continue with payment.`
+            : "Promotion created. Continue with payment.",
 
-      plan: {
-        type: plan.type,
-        name: plan.name,
-        description: plan.description,
-        amount: plan.amount,
-        currency: plan.currency,
-        durationDays: plan.durationDays,
-        features: plan.features,
-      },
-    });
+        promotion,
+
+        pricing: {
+          ...pricing,
+
+          currency:
+            plan.currency,
+        },
+
+        plan: {
+          type:
+            plan.type,
+
+          name:
+            plan.name,
+
+          description:
+            plan.description,
+
+          amount:
+            plan.amount,
+
+          baseAmount:
+            pricing.baseAmount,
+
+          discountPercent:
+            pricing.discountPercent,
+
+          discountAmount:
+            pricing.discountAmount,
+
+          finalAmount:
+            pricing.finalAmount,
+
+          isPremium:
+            pricing.isPremium,
+
+          currency:
+            plan.currency,
+
+          durationDays:
+            plan.durationDays,
+
+          features:
+            plan.features,
+        },
+      });
   } catch (error) {
     console.error(
       "CREATE PROMOTION ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
-      message:
-        "Failed to create promotion.",
-    });
+    return res
+      .status(500)
+      .json({
+        success: false,
+
+        message:
+          "Failed to create promotion.",
+      });
   }
 };
 
@@ -314,6 +558,7 @@ export const getMyPromotions = async (
 ) => {
   try {
     const userId = req.user.id;
+     await expirePromotions();
 
     const promotions =
       await prisma.promotion.findMany({
@@ -388,6 +633,7 @@ export const getPromotion = async (
   try {
     const userId = req.user.id;
     const { id } = req.params;
+     await expirePromotionIfNeeded(id);
 
     const promotion =
       await prisma.promotion.findFirst({
