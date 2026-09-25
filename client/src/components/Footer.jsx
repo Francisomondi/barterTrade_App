@@ -1,5 +1,6 @@
 
 import { Link } from "react-router-dom";
+import logo from "../assets/logo4.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -23,7 +24,7 @@ const Footer = () => {
             >
               <div className="flex h-14 w-44 items-center justify-center overflow-hidden rounded-xl bg-white shadow-md">
                 <img
-                  src="/images/logo4.png"
+                  src={logo}
                   alt="BarterConnect"
                   className="h-full w-full object-contain"
                 />

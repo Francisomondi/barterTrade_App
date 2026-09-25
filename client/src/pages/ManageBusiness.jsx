@@ -11,6 +11,10 @@ import {
 } from "react-router-dom";
 
 import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
   AlertTriangle,
   ArrowLeft,
   Camera,
@@ -73,6 +77,10 @@ const EMPTY_FORM = {
 const ManageBusiness = () => {
   const navigate =
     useNavigate();
+
+  const {
+    refreshBusiness,
+  } = useAuth();
 
   const logoInputRef =
     useRef(null);
@@ -294,27 +302,36 @@ const ManageBusiness = () => {
             payload
           );
 
-        if (
-          response?.business
+       if (
+        response?.business
         ) {
-          applyBusiness(
+        applyBusiness(
             response.business
-          );
+        );
         } else {
-          const refreshed =
+        const refreshed =
             await getMyBusiness();
 
-          if (
+        if (
             refreshed?.business
-          ) {
+        ) {
             applyBusiness(
-              refreshed.business
+            refreshed.business
             );
-          }
+        }
         }
 
+        /*
+        * Keep the global Business state
+        * synchronized with this page.
+        *
+        * This immediately updates Navbar
+        * business name, slug, status, etc.
+        */
+        await refreshBusiness();
+
         toast.success(
-          "Business Profile updated."
+        "Business Profile updated."
         );
       } catch (error) {
         console.error(
@@ -372,17 +389,19 @@ const ManageBusiness = () => {
           );
 
         if (
-          response?.business
+        response?.business
         ) {
-          setBusiness(
+        applyBusiness(
             response.business
-          );
+        );
         } else {
-          await loadBusiness();
+        await loadBusiness();
         }
 
+        await refreshBusiness();
+
         toast.success(
-          "Business logo updated."
+        "Business logo updated."
         );
       } catch (error) {
         console.error(
@@ -425,17 +444,19 @@ const ManageBusiness = () => {
           await deleteBusinessLogo();
 
         if (
-          response?.business
+        response?.business
         ) {
-          setBusiness(
+        applyBusiness(
             response.business
-          );
+        );
         } else {
-          await loadBusiness();
+        await loadBusiness();
         }
 
+        await refreshBusiness();
+
         toast.success(
-          "Business logo removed."
+        "Business logo removed."
         );
       } catch (error) {
         console.error(
@@ -493,17 +514,19 @@ const ManageBusiness = () => {
           );
 
         if (
-          response?.business
+        response?.business
         ) {
-          setBusiness(
+        applyBusiness(
             response.business
-          );
+        );
         } else {
-          await loadBusiness();
+        await loadBusiness();
         }
 
+        await refreshBusiness();
+
         toast.success(
-          "Business cover updated."
+        "Business cover updated."
         );
       } catch (error) {
         console.error(
@@ -548,17 +571,19 @@ const ManageBusiness = () => {
           await deleteBusinessCover();
 
         if (
-          response?.business
+        response?.business
         ) {
-          setBusiness(
+        applyBusiness(
             response.business
-          );
+        );
         } else {
-          await loadBusiness();
+        await loadBusiness();
         }
 
+        await refreshBusiness();
+
         toast.success(
-          "Business cover removed."
+        "Business cover removed."
         );
       } catch (error) {
         console.error(

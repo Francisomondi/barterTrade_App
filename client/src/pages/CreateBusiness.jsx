@@ -8,6 +8,10 @@ import {
 } from "react-router-dom";
 
 import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
   ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
@@ -57,6 +61,10 @@ const INITIAL_FORM = {
 const CreateBusiness = () => {
   const navigate =
     useNavigate();
+
+    const {
+    refreshBusiness,
+    } = useAuth();
 
   const [form, setForm] =
     useState(INITIAL_FORM);
@@ -140,6 +148,7 @@ const CreateBusiness = () => {
             payload
           );
 
+
         if (
           !response?.business
         ) {
@@ -147,6 +156,7 @@ const CreateBusiness = () => {
             "Business Account was not returned."
           );
         }
+        await refreshBusiness();
 
         toast.success(
           "Business Account created successfully."

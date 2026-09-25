@@ -11,7 +11,31 @@ import api from "../api/axios";
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
+  /*
+   * ============================================================
+   * AUTHENTICATED USER
+   * ============================================================
+   */
+
   const [user, setUser] = useState(null);
+
+  /*
+   * ============================================================
+   * BUSINESS PROFILE
+   * ============================================================
+   */
+
+  const [business, setBusiness] =
+    useState(null);
+
+  const [businessLoading, setBusinessLoading] =
+    useState(false);
+
+  /*
+   * ============================================================
+   * INITIAL AUTH LOADING
+   * ============================================================
+   */
 
   const [loading, setLoading] =
     useState(true);
@@ -50,18 +74,171 @@ export const AuthProvider = ({ children }) => {
 
   /*
    * ============================================================
+   * CLEAR BUSINESS STATE
+   * ============================================================
+   */
+
+  const clearBusiness =
+    useCallback(() => {
+      setBusiness(null);
+    }, []);
+
+  /*
+   * ============================================================
+   * LOAD / REFRESH BUSINESS
+   * ============================================================
+   *
+   * BusinessProfile is intentionally loaded separately from
+   * /auth/me.
+   *
+   * Expected:
+   *
+   * GET /business/me
+   *
+   * {
+   *   success: true,
+   *   isBusiness: true,
+   *   business: { ... }
+   * }
+   *
+   * or:
+   *
+   * {
+   *   success: true,
+   *   isBusiness: false,
+   *   business: null
+   * }
+   *
+   * ACTIVE, CLOSED and SUSPENDED profiles are all still
+   * Business Accounts.
+   */
+
+  const loadBusiness =
+    useCallback(
+      async ({
+        manageLoading = false,
+        clearOnFailure = false,
+      } = {}) => {
+        const token =
+          localStorage.getItem(
+            "barter_token"
+          );
+
+        if (!token) {
+          clearBusiness();
+
+          return null;
+        }
+
+        try {
+          if (manageLoading) {
+            setBusinessLoading(
+              true
+            );
+          }
+
+          const response =
+            await api.get(
+              "/business/me"
+            );
+
+          const data =
+            response?.data;
+
+          /*
+           * User does not have a
+           * Business Account.
+           */
+          if (
+            !data?.isBusiness ||
+            !data?.business
+          ) {
+            setBusiness(null);
+
+            return null;
+          }
+
+          setBusiness(
+            data.business
+          );
+
+          return data.business;
+        } catch (error) {
+          console.error(
+            "LOAD BUSINESS ERROR:",
+            error
+          );
+
+          /*
+           * 404 can safely represent
+           * no BusinessProfile if the
+           * backend ever returns that
+           * style of response.
+           */
+          if (
+            error?.response
+              ?.status === 404
+          ) {
+            setBusiness(null);
+
+            return null;
+          }
+
+          if (clearOnFailure) {
+            setBusiness(null);
+          }
+
+          throw error;
+        } finally {
+          if (manageLoading) {
+            setBusinessLoading(
+              false
+            );
+          }
+        }
+      },
+      [clearBusiness]
+    );
+
+  /*
+   * ============================================================
+   * REFRESH BUSINESS
+   * ============================================================
+   *
+   * Call after:
+   *
+   * - creating Business Account
+   * - editing Business Profile
+   * - changing logo
+   * - changing cover
+   * - opening/closing storefront
+   * - future verification changes
+   */
+
+  const refreshBusiness =
+    useCallback(async () => {
+      try {
+        return await loadBusiness({
+          manageLoading: false,
+          clearOnFailure: false,
+        });
+      } catch (error) {
+        console.error(
+          "REFRESH BUSINESS ERROR:",
+          error
+        );
+
+        return null;
+      }
+    }, [loadBusiness]);
+
+  /*
+   * ============================================================
    * LOAD / REFRESH CURRENT USER
    * ============================================================
    *
-   * This is the single source used whenever React needs fresh
-   * authenticated-user information from the backend.
-   *
-   * It is especially important after:
-   *
-   * - Premium activation
-   * - profile updates
-   * - future verification changes
-   * - account changes
+   * This remains the canonical source
+   * for authenticated-user state.
    *
    * /auth/me is expected to return:
    *
@@ -89,6 +266,7 @@ export const AuthProvider = ({ children }) => {
 
       if (!token) {
         saveUser(null);
+        clearBusiness();
 
         if (manageLoading) {
           setLoading(false);
@@ -128,11 +306,12 @@ export const AuthProvider = ({ children }) => {
         );
 
         /*
-         * During the initial authentication check an invalid or
-         * expired token should clear the local session.
+         * During the initial authentication check
+         * an invalid or expired token should clear
+         * the local session.
          *
-         * A manual refresh can choose not to clear the session
-         * for temporary network failures.
+         * A manual refresh can choose not to clear
+         * the session for temporary network errors.
          */
 
         if (
@@ -159,6 +338,7 @@ export const AuthProvider = ({ children }) => {
           );
 
           setUser(null);
+          clearBusiness();
         }
 
         throw error;
@@ -168,22 +348,16 @@ export const AuthProvider = ({ children }) => {
         }
       }
     },
-    [saveUser]
+    [
+      saveUser,
+      clearBusiness,
+    ]
   );
 
   /*
    * ============================================================
    * REFRESH AUTHENTICATED USER
    * ============================================================
-   *
-   * Use this after something changes the authenticated user's
-   * server-side state.
-   *
-   * Example:
-   *
-   * await refreshUser();
-   *
-   * Premium.jsx will use this immediately after M-Pesa success.
    */
 
   const refreshUser =
@@ -208,7 +382,37 @@ export const AuthProvider = ({ children }) => {
 
   /*
    * ============================================================
-   * INITIAL AUTH CHECK
+   * REFRESH ACCOUNT
+   * ============================================================
+   *
+   * Convenience function for cases
+   * where both authentication/Premium
+   * and Business state may have changed.
+   */
+
+  const refreshAccount =
+    useCallback(async () => {
+      const [
+        refreshedUser,
+        refreshedBusiness,
+      ] = await Promise.all([
+        refreshUser(),
+        refreshBusiness(),
+      ]);
+
+      return {
+        user: refreshedUser,
+        business:
+          refreshedBusiness,
+      };
+    }, [
+      refreshUser,
+      refreshBusiness,
+    ]);
+
+  /*
+   * ============================================================
+   * INITIAL AUTH + BUSINESS CHECK
    * ============================================================
    */
 
@@ -218,13 +422,42 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth =
       async () => {
         try {
-          await loadUser({
-            clearSessionOnFailure:
-              true,
+          const authenticatedUser =
+            await loadUser({
+              clearSessionOnFailure:
+                true,
 
-            manageLoading:
-              false,
-          });
+              manageLoading:
+                false,
+            });
+
+          /*
+           * Only request BusinessProfile
+           * after authentication succeeds.
+           */
+          if (
+            authenticatedUser
+          ) {
+            try {
+              await loadBusiness({
+                manageLoading:
+                  false,
+
+                clearOnFailure:
+                  true,
+              });
+            } catch (error) {
+              /*
+               * Business loading should
+               * never invalidate a valid
+               * authenticated session.
+               */
+              console.error(
+                "INITIAL BUSINESS LOAD ERROR:",
+                error
+              );
+            }
+          }
         } catch {
           /*
            * loadUser already handles
@@ -242,7 +475,10 @@ export const AuthProvider = ({ children }) => {
     return () => {
       mounted = false;
     };
-  }, [loadUser]);
+  }, [
+    loadUser,
+    loadBusiness,
+  ]);
 
   /*
    * ============================================================
@@ -281,11 +517,20 @@ export const AuthProvider = ({ children }) => {
     );
 
     /*
-     * Refresh from /auth/me so the frontend receives the
-     * canonical authenticated-user shape.
+     * Refresh from /auth/me so the
+     * frontend receives canonical
+     * authenticated-user state.
      */
 
     await refreshUser();
+
+    /*
+     * New users normally have no
+     * BusinessProfile, but load it
+     * so context is authoritative.
+     */
+
+    await refreshBusiness();
 
     return response.data;
   };
@@ -327,11 +572,17 @@ export const AuthProvider = ({ children }) => {
     );
 
     /*
-     * Refresh immediately so Premium information comes from
-     * /auth/me even if the login response has an older shape.
+     * Refresh immediately so Premium
+     * information comes from /auth/me.
      */
 
     await refreshUser();
+
+    /*
+     * Load BusinessProfile separately.
+     */
+
+    await refreshBusiness();
 
     return response.data;
   };
@@ -374,6 +625,13 @@ export const AuthProvider = ({ children }) => {
           authenticatedUser
         );
 
+        /*
+         * Load Business state after
+         * Google authentication.
+         */
+
+        await refreshBusiness();
+
         return authenticatedUser;
       } catch (error) {
         console.error(
@@ -402,6 +660,7 @@ export const AuthProvider = ({ children }) => {
         );
 
         setUser(null);
+        clearBusiness();
 
         throw error;
       }
@@ -423,7 +682,8 @@ export const AuthProvider = ({ children }) => {
     );
 
     /*
-     * Remove legacy authentication keys as well.
+     * Remove legacy authentication
+     * keys as well.
      */
 
     localStorage.removeItem(
@@ -441,11 +701,12 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.clear();
 
     setUser(null);
+    clearBusiness();
   };
 
   /*
    * ============================================================
-   * CONVENIENT PREMIUM VALUES
+   * PREMIUM VALUES
    * ============================================================
    */
 
@@ -465,6 +726,47 @@ export const AuthProvider = ({ children }) => {
   const premiumEndsAt =
     user?.premiumEndsAt ??
     null;
+
+  /*
+   * ============================================================
+   * BUSINESS VALUES
+   * ============================================================
+   *
+   * IMPORTANT:
+   *
+   * Business Account ownership does
+   * NOT depend on status.
+   *
+   * ACTIVE
+   * CLOSED
+   * SUSPENDED
+   *
+   * are all still Business Accounts.
+   */
+
+  const isBusiness =
+    Boolean(business);
+
+  const businessStatus =
+    business?.status ??
+    null;
+
+  const businessSlug =
+    business?.slug ??
+    null;
+
+  const businessVerificationStatus =
+    business?.verificationStatus ??
+    null;
+
+  const isBusinessVerified =
+    businessVerificationStatus ===
+    "VERIFIED";
+
+  const isBusinessStorefrontActive =
+    isBusiness &&
+    businessStatus ===
+      "ACTIVE";
 
   /*
    * ============================================================
@@ -490,6 +792,18 @@ export const AuthProvider = ({ children }) => {
         premiumEndsAt,
 
         /*
+         * Business
+         */
+        business,
+        businessLoading,
+        isBusiness,
+        businessStatus,
+        businessSlug,
+        businessVerificationStatus,
+        isBusinessVerified,
+        isBusinessStorefrontActive,
+
+        /*
          * Authentication actions
          */
         register,
@@ -499,18 +813,19 @@ export const AuthProvider = ({ children }) => {
 
         /*
          * Refresh functions
-         *
-         * loadUser is kept for compatibility with any existing
-         * component that already uses it.
          */
         loadUser,
         refreshUser,
+        loadBusiness,
+        refreshBusiness,
+        refreshAccount,
 
         /*
-         * Keep this available if an existing part of your app
-         * needs to update user state directly.
+         * Direct state access retained
+         * for existing functionality.
          */
         setUser,
+        setBusiness,
       }}
     >
       {children}
