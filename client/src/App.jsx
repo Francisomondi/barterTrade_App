@@ -38,6 +38,8 @@ import BusinessDashboard from "./pages/BusinessDashboard";
 
 import CreateBusiness from "./pages/CreateBusiness";
 import ManageBusiness from "./pages/ManageBusiness";
+import PublicProfile from "./pages/PublicProfile";
+
 
 
 
@@ -66,6 +68,7 @@ const App = () => {
           <Route path="/" element={<Navigate  to="/marketplace" replace />}/>
           <Route path="/marketplace" element={<Marketplace />} />
           <Route path="/listings/:id" element={<ListingDetails />}/>
+          <Route path="/profile/:userId" element={<PublicProfile />}/>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />}/>
           <Route path="/auth/callback" element={<AuthCallback />} />
@@ -73,6 +76,7 @@ const App = () => {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
 
           <Route path="/business/:slug" element={<BusinessStorefront />}/>
+          
 
           <Route element={<ProtectedRoute />}>
 

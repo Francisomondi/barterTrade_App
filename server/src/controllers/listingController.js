@@ -2,10 +2,8 @@ import prisma from "../config/prisma.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 import cloudinary from "../config/cloudinary.js";
 import { getCache, setCache } from "../utils/redisCache.js";
-import {
-  invalidateListingCache,
-  invalidateAllListingsCache,
-} from "../utils/listingCache.js";
+import {invalidateListingCache, invalidateAllListingsCache,} from "../utils/listingCache.js";
+import { trackListingView} from "../services/businessAnalyticsTrackingService.js";
 import { expirePromotions } from "../services/promotionExpiryService.js";
 import { getListingLimit } from "../services/premiumEntitlementService.js";
 
@@ -1097,7 +1095,60 @@ export const getListings = async (
       });
   }
 };
+// UPDATE — server/src/controllers/listingController.js
 
+/**
+ * =========================================================
+ * TRACK BUSINESS LISTING VIEW
+ * =========================================================
+ *
+ * Analytics are intentionally fail-open.
+ *
+ * A listing response must never fail simply because
+ * analytics could not be recorded.
+ *
+ * trackListingView() itself determines whether:
+ *
+ * - the listing belongs to an ACTIVE business
+ * - the visitor is the business owner
+ * - the view is a recent duplicate
+ *
+ * Personal listings therefore pass safely through this
+ * helper without creating BusinessAnalyticsEvent records.
+ */
+const trackBusinessListingView = (
+  req,
+  listingId
+) => {
+  if (!listingId) {
+    return;
+  }
+
+  trackListingView({
+    listingId,
+
+    visitorUserId:
+      req.analyticsVisitor
+        ?.visitorUserId || null,
+
+    visitorKey:
+      req.analyticsVisitor
+        ?.visitorKey || null,
+
+    sessionKey:
+      req.analyticsVisitor
+        ?.sessionKey || null,
+
+    metadata: {
+      source: "LISTING_DETAILS",
+    },
+  }).catch((error) => {
+    console.error(
+      "BUSINESS LISTING VIEW ANALYTICS ERROR:",
+      error
+    );
+  });
+};
 /* =========================================================
    GET ONE LISTING
 ========================================================= */
@@ -1343,6 +1394,11 @@ export const getListingById =
             };
         }
 
+        trackBusinessListingView(
+          req,
+          id
+        );
+
         return res.json(
           cachedListing
         );
@@ -1442,6 +1498,11 @@ export const getListingById =
         cacheKey,
         responseData,
         300
+      );
+      
+      trackBusinessListingView(
+        req,
+        id
       );
 
       return res.json(

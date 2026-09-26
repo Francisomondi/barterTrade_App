@@ -1,3 +1,5 @@
+// UPDATE — frontend/src/pages/ListingDetails.jsx
+
 import {
   useEffect,
   useState,
@@ -16,6 +18,7 @@ import {
   ImageIcon,
   MapPin,
   Repeat2,
+  Share2,
   ShieldCheck,
   Store,
 } from "lucide-react";
@@ -24,7 +27,12 @@ import {
   getListingById,
 } from "../api/listingApi";
 
+import {
+  trackListingShare,
+} from "../api/businessAnalytics";
+
 import PremiumBadge from "../components/PremiumBadge";
+
 import BusinessBadge from "../components/business/BusinessBadge";
 
 const ListingDetails = () => {
@@ -33,22 +41,36 @@ const ListingDetails = () => {
   const navigate =
     useNavigate();
 
-  const [listing, setListing] =
-    useState(null);
+  const [
+    listing,
+    setListing,
+  ] = useState(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
-  /*
-   * Selected gallery image
-   */
+  const [
+    shareMessage,
+    setShareMessage,
+  ] = useState("");
+
   const [
     selectedImageId,
     setSelectedImageId,
   ] = useState(null);
+
+  /*
+   * ============================================================
+   * LOAD LISTING
+   * ============================================================
+   */
 
   useEffect(() => {
     const loadListing =
@@ -388,6 +410,7 @@ const ListingDetails = () => {
    * Business identity takes priority visually while the actual
    * listing continues to belong to the underlying User.
    */
+
   const sellerDisplayName =
     isBusiness &&
     business?.businessName
@@ -408,11 +431,136 @@ const ListingDetails = () => {
       ?.toUpperCase() ||
     "U";
 
+  /*
+   * ============================================================
+   * SELLER DESTINATION
+   * ============================================================
+   *
+   * Business account:
+   *   /business/:slug
+   *
+   * Personal account:
+   *   /profile/:userId
+   *
+   * This keeps the public personal profile and public business
+   * storefront as two separate marketplace identities.
+   */
+
   const businessStorePath =
     isBusiness &&
     business?.slug
       ? `/business/${business.slug}`
       : null;
+
+  const personalProfilePath =
+    !isBusiness &&
+    seller?.id
+      ? `/profile/${seller.id}`
+      : null;
+
+  const sellerProfilePath =
+    businessStorePath ||
+    personalProfilePath;
+
+  /*
+   * ============================================================
+   * SHARE LISTING
+   * ============================================================
+   */
+
+  const handleShareListing =
+    async () => {
+      const shareUrl =
+        window.location.href;
+
+      const shareData = {
+        title:
+          listing.title,
+
+        text:
+          `Check out ${listing.title} on BarterTrade.`,
+
+        url:
+          shareUrl,
+      };
+
+      try {
+        if (
+          typeof navigator.share ===
+          "function"
+        ) {
+          await navigator.share(
+            shareData
+          );
+        } else {
+          await navigator.clipboard.writeText(
+            shareUrl
+          );
+
+          setShareMessage(
+            "Listing link copied"
+          );
+
+          window.setTimeout(
+            () => {
+              setShareMessage(
+                ""
+              );
+            },
+            2500
+          );
+        }
+
+        /*
+         * Business analytics only.
+         *
+         * Personal listing sharing continues to work normally
+         * without creating BusinessAnalyticsEvent records.
+         */
+        if (
+          isBusiness &&
+          business?.slug
+        ) {
+          void trackListingShare({
+            slug:
+              business.slug,
+
+            listingId:
+              listing.id,
+
+            source:
+              "LISTING_DETAILS",
+          });
+        }
+      } catch (error) {
+        /*
+         * The native share dialog throws AbortError when the
+         * visitor cancels sharing. That is not an analytics event.
+         */
+        if (
+          error?.name !==
+          "AbortError"
+        ) {
+          console.error(
+            "SHARE LISTING ERROR:",
+            error
+          );
+
+          setShareMessage(
+            "Unable to share listing"
+          );
+
+          window.setTimeout(
+            () => {
+              setShareMessage(
+                ""
+              );
+            },
+            2500
+          );
+        }
+      }
+    };
 
   /*
    * ============================================================
@@ -531,9 +679,7 @@ const ListingDetails = () => {
               lg:max-w-125
             "
           >
-            {/* =================================================
-                MAIN IMAGE
-            ================================================== */}
+            {/* MAIN IMAGE */}
 
             <div
               className="
@@ -584,8 +730,6 @@ const ListingDetails = () => {
                   "
                 />
 
-                {/* MAIN IMAGE BADGE */}
-
                 {selectedImage
                   ?.isPrimary && (
                   <span
@@ -619,11 +763,10 @@ const ListingDetails = () => {
               </div>
             </div>
 
-            {/* =================================================
-                THUMBNAILS
-            ================================================== */}
+            {/* THUMBNAILS */}
 
-            {images.length > 0 && (
+            {images.length >
+              0 && (
               <div className="mt-3">
                 <div
                   className="
@@ -1241,13 +1384,13 @@ const ListingDetails = () => {
                     {/* SELLER INFORMATION */}
 
                     <div className="min-w-0 flex-1">
-                      {businessStorePath ? (
+                      {sellerProfilePath ? (
                         <Link
                           to={
-                            businessStorePath
+                            sellerProfilePath
                           }
                           className="
-                            group/business
+                            group/seller
                             inline-flex
                             max-w-full
                             items-center
@@ -1271,7 +1414,7 @@ const ListingDetails = () => {
                             className="
                               shrink-0
                               transition-transform
-                              group-hover/business:translate-x-0.5
+                              group-hover/seller:translate-x-0.5
                             "
                           />
                         </Link>
@@ -1300,14 +1443,16 @@ const ListingDetails = () => {
                           gap-1
                         "
                       >
-                        <BusinessBadge
-                          business={
-                            business
-                          }
-                          size="sm"
-                          showVerified
-                          linkToStore
-                        />
+                        {isBusiness && (
+                          <BusinessBadge
+                            business={
+                              business
+                            }
+                            size="sm"
+                            showVerified
+                            linkToStore
+                          />
+                        )}
 
                         {isPremium && (
                           <PremiumBadge
@@ -1422,12 +1567,14 @@ const ListingDetails = () => {
                   </div>
                 </div>
 
-                {/* BUSINESS STORE CTA */}
+                {/* =============================================
+                    SELLER DESTINATION CTA
+                ============================================== */}
 
-                {businessStorePath && (
+                {sellerProfilePath && (
                   <Link
                     to={
-                      businessStorePath
+                      sellerProfilePath
                     }
                     className="
                       mt-3
@@ -1455,12 +1602,19 @@ const ListingDetails = () => {
                         gap-2
                       "
                     >
-                      <Store
-                        size={14}
-                      />
+                      {isBusiness ? (
+                        <Store
+                          size={14}
+                        />
+                      ) : (
+                        <ShieldCheck
+                          size={14}
+                        />
+                      )}
 
-                      Visit business
-                      storefront
+                      {isBusiness
+                        ? "Visit business storefront"
+                        : "View seller profile"}
                     </span>
 
                     <ArrowRight
@@ -1470,6 +1624,69 @@ const ListingDetails = () => {
                 )}
               </div>
             </div>
+
+            {/* =================================================
+                LISTING ACTIONS
+            ================================================== */}
+
+            <div
+              className="
+                mt-3
+                flex
+                items-center
+                justify-end
+              "
+            >
+              <button
+                type="button"
+                onClick={
+                  handleShareListing
+                }
+                className="
+                  inline-flex
+                  items-center
+                  gap-2
+                  rounded-xl
+                  border
+                  border-[#DCCBC5]
+                  bg-white
+                  px-3.5
+                  py-2.5
+                  text-[10px]
+                  font-black
+                  text-[#5B1725]
+                  shadow-sm
+                  transition-all
+                  duration-200
+                  hover:-translate-y-0.5
+                  hover:border-[#CDAEB5]
+                  hover:bg-[#F9F3F4]
+                  sm:text-[11px]
+                "
+              >
+                <Share2
+                  size={15}
+                />
+
+                Share listing
+              </button>
+            </div>
+
+            {shareMessage && (
+              <p
+                role="status"
+                className="
+                  mt-2
+                  text-right
+                  text-[9px]
+                  font-bold
+                  text-[#6B1D2C]
+                  sm:text-[10px]
+                "
+              >
+                {shareMessage}
+              </p>
+            )}
 
             {/* =================================================
                 MAKE OFFER

@@ -28,7 +28,14 @@ import {
   getPublicBusinessListings,
 } from "../api/business";
 
+import {
+  trackContactClick,
+  trackPhoneClick,
+  trackWebsiteClick,
+} from "../api/businessAnalytics";
+
 import BusinessBadge from "../components/business/BusinessBadge";
+
 
 const BusinessStorefront = () => {
   const { slug } = useParams();
@@ -226,6 +233,57 @@ const BusinessStorefront = () => {
         ?.imageUrl ||
       null
     );
+  };
+
+  // UPDATE — frontend/src/pages/BusinessStorefront.jsx
+
+  /*
+   * ==========================================================
+   * BUSINESS ENGAGEMENT ANALYTICS
+   * ==========================================================
+   *
+   * These functions are intentionally fire-and-forget.
+   *
+   * A visitor must still be able to call, email, or visit the
+   * business website even if analytics temporarily fails.
+   *
+   * The analytics API handles its own errors and does not throw.
+   */
+
+  const handlePhoneClick = () => {
+    if (!business?.slug) {
+      return;
+    }
+
+    void trackPhoneClick({
+      slug: business.slug,
+      source:
+        "BUSINESS_STOREFRONT",
+    });
+  };
+
+  const handleEmailClick = () => {
+    if (!business?.slug) {
+      return;
+    }
+
+    void trackContactClick({
+      slug: business.slug,
+      source:
+        "BUSINESS_STOREFRONT",
+    });
+  };
+
+  const handleWebsiteClick = () => {
+    if (!business?.slug) {
+      return;
+    }
+
+    void trackWebsiteClick({
+      slug: business.slug,
+      source:
+        "BUSINESS_STOREFRONT",
+    });
   };
 
   /*
@@ -962,60 +1020,60 @@ const BusinessStorefront = () => {
 
                 {business.phone && (
                   <a
-                    href={`tel:${business.phone}`}
+                  href={`tel:${business.phone}`}
+                  onClick={handlePhoneClick}
+                  className="
+                    flex
+                    items-start
+                    gap-2.5
+                    rounded-xl
+                    bg-[#FAF8F7]
+                    p-3
+                    transition
+                    hover:bg-[#F3ECE9]
+                  "
+                >
+                  <Phone
+                    size={16}
                     className="
-                      flex
-                      items-start
-                      gap-2.5
-                      rounded-xl
-                      bg-[#FAF8F7]
-                      p-3
-                      transition
-                      hover:bg-[#F3ECE9]
+                      mt-0.5
+                      shrink-0
+                      text-[#6B1D2C]
                     "
-                  >
-                    <Phone
-                      size={16}
+                  />
+
+                  <div className="min-w-0">
+                    <p
                       className="
-                        mt-0.5
-                        shrink-0
-                        text-[#6B1D2C]
+                        text-[8px]
+                        font-black
+                        uppercase
+                        tracking-widest
+                        text-gray-400
                       "
-                    />
+                    >
+                      Phone
+                    </p>
 
-                    <div className="min-w-0">
-                      <p
-                        className="
-                          text-[8px]
-                          font-black
-                          uppercase
-                          tracking-widest
-                          text-gray-400
-                        "
-                      >
-                        Phone
-                      </p>
-
-                      <p
-                        className="
-                          mt-1
-                          break-all
-                          text-[11px]
-                          font-bold
-                          text-gray-700
-                        "
-                      >
-                        {
-                          business.phone
-                        }
-                      </p>
-                    </div>
-                  </a>
+                    <p
+                      className="
+                        mt-1
+                        break-all
+                        text-[11px]
+                        font-bold
+                        text-gray-700
+                      "
+                    >
+                      {business.phone}
+                    </p>
+                  </div>
+                </a>
                 )}
 
                 {business.email && (
                   <a
                     href={`mailto:${business.email}`}
+                    onClick={handleEmailClick}
                     className="
                       flex
                       items-start
@@ -1042,7 +1100,7 @@ const BusinessStorefront = () => {
                           text-[8px]
                           font-black
                           uppercase
-                         tracking-widest
+                          tracking-widest
                           text-gray-400
                         "
                       >
@@ -1058,9 +1116,7 @@ const BusinessStorefront = () => {
                           text-gray-700
                         "
                       >
-                        {
-                          business.email
-                        }
+                        {business.email}
                       </p>
                     </div>
                   </a>
@@ -1068,11 +1124,10 @@ const BusinessStorefront = () => {
 
                 {business.website && (
                   <a
-                    href={
-                      business.website
-                    }
+                    href={business.website}
                     target="_blank"
                     rel="noreferrer"
+                    onClick={handleWebsiteClick}
                     className="
                       flex
                       items-start

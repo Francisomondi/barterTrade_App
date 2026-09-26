@@ -1,3 +1,5 @@
+// UPDATE — server/src/app.js
+
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -22,6 +24,7 @@ import subscriptionRoutes from "./routes/subscriptionRoutes.js";
 import entitlementRoutes from "./routes/entitlementRoutes.js";
 import premiumAnalyticsRoutes from "./routes/premiumAnalyticsRoutes.js";
 import businessRoutes from "./routes/businessRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 
 const app = express();
 
@@ -47,16 +50,73 @@ if (process.env.NODE_ENV === "production") {
  * =========================================================
  */
 
+const allowedOrigins = [
+  "http://localhost:5173",
+
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
 app.use(
   cors({
-    origin:
-      process.env.CLIENT_URL ||
-      "http://localhost:5173",
+    origin(origin, callback) {
+      /*
+       * Allow requests without an Origin header.
+       *
+       * Examples:
+       * - Postman
+       * - server-to-server requests
+       * - some health checks
+       */
+      if (!origin) {
+        return callback(
+          null,
+          true
+        );
+      }
+
+      if (
+        allowedOrigins.includes(
+          origin
+        )
+      ) {
+        return callback(
+          null,
+          true
+        );
+      }
+
+      console.warn(
+        `CORS blocked origin: ${origin}`
+      );
+
+      return callback(
+        new Error(
+          `Origin ${origin} is not allowed by CORS`
+        )
+      );
+    },
 
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Cache-Control",
+    "Pragma",
+    "Expires",
+  ],
   })
 );
-
 /**
  * =========================================================
  * BODY PARSERS
@@ -118,6 +178,28 @@ app.get(
 app.use(
   "/api/auth",
   authRoutes
+);
+
+/**
+ * =========================================================
+ * PUBLIC USER / TRADER PROFILES
+ * =========================================================
+ *
+ * Example:
+ *
+ * GET /api/users/:userId/public-profile
+ *
+ * This is separate from /api/auth/me.
+ *
+ * /api/auth/me
+ *   -> private authenticated account information
+ *
+ * /api/users/:userId/public-profile
+ *   -> safe public marketplace profile
+ */
+app.use(
+  "/api/users",
+  userRoutes
 );
 
 app.use(
