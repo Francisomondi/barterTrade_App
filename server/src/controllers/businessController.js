@@ -12,6 +12,10 @@ import {
   getBusinessProfileByUserId,
 } from "../services/businessService.js";
 
+import {
+  trackStorefrontView,
+} from "../services/businessAnalyticsTrackingService.js";
+
 /*
  * ============================================================
  * CREATE / UPGRADE TO BUSINESS ACCOUNT
@@ -392,17 +396,59 @@ export const getMyBusinessProfile = async (
  * Only ACTIVE businesses are publicly accessible.
  */
 
-export const getPublicBusinessProfile = async (req, res) => {
+/**
+ * ============================================================
+ * GET PUBLIC BUSINESS PROFILE
+ * ============================================================
+ *
+ * GET /api/business/:slug
+ *
+ * Public endpoint.
+ *
+ * Only ACTIVE businesses are publicly accessible.
+ *
+ * Business analytics:
+ *
+ * A successful storefront load records STOREFRONT_VIEW.
+ *
+ * Views from the business owner are ignored by the analytics
+ * tracking service.
+ *
+ * Repeated views from the same visitor/session are deduplicated
+ * by the analytics tracking service.
+ */
+export const getPublicBusinessProfile = async (
+  req,
+  res
+) => {
   try {
     const { slug } = req.params;
+
+    /**
+     * ========================================================
+     * VALIDATE SLUG
+     * ========================================================
+     */
 
     if (!slug) {
       return res.status(400).json({
         success: false,
         code: "BUSINESS_SLUG_REQUIRED",
-        message: "Business slug is required.",
+        message:
+          "Business slug is required.",
       });
     }
+
+    /**
+     * ========================================================
+     * FIND ACTIVE BUSINESS
+     * ========================================================
+     *
+     * userId and status are selected because the analytics
+     * service needs them internally.
+     *
+     * They are removed before the public response is sent.
+     */
 
     const business =
       await prisma.businessProfile.findFirst({
@@ -413,6 +459,13 @@ export const getPublicBusinessProfile = async (req, res) => {
 
         select: {
           id: true,
+
+          /**
+           * Internal analytics fields.
+           */
+          userId: true,
+          status: true,
+
           businessName: true,
           slug: true,
           description: true,
@@ -451,18 +504,104 @@ export const getPublicBusinessProfile = async (req, res) => {
         },
       });
 
+    /**
+     * ========================================================
+     * BUSINESS NOT FOUND
+     * ========================================================
+     */
+
     if (!business) {
       return res.status(404).json({
         success: false,
         code: "BUSINESS_NOT_FOUND",
-        message: "Business not found.",
+        message:
+          "Business not found.",
       });
     }
 
+    /**
+     * ========================================================
+     * TRACK STOREFRONT VIEW
+     * ========================================================
+     *
+     * businessRoutes.js already runs:
+     *
+     * optionalAuth
+     *      ↓
+     * analyticsVisitor
+     *      ↓
+     * getPublicBusinessProfile
+     *
+     * Therefore req.analyticsVisitor contains:
+     *
+     * - visitorUserId
+     * - visitorKey
+     * - sessionKey
+     *
+     * IMPORTANT:
+     *
+     * We intentionally do NOT await analytics.
+     *
+     * Loading the storefront should not become slower because
+     * an analytics event needs to be written.
+     *
+     * Analytics failure must also never cause an otherwise
+     * valid storefront request to fail.
+     */
+
+    trackStorefrontView({
+      business: {
+        id: business.id,
+        userId: business.userId,
+        status: business.status,
+      },
+
+      visitorUserId:
+        req.analyticsVisitor
+          ?.visitorUserId || null,
+
+      visitorKey:
+        req.analyticsVisitor
+          ?.visitorKey || null,
+
+      sessionKey:
+        req.analyticsVisitor
+          ?.sessionKey || null,
+
+      metadata: {
+        source:
+          "BUSINESS_STOREFRONT",
+      },
+    }).catch((error) => {
+      console.error(
+        "BUSINESS STOREFRONT ANALYTICS ERROR:",
+        error
+      );
+    });
+
+    /**
+     * ========================================================
+     * BUILD PUBLIC RESPONSE
+     * ========================================================
+     *
+     * userId and status were required internally for analytics.
+     *
+     * We do not expose them simply because analytics needed
+     * them.
+     */
+
     const {
       user,
+      userId: _userId,
+      status: _status,
       ...businessData
     } = business;
+
+    /**
+     * ========================================================
+     * RESPONSE
+     * ========================================================
+     */
 
     return res.status(200).json({
       success: true,

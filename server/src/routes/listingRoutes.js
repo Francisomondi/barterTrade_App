@@ -1,50 +1,170 @@
 import express from "express";
 
 import {
-createListing,
-getListings,
-getListingById,
-getMyListings,
-removeListing,
-deleteListingImage,
-addListingImages,
-setPrimaryListingImage,
-reorderListingImages,
-getHomepagePromotedListings,
+  createListing,
+  getListings,
+  getListingById,
+  getMyListings,
+  removeListing,
+  deleteListingImage,
+  addListingImages,
+  setPrimaryListingImage,
+  reorderListingImages,
+  getHomepagePromotedListings,
 } from "../controllers/listingController.js";
 
-import { protect } from "../middleware/authMiddleware.js";
+import {
+  protect,
+  optionalAuth,
+} from "../middleware/authMiddleware.js";
+
+import {
+  analyticsVisitor,
+} from "../middleware/analyticsVisitor.js";
+
 import upload from "../middleware/upload.js";
 
 const router = express.Router();
 
-// Get all listings
-router.get("/", getListings);
+/**
+ * =========================================================
+ * GET ALL LISTINGS
+ * =========================================================
+ *
+ * Marketplace browsing itself does not count as a
+ * LISTING_VIEW.
+ *
+ * A view is recorded only when the visitor opens the
+ * individual listing.
+ */
 
-// Create listing with up to 8 images
-router.post("/",protect,upload.array("images", 8),createListing);
+router.get(
+  "/",
+  getListings
+);
 
+/**
+ * =========================================================
+ * CREATE LISTING
+ * =========================================================
+ */
 
+router.post(
+  "/",
+  protect,
+  upload.array("images", 8),
+  createListing
+);
 
-router.patch("/:id/images/:imageId/primary",protect,setPrimaryListingImage);
+/**
+ * =========================================================
+ * LISTING IMAGE MANAGEMENT
+ * =========================================================
+ */
 
+router.patch(
+  "/:id/images/:imageId/primary",
+  protect,
+  setPrimaryListingImage
+);
 
-// Add more images to an existing listing
-router.post("/:id/images",protect,upload.array("images", 8),addListingImages);
+router.post(
+  "/:id/images",
+  protect,
+  upload.array("images", 8),
+  addListingImages
+);
 
-// Delete a specific image from a listing
-router.delete("/:id/images/:imageId", protect, deleteListingImage, );
+router.delete(
+  "/:id/images/:imageId",
+  protect,
+  deleteListingImage
+);
 
-router.patch("/:id/images/reorder",protect,reorderListingImages);
-router.get("/homepage-promoted", getHomepagePromotedListings);
+router.patch(
+  "/:id/images/reorder",
+  protect,
+  reorderListingImages
+);
 
-// Get current user's listings
-router.get("/user/me",protect,getMyListings);
+/**
+ * =========================================================
+ * HOMEPAGE PROMOTED LISTINGS
+ * =========================================================
+ *
+ * IMPORTANT:
+ *
+ * This route must remain ABOVE /:id.
+ *
+ * Otherwise Express could interpret:
+ *
+ * "homepage-promoted"
+ *
+ * as a listing ID.
+ */
 
-// Get listing by ID
-router.get("/:id", getListingById);
+router.get(
+  "/homepage-promoted",
+  getHomepagePromotedListings
+);
 
-// Delete/remove listing
-router.delete("/:id",protect,removeListing);
+/**
+ * =========================================================
+ * CURRENT USER'S LISTINGS
+ * =========================================================
+ *
+ * This route must also remain ABOVE /:id.
+ */
+
+router.get(
+  "/user/me",
+  protect,
+  getMyListings
+);
+
+/**
+ * =========================================================
+ * GET LISTING BY ID
+ * =========================================================
+ *
+ * Public route.
+ *
+ * optionalAuth:
+ *
+ * - Logged-in visitor → req.user
+ * - Anonymous visitor → req.user = null
+ *
+ * analyticsVisitor:
+ *
+ * Creates:
+ *
+ * req.analyticsVisitor = {
+ *   visitorUserId,
+ *   visitorKey,
+ *   sessionKey
+ * }
+ *
+ * getListingById will use this information to record
+ * LISTING_VIEW for ACTIVE business listings.
+ */
+
+router.get(
+  "/:id",
+  optionalAuth,
+  analyticsVisitor,
+  getListingById
+);
+
+/**
+ * =========================================================
+ * REMOVE LISTING
+ * =========================================================
+ */
+
+router.delete(
+  "/:id",
+  protect,
+  removeListing
+);
 
 export default router;
