@@ -20,6 +20,7 @@ import {
   getMyBusinessListingAnalytics,
   getMyBusinessOfferAnalytics,
   getMyBusinessTradeAnalytics,
+  getMyBusinessThirtyDayPerformance,
   getMyBusinessPromotionAnalytics,
 } from "../controllers/businessAnalyticsController.js";
 
@@ -148,6 +149,14 @@ router.get(
   protect,
   getMyBusinessTradeAnalytics
 );
+
+
+
+router.get(
+  "/me/analytics/performance",
+  protect,
+  getMyBusinessThirtyDayPerformance
+);
 /**
  * =========================================================
  * PUBLIC BUSINESS ANALYTICS EVENT
@@ -176,16 +185,6 @@ router.post(
   trackPublicBusinessEvent
 );
 
-/**
- * =========================================================
- * PUBLIC BUSINESS LISTINGS
- * =========================================================
- *
- * We are NOT recording a storefront view here.
- *
- * Loading another page of business listings should not
- * automatically count as another storefront visit.
- */
 
 router.get(
   "/:slug/listings",

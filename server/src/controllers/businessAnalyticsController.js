@@ -8,6 +8,7 @@ import {
   getBusinessListingAnalytics,
   getBusinessOfferAnalytics,
   getBusinessTradeAnalytics,
+  getBusinessThirtyDayPerformance,
   getBusinessPromotionAnalytics,
   DEFAULT_ANALYTICS_DAYS,
 } from "../services/businessAnalyticsService.js";
@@ -860,6 +861,98 @@ export const getMyBusinessTradeAnalytics =
 
         message:
           "Failed to load business trade analytics.",
+      });
+    }
+  };
+
+  // UPDATE — server/src/controllers/businessAnalyticsController.js
+
+/**
+ * ============================================================
+ * GET 30-DAY BUSINESS PERFORMANCE
+ * ============================================================
+ *
+ * GET /api/business/me/analytics/performance
+ *
+ * Business Free:
+ *
+ * - maximum 30 days
+ * - daily marketplace activity
+ * - daily averages
+ * - basic conversion indicators
+ * - best-performing days
+ * - chart-ready time series
+ * ============================================================
+ */
+
+export const getMyBusinessThirtyDayPerformance =
+  async (
+    req,
+    res
+  ) => {
+    try {
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      const daysResult =
+        parseDays(
+          req.query.days
+        );
+
+      if (
+        !daysResult.valid
+      ) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message:
+              daysResult.message,
+          });
+      }
+
+      const analytics =
+        await getBusinessThirtyDayPerformance(
+          {
+            businessId:
+              business.id,
+
+            days:
+              daysResult.value,
+          }
+        );
+
+      return res.status(200).json({
+        success: true,
+
+        access: {
+          analyticsTier:
+            "BUSINESS_FREE",
+
+          maxHistoryDays:
+            DEFAULT_ANALYTICS_DAYS,
+        },
+
+        analytics,
+      });
+    } catch (error) {
+      console.error(
+        "GET BUSINESS PERFORMANCE ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        message:
+          "Failed to load business performance.",
       });
     }
   };

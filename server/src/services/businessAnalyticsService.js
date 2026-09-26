@@ -321,8 +321,7 @@ export const buildAnalyticsWindow = ({
  * ============================================================
  */
 
-export const getBusinessAnalyticsContext =
-  async (
+export const getBusinessAnalyticsContext = async (
     businessId
   ) => {
     if (!businessId) {
@@ -523,8 +522,7 @@ const getEventMetrics =
  * ============================================================
  */
 
-const getListingMetrics =
-  async ({
+const getListingMetrics = async ({
     businessId,
     userId,
     start,
@@ -1324,8 +1322,6 @@ const getTradeMetrics = async ({
         ),
     };
   };
-
-// UPDATE — server/src/services/businessAnalyticsService.js
 
 /**
  * ============================================================
@@ -2626,8 +2622,7 @@ const getTopListings = async ({
  * ============================================================
  */
 
-const getDailyPerformance =
-  async ({
+const getDailyPerformance = async ({
     businessId,
     userId,
     start,
@@ -2854,6 +2849,428 @@ const getDailyPerformance =
       days.values()
     );
   };
+
+/**
+ * ============================================================
+ * 30-DAY BUSINESS PERFORMANCE
+ * ============================================================
+ *
+ * Business Free receives a rolling performance view covering
+ * up to 30 days.
+ *
+ * This combines:
+ *
+ * - listing views
+ * - storefront views
+ * - engagement actions
+ * - offers received
+ * - completed trades
+ *
+ * This is descriptive analytics.
+ *
+ * Growth recommendations, historical comparisons, forecasting,
+ * benchmarks and advanced trend intelligence belong to
+ * Business Pro later.
+ * ============================================================
+ */
+
+const getThirtyDayPerformance = async ({
+  businessId,
+  userId,
+  start,
+  end,
+}) => {
+  const dailyPerformance =
+    await getDailyPerformance({
+      businessId,
+      userId,
+      start,
+      end,
+    });
+
+  /**
+   * ----------------------------------------------------------
+   * Empty-state protection
+   * ----------------------------------------------------------
+   */
+
+  if (
+    dailyPerformance.length === 0
+  ) {
+    return {
+      summary: {
+        totalDays: 0,
+        activeDays: 0,
+        inactiveDays: 0,
+
+        listingViews: 0,
+        storefrontViews: 0,
+        totalViews: 0,
+
+        engagementActions: 0,
+
+        offersReceived: 0,
+
+        completedTrades: 0,
+
+        averageListingViewsPerDay:
+          0,
+
+        averageStorefrontViewsPerDay:
+          0,
+
+        averageTotalViewsPerDay:
+          0,
+
+        averageEngagementActionsPerDay:
+          0,
+
+        averageOffersPerDay:
+          0,
+
+        averageCompletedTradesPerDay:
+          0,
+
+        engagementRate: 0,
+
+        viewToOfferRate: 0,
+
+        offerToTradeRate: 0,
+      },
+
+      bestDays: {
+        listingViews: null,
+        totalViews: null,
+        engagement: null,
+        offers: null,
+        completedTrades: null,
+      },
+
+      dailyPerformance: [],
+    };
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * Totals
+   * ----------------------------------------------------------
+   */
+
+  let listingViews = 0;
+
+  let storefrontViews = 0;
+
+  let engagementActions = 0;
+
+  let offersReceived = 0;
+
+  let completedTrades = 0;
+
+  let activeDays = 0;
+
+  for (
+    const day of
+    dailyPerformance
+  ) {
+    listingViews +=
+      safeNumber(
+        day.listingViews
+      );
+
+    storefrontViews +=
+      safeNumber(
+        day.storefrontViews
+      );
+
+    engagementActions +=
+      safeNumber(
+        day.engagementActions
+      );
+
+    offersReceived +=
+      safeNumber(
+        day.offersReceived
+      );
+
+    completedTrades +=
+      safeNumber(
+        day.completedTrades
+      );
+
+    /**
+     * An active day is any day on which the business received
+     * measurable marketplace activity.
+     */
+
+    const activity =
+      safeNumber(
+        day.listingViews
+      ) +
+      safeNumber(
+        day.storefrontViews
+      ) +
+      safeNumber(
+        day.engagementActions
+      ) +
+      safeNumber(
+        day.offersReceived
+      ) +
+      safeNumber(
+        day.completedTrades
+      );
+
+    if (activity > 0) {
+      activeDays += 1;
+    }
+  }
+
+  const totalDays =
+    dailyPerformance.length;
+
+  const inactiveDays =
+    Math.max(
+      0,
+      totalDays -
+        activeDays
+    );
+
+  const totalViews =
+    listingViews +
+    storefrontViews;
+
+  /**
+   * ----------------------------------------------------------
+   * Best-day helper
+   * ----------------------------------------------------------
+   *
+   * This is purely descriptive.
+   *
+   * We are not generating recommendations or forecasting future
+   * performance.
+   * ----------------------------------------------------------
+   */
+
+  const findBestDay = (
+    selector
+  ) => {
+    if (
+      dailyPerformance.length ===
+      0
+    ) {
+      return null;
+    }
+
+    let bestDay =
+      dailyPerformance[0];
+
+    let bestValue =
+      safeNumber(
+        selector(
+          bestDay
+        )
+      );
+
+    for (
+      const day of
+      dailyPerformance
+    ) {
+      const value =
+        safeNumber(
+          selector(day)
+        );
+
+      if (
+        value >
+        bestValue
+      ) {
+        bestDay =
+          day;
+
+        bestValue =
+          value;
+      }
+    }
+
+    return {
+      date:
+        bestDay.date,
+
+      value:
+        bestValue,
+    };
+  };
+
+  /**
+   * ----------------------------------------------------------
+   * Chart-ready daily output
+   * ----------------------------------------------------------
+   */
+
+  const chart =
+    dailyPerformance.map(
+      (day) => ({
+        date:
+          day.date,
+
+        listingViews:
+          safeNumber(
+            day.listingViews
+          ),
+
+        storefrontViews:
+          safeNumber(
+            day.storefrontViews
+          ),
+
+        totalViews:
+          safeNumber(
+            day.listingViews
+          ) +
+          safeNumber(
+            day.storefrontViews
+          ),
+
+        engagementActions:
+          safeNumber(
+            day.engagementActions
+          ),
+
+        offersReceived:
+          safeNumber(
+            day.offersReceived
+          ),
+
+        completedTrades:
+          safeNumber(
+            day.completedTrades
+          ),
+      })
+    );
+
+  return {
+    summary: {
+      totalDays,
+
+      activeDays,
+
+      inactiveDays,
+
+      listingViews,
+
+      storefrontViews,
+
+      totalViews,
+
+      engagementActions,
+
+      offersReceived,
+
+      completedTrades,
+
+      /**
+       * Daily averages
+       */
+
+      averageListingViewsPerDay:
+        round(
+          listingViews /
+            totalDays
+        ),
+
+      averageStorefrontViewsPerDay:
+        round(
+          storefrontViews /
+            totalDays
+        ),
+
+      averageTotalViewsPerDay:
+        round(
+          totalViews /
+            totalDays
+        ),
+
+      averageEngagementActionsPerDay:
+        round(
+          engagementActions /
+            totalDays
+        ),
+
+      averageOffersPerDay:
+        round(
+          offersReceived /
+            totalDays
+        ),
+
+      averageCompletedTradesPerDay:
+        round(
+          completedTrades /
+            totalDays
+        ),
+
+      /**
+       * Basic conversion indicators
+       */
+
+      engagementRate:
+        percentage(
+          engagementActions,
+          totalViews
+        ),
+
+      viewToOfferRate:
+        percentage(
+          offersReceived,
+          listingViews
+        ),
+
+      offerToTradeRate:
+        percentage(
+          completedTrades,
+          offersReceived
+        ),
+    },
+
+    bestDays: {
+      listingViews:
+        findBestDay(
+          (day) =>
+            day.listingViews
+        ),
+
+      totalViews:
+        findBestDay(
+          (day) =>
+            safeNumber(
+              day.listingViews
+            ) +
+            safeNumber(
+              day.storefrontViews
+            )
+        ),
+
+      engagement:
+        findBestDay(
+          (day) =>
+            day.engagementActions
+        ),
+
+      offers:
+        findBestDay(
+          (day) =>
+            day.offersReceived
+        ),
+
+      completedTrades:
+        findBestDay(
+          (day) =>
+            day.completedTrades
+        ),
+    },
+
+    dailyPerformance:
+      chart,
+  };
+};
 
 
 /**
@@ -3118,8 +3535,7 @@ const buildConversionMetrics =
  * ============================================================
  */
 
-export const getBusinessAnalytics =
-  async ({
+export const getBusinessAnalytics = async ({
     businessId,
     days = DEFAULT_ANALYTICS_DAYS,
     startDate = null,
@@ -3161,7 +3577,7 @@ export const getBusinessAnalytics =
       offerMetrics,
       tradeMetrics,
       topListings,
-      dailyPerformance,
+      thirtyDayPerformance,
       promotionMetrics,
     ] =
       await Promise.all([
@@ -3206,13 +3622,16 @@ export const getBusinessAnalytics =
             topListingLimit,
         }),
 
-        getDailyPerformance({
-          businessId:
+        getThirtyDayPerformance({
+        businessId:
             business.id,
-          userId:
+
+        userId:
             business.userId,
-          start,
-          end,
+
+        start,
+
+        end,
         }),
 
         getPromotionMetrics({
@@ -3320,7 +3739,7 @@ export const getBusinessAnalytics =
 
       topListings,
 
-      dailyPerformance,
+      performance: thirtyDayPerformance,
 
       promotions:
         promotionMetrics,
@@ -3648,3 +4067,64 @@ export {
   DEFAULT_ANALYTICS_DAYS,
   MAX_ANALYTICS_DAYS,
 };
+
+
+
+/**
+ * ============================================================
+ * BUSINESS 30-DAY PERFORMANCE
+ * ============================================================
+ */
+
+export const getBusinessThirtyDayPerformance =
+  async ({
+    businessId,
+    days = DEFAULT_ANALYTICS_DAYS,
+  }) => {
+    const business =
+      await getBusinessAnalyticsContext(
+        businessId
+      );
+
+    const window =
+      buildAnalyticsWindow({
+        /**
+         * Business Free is designed around a maximum
+         * 30-day analytics window.
+         *
+         * Controller access rules remain the final security
+         * boundary.
+         */
+        days,
+      });
+
+    const performance =
+      await getThirtyDayPerformance({
+        businessId:
+          business.id,
+
+        userId:
+          business.userId,
+
+        start:
+          window.start,
+
+        end:
+          window.end,
+      });
+
+    return {
+      period: {
+        start:
+          window.start.toISOString(),
+
+        end:
+          window.end.toISOString(),
+
+        days:
+          window.days,
+      },
+
+      performance,
+    };
+  };
