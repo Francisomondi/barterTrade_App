@@ -15,6 +15,15 @@ import {
 } from "../controllers/businessController.js";
 
 import {
+  getMyBusinessAnalytics,
+  getMyBusinessAnalyticsOverview,
+  getMyBusinessListingAnalytics,
+  getMyBusinessOfferAnalytics,
+  getMyBusinessTradeAnalytics,
+  getMyBusinessPromotionAnalytics,
+} from "../controllers/businessAnalyticsController.js";
+
+import {
   trackPublicBusinessEvent,
 } from "../controllers/businessAnalyticsTrackingController.js";
 
@@ -103,6 +112,42 @@ router.delete(
   deleteBusinessCover
 );
 
+
+
+router.get(
+  "/me/analytics",
+  protect,
+  getMyBusinessAnalytics
+);
+
+router.get(
+  "/me/analytics/overview",
+  protect,
+  getMyBusinessAnalyticsOverview
+);
+
+router.get(
+  "/me/analytics/listings",
+  protect,
+  getMyBusinessListingAnalytics
+);
+
+router.get(
+  "/me/analytics/promotions",
+  protect,
+  getMyBusinessPromotionAnalytics
+);
+router.get(
+  "/me/analytics/offers",
+  protect,
+  getMyBusinessOfferAnalytics
+);
+
+router.get(
+  "/me/analytics/trades",
+  protect,
+  getMyBusinessTradeAnalytics
+);
 /**
  * =========================================================
  * PUBLIC BUSINESS ANALYTICS EVENT

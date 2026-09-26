@@ -651,24 +651,18 @@ model Subscription {
 model BusinessAnalyticsEvent {
   id String @id @default(uuid())
 
-  // Business whose analytics this event contributes to.
   businessId String
 
-  // Listing involved, where applicable.
   listingId String?
 
-  // Logged-in visitor, when available.
   visitorUserId String?
 
   type BusinessAnalyticsEventType
 
-  // Anonymous visitor/session identifier.
   visitorKey String?
 
-  // Optional request/session identifier for deduplication.
   sessionKey String?
 
-  // Flexible future analytics context.
   metadata Json?
 
   createdAt DateTime @default(now())
