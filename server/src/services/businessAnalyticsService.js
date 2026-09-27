@@ -2529,62 +2529,60 @@ const getListingPerformance = async ({
   );
 };
 
-
 /**
  * ============================================================
- * TOP LISTINGS
+ * RANK LISTING PERFORMANCE
  * ============================================================
  *
- * Basic Business Free ranking:
+ * Single source of truth for Business Free Top Listing ranking.
  *
- * 1. Views
- * 2. Engagement
- * 3. Offers
- * 4. Completed trades
+ * Ranking priority:
  *
- * Uses the same listing analytics engine so calculations stay
- * consistent throughout the platform.
+ * 1. Completed trades
+ * 2. Offers received
+ * 3. Engagement actions
+ * 4. Views
+ * 5. Unique viewers
+ *
+ * Business Free receives a maximum of 3 top listings.
  * ============================================================
  */
 
-const getTopListings = async ({
-  businessId,
-  userId,
-  start,
-  end,
-  limit = 3,
-}) => {
-  const listings =
-    await getListingPerformance({
-      businessId,
-      userId,
-      start,
-      end,
-    });
+const rankListingPerformance = (
+  listings,
+  limit = 3
+) => {
+  const safeLimit =
+    Math.min(
+      3,
+      Math.max(
+        1,
+        Number.parseInt(
+          limit,
+          10
+        ) || 3
+      )
+    );
 
-  const sorted =
-    [...listings].sort(
+  return [...listings]
+    .sort(
       (a, b) => {
+        /**
+         * 1. Completed trades
+         */
         if (
-          b.views !==
-          a.views
+          b.completedTrades !==
+          a.completedTrades
         ) {
           return (
-            b.views -
-            a.views
+            b.completedTrades -
+            a.completedTrades
           );
         }
 
-        if (
-          b.engagementActions !==
-          a.engagementActions
-        ) {
-          return (
-            b.engagementActions -
-            a.engagementActions
-          );
-        }
-
+        /**
+         * 2. Offers received
+         */
         if (
           b.offersReceived !==
           a.offersReceived
@@ -2595,19 +2593,119 @@ const getTopListings = async ({
           );
         }
 
+        /**
+         * 3. Engagement actions
+         */
+        if (
+          b.engagementActions !==
+          a.engagementActions
+        ) {
+          return (
+            b.engagementActions -
+            a.engagementActions
+          );
+        }
+
+        /**
+         * 4. Views
+         */
+        if (
+          b.views !==
+          a.views
+        ) {
+          return (
+            b.views -
+            a.views
+          );
+        }
+
+        /**
+         * 5. Unique viewers
+         */
         return (
-          b.completedTrades -
-          a.completedTrades
+          b.uniqueViewers -
+          a.uniqueViewers
         );
       }
-    );
-
-  return sorted.slice(
-    0,
-    Math.max(
-      1,
-      limit
     )
+    .slice(
+      0,
+      safeLimit
+    )
+    .map(
+      (
+        listing,
+        index
+      ) => ({
+        rank:
+          index + 1,
+
+        ...listing,
+      })
+    );
+};
+
+/**
+ * ============================================================
+ * TOP LISTING PERFORMANCE
+ * ============================================================
+ *
+ * Business Free:
+ *
+ * - Top 3 listings
+ * - Maximum 30-day history enforced by controller
+ * - Transparent ranking
+ * - Descriptive metrics only
+ *
+ * Ranking priority:
+ *
+ * 1. Completed trades
+ * 2. Offers received
+ * 3. Engagement actions
+ * 4. Views
+ * 5. Unique viewers
+ *
+ * Why this order?
+ *
+ * A completed trade represents a stronger marketplace outcome
+ * than an offer, an offer is stronger than engagement, and
+ * engagement is stronger than a passive view.
+ *
+ * We deliberately avoid an arbitrary weighted performance score.
+ * ============================================================
+ */
+
+/**
+ * ============================================================
+ * TOP LISTINGS
+ * ============================================================
+ *
+ * Business Free:
+ *
+ * - Top 3 listings maximum
+ * - Uses the centralized ranking algorithm
+ * - Maximum history is enforced by the controller
+ * ============================================================
+ */
+
+const getTopListings = async ({
+  businessId,
+  userId,
+  start,
+  end,
+  limit = 3,
+}) => {
+  const listingPerformance =
+    await getListingPerformance({
+      businessId,
+      userId,
+      start,
+      end,
+    });
+
+  return rankListingPerformance(
+    listingPerformance,
+    limit
   );
 };
 
@@ -3272,66 +3370,124 @@ const getThirtyDayPerformance = async ({
   };
 };
 
-
 /**
  * ============================================================
  * BASIC PROMOTION PERFORMANCE
  * ============================================================
  *
- * PromotionAnalyticsEvent remains the source of truth for
- * promotion-specific VIEW / CLICK events.
+ * Business Free promotion analytics.
  *
- * This is intentionally basic. Advanced promotion uplift and
- * comparative intelligence belong to Business Pro later.
+ * Provides:
+ *
+ * - Total promotions
+ * - Active promotions
+ * - Completed promotions
+ * - Promotion views
+ * - Promotion clicks
+ * - CTR
+ * - Total promotion spend
+ * - Average spend
+ * - Per-promotion performance
+ * - Top 3 promotions
+ *
+ * IMPORTANT:
+ *
+ * This intentionally does NOT calculate:
+ *
+ * - Promotion uplift
+ * - Organic vs promoted comparison
+ * - ROI estimates
+ * - Marketplace benchmarks
+ * - Optimization recommendations
+ * - Demand intelligence
+ *
+ * Those belong to Business Pro.
  * ============================================================
  */
 
-const getPromotionMetrics =
-  async ({
+const getPromotionMetrics = async ({
     userId,
     start,
     end,
   }) => {
+    const now =
+      new Date();
+
+    /**
+     * Load promotions belonging to this business owner that
+     * overlap the requested analytics period.
+     *
+     * A promotion may have started before the analytics period
+     * and still be active during part of the period, so we must
+     * not filter using createdAt alone.
+     */
     const promotions =
       await prisma.promotion.findMany(
         {
           where: {
             userId,
 
-            createdAt: {
+            startsAt: {
               lte: end,
             },
 
-            OR: [
-              {
-                endsAt: null,
-              },
-              {
-                endsAt: {
-                  gte: start,
-                },
-              },
-            ],
+            endsAt: {
+              gte: start,
+            },
           },
 
           select: {
             id: true,
             listingId: true,
+
             type: true,
             status: true,
+
             amount: true,
             currency: true,
+
+            durationDays:
+              true,
+
             startsAt: true,
             endsAt: true,
+
             createdAt: true,
 
             listing: {
               select: {
                 id: true,
                 title: true,
+                status: true,
+
+                images: {
+                  orderBy: [
+                    {
+                      isPrimary:
+                        "desc",
+                    },
+                    {
+                      sortOrder:
+                        "asc",
+                    },
+                  ],
+
+                  take: 1,
+
+                  select: {
+                    id: true,
+                    url: true,
+                    isPrimary:
+                      true,
+                  },
+                },
               },
             },
 
+            /**
+             * Only promotion analytics events that occurred
+             * inside the requested analytics window.
+             */
             analyticsEvents: {
               where: {
                 createdAt: {
@@ -3342,6 +3498,7 @@ const getPromotionMetrics =
 
               select: {
                 type: true,
+                createdAt: true,
               },
             },
           },
@@ -3353,15 +3510,70 @@ const getPromotionMetrics =
         }
       );
 
-    let totalViews = 0;
-    let totalClicks = 0;
-    let totalSpend = 0;
+    /**
+     * ========================================================
+     * EMPTY STATE
+     * ========================================================
+     */
 
-    const items =
+    if (
+      promotions.length ===
+      0
+    ) {
+      return {
+        summary: {
+          totalPromotions: 0,
+
+          activePromotions: 0,
+          completedPromotions: 0,
+
+          totalViews: 0,
+          totalClicks: 0,
+
+          clickThroughRate:
+            0,
+
+          totalSpend: 0,
+
+          averageSpendPerPromotion:
+            0,
+        },
+
+        topPromotions: [],
+
+        promotions: [],
+      };
+    }
+
+    let activePromotions =
+      0;
+
+    let completedPromotions =
+      0;
+
+    let totalViews =
+      0;
+
+    let totalClicks =
+      0;
+
+    let totalSpend =
+      0;
+
+    /**
+     * ========================================================
+     * PER-PROMOTION PERFORMANCE
+     * ========================================================
+     */
+
+    const promotionPerformance =
       promotions.map(
         (promotion) => {
-          let views = 0;
-          let clicks = 0;
+          let views =
+            0;
+
+          let clicks =
+            0;
 
           for (
             const event of
@@ -3371,16 +3583,23 @@ const getPromotionMetrics =
               event.type ===
               "VIEW"
             ) {
-              views += 1;
+              views +=
+                1;
             }
 
             if (
               event.type ===
               "CLICK"
             ) {
-              clicks += 1;
+              clicks +=
+                1;
             }
           }
+
+          const amount =
+            safeNumber(
+              promotion.amount
+            );
 
           totalViews +=
             views;
@@ -3389,35 +3608,96 @@ const getPromotionMetrics =
             clicks;
 
           totalSpend +=
-            safeNumber(
-              promotion.amount
-            );
+            amount;
+
+          /**
+           * Determine whether the promotion is currently
+           * active from both status and date range.
+           *
+           * We do not rely only on status because an ACTIVE
+           * row whose end date has already passed should not
+           * be displayed as currently active.
+           */
+          const isActive =
+            promotion.status ===
+              "ACTIVE" &&
+            promotion.startsAt <=
+              now &&
+            promotion.endsAt >
+              now;
+
+          if (isActive) {
+            activePromotions +=
+              1;
+          }
+
+          /**
+           * A promotion is considered completed for analytics
+           * display when its configured end time has passed.
+           *
+           * This avoids depending on whether a background job
+           * has already changed its database status.
+           */
+          const isCompleted =
+            promotion.endsAt <=
+            now;
+
+          if (
+            isCompleted
+          ) {
+            completedPromotions +=
+              1;
+          }
 
           return {
             id:
               promotion.id,
 
-            listingId:
-              promotion.listingId,
+            /**
+             * Listing
+             */
+            listing: {
+              id:
+                promotion.listing
+                  ?.id ||
+                promotion.listingId,
 
-            listingTitle:
-              promotion.listing
-                ?.title ||
-              null,
+              title:
+                promotion.listing
+                  ?.title ||
+                null,
 
+              status:
+                promotion.listing
+                  ?.status ||
+                null,
+
+              image:
+                promotion.listing
+                  ?.images?.[0] ||
+                null,
+            },
+
+            /**
+             * Promotion
+             */
             type:
               promotion.type,
 
             status:
               promotion.status,
 
-            amount:
-              safeNumber(
-                promotion.amount
-              ),
+            isActive,
+
+            isCompleted,
+
+            amount,
 
             currency:
               promotion.currency,
+
+            durationDays:
+              promotion.durationDays,
 
             startsAt:
               promotion.startsAt,
@@ -3425,6 +3705,12 @@ const getPromotionMetrics =
             endsAt:
               promotion.endsAt,
 
+            createdAt:
+              promotion.createdAt,
+
+            /**
+             * Performance
+             */
             views,
 
             clicks,
@@ -3438,27 +3724,118 @@ const getPromotionMetrics =
         }
       );
 
+    /**
+     * ========================================================
+     * TOP PROMOTIONS
+     * ========================================================
+     *
+     * Business Free gets Top 3.
+     *
+     * Ranking:
+     *
+     * 1. Clicks
+     * 2. Views
+     * 3. CTR
+     *
+     * Clicks are ranked above passive impressions because
+     * they represent stronger marketplace engagement.
+     *
+     * No artificial weighted performance score is used.
+     * ========================================================
+     */
+
+    const topPromotions =
+      [
+        ...promotionPerformance,
+      ]
+        .sort(
+          (a, b) => {
+            if (
+              b.clicks !==
+              a.clicks
+            ) {
+              return (
+                b.clicks -
+                a.clicks
+              );
+            }
+
+            if (
+              b.views !==
+              a.views
+            ) {
+              return (
+                b.views -
+                a.views
+              );
+            }
+
+            return (
+              b.clickThroughRate -
+              a.clickThroughRate
+            );
+          }
+        )
+        .slice(
+          0,
+          3
+        )
+        .map(
+          (
+            promotion,
+            index
+          ) => ({
+            rank:
+              index + 1,
+
+            ...promotion,
+          })
+        );
+
+    /**
+     * ========================================================
+     * FINAL BUSINESS FREE PROMOTION ANALYTICS
+     * ========================================================
+     */
+
     return {
-      totalPromotions:
-        promotions.length,
+      summary: {
+        totalPromotions:
+          promotions.length,
 
-      totalViews,
+        activePromotions,
 
-      totalClicks,
+        completedPromotions,
 
-      totalSpend:
-        round(
-          totalSpend
-        ),
+        totalViews,
 
-      clickThroughRate:
-        percentage(
-          totalClicks,
-          totalViews
-        ),
+        totalClicks,
+
+        clickThroughRate:
+          percentage(
+            totalClicks,
+            totalViews
+          ),
+
+        totalSpend:
+          round(
+            totalSpend
+          ),
+
+        averageSpendPerPromotion:
+          promotions.length >
+          0
+            ? round(
+                totalSpend /
+                  promotions.length
+              )
+            : 0,
+      },
+
+      topPromotions,
 
       promotions:
-        items,
+        promotionPerformance,
     };
   };
 
@@ -3788,25 +4165,32 @@ export const getBusinessAnalyticsOverview =
   };
 
 
+/**
+ * ============================================================
+ * BUSINESS LISTING ANALYTICS
+ * ============================================================
+ */
+
 export const getBusinessListingAnalytics = async ({
-    businessId,
-    days = DEFAULT_ANALYTICS_DAYS,
-    limit = 3,
-  }) => {
-    const business =
-      await getBusinessAnalyticsContext(
-        businessId
-      );
+  businessId,
+  days = DEFAULT_ANALYTICS_DAYS,
+  limit = 3,
+}) => {
+  const business =
+    await getBusinessAnalyticsContext(
+      businessId
+    );
 
-    const window =
-      buildAnalyticsWindow({
-        days,
-      });
+  const window =
+    buildAnalyticsWindow({
+      days,
+    });
 
-    const [
-      summary,
-      listingPerformance,
-    ] = await Promise.all([
+  const [
+    summary,
+    listingPerformance,
+  ] =
+    await Promise.all([
       getListingMetrics({
         businessId:
           business.id,
@@ -3836,60 +4220,90 @@ export const getBusinessListingAnalytics = async ({
       }),
     ]);
 
-    /**
-     * Top listings are derived from the already calculated
-     * performance array.
-     *
-     * This avoids querying all listing analytics twice.
-     */
+  /**
+   * IMPORTANT:
+   *
+   * All Top Listing calculations use the same centralized
+   * ranking algorithm.
+   */
+  const topListings =
+    rankListingPerformance(
+      listingPerformance,
+      limit
+    );
+
+  return {
+    period: {
+      start:
+        window.start.toISOString(),
+
+      end:
+        window.end.toISOString(),
+
+      days:
+        window.days,
+    },
+
+    summary,
+
+    listings:
+      listingPerformance,
+
+    topListings,
+  };
+};
+
+/**
+ * ============================================================
+ * BUSINESS TOP LISTING PERFORMANCE
+ * ============================================================
+ *
+ * Dedicated Business Free Top Listing report.
+ *
+ * Used by:
+ *
+ * GET /api/business/me/analytics/top-listings
+ *
+ * Business Free:
+ *
+ * - Maximum 3 listings
+ * - Maximum 30-day history enforced by controller
+ * - Descriptive analytics only
+ * ============================================================
+ */
+
+export const getBusinessTopListingPerformance =
+  async ({
+    businessId,
+    days = DEFAULT_ANALYTICS_DAYS,
+    limit = 3,
+  }) => {
+    const business =
+      await getBusinessAnalyticsContext(
+        businessId
+      );
+
+    const window =
+      buildAnalyticsWindow({
+        days,
+      });
 
     const topListings =
-      [...listingPerformance]
-        .sort(
-          (a, b) => {
-            if (
-              b.views !==
-              a.views
-            ) {
-              return (
-                b.views -
-                a.views
-              );
-            }
+      await getTopListings({
+        businessId:
+          business.id,
 
-            if (
-              b.engagementActions !==
-              a.engagementActions
-            ) {
-              return (
-                b.engagementActions -
-                a.engagementActions
-              );
-            }
+        userId:
+          business.userId,
 
-            if (
-              b.offersReceived !==
-              a.offersReceived
-            ) {
-              return (
-                b.offersReceived -
-                a.offersReceived
-              );
-            }
+        start:
+          window.start,
 
-            return (
-              b.completedTrades -
-              a.completedTrades
-            );
-          }
-        )
-        .slice(
-          0,
-          Math.max(
-            1,
-            limit
-          )
-        );
+        end:
+          window.end,
+
+        limit,
+      });
 
     return {
       period: {
@@ -3903,10 +4317,8 @@ export const getBusinessListingAnalytics = async ({
           window.days,
       },
 
-      summary,
-
-      listings:
-        listingPerformance,
+      total:
+        topListings.length,
 
       topListings,
     };
@@ -4009,6 +4421,18 @@ export const getBusinessTradeAnalytics =
       trades,
     };
   };
+/**
+ * ============================================================
+ * BUSINESS PROMOTION ANALYTICS
+ * ============================================================
+ *
+ * Dedicated Business Free promotion analytics report.
+ *
+ * The controller remains responsible for enforcing the
+ * Business Free maximum history of 30 days.
+ * ============================================================
+ */
+
 export const getBusinessPromotionAnalytics =
   async ({
     businessId,
@@ -4020,25 +4444,21 @@ export const getBusinessPromotionAnalytics =
       );
 
     const window =
-      buildAnalyticsWindow(
-        {
-          days,
-        }
-      );
+      buildAnalyticsWindow({
+        days,
+      });
 
     const promotions =
-      await getPromotionMetrics(
-        {
-          userId:
-            business.userId,
+      await getPromotionMetrics({
+        userId:
+          business.userId,
 
-          start:
-            window.start,
+        start:
+          window.start,
 
-          end:
-            window.end,
-        }
-      );
+        end:
+          window.end,
+      });
 
     return {
       period: {

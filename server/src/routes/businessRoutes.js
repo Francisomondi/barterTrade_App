@@ -18,10 +18,12 @@ import {
   getMyBusinessAnalytics,
   getMyBusinessAnalyticsOverview,
   getMyBusinessListingAnalytics,
+  getMyBusinessTopListingPerformance,
   getMyBusinessOfferAnalytics,
   getMyBusinessTradeAnalytics,
   getMyBusinessThirtyDayPerformance,
   getMyBusinessPromotionAnalytics,
+  getMyBusinessAnalyticsEntitlement,
 } from "../controllers/businessAnalyticsController.js";
 
 import {
@@ -122,6 +124,12 @@ router.get(
 );
 
 router.get(
+  "/me/analytics/entitlement",
+  protect,
+  getMyBusinessAnalyticsEntitlement
+);
+
+router.get(
   "/me/analytics/overview",
   protect,
   getMyBusinessAnalyticsOverview
@@ -156,6 +164,12 @@ router.get(
   "/me/analytics/performance",
   protect,
   getMyBusinessThirtyDayPerformance
+);
+
+router.get(
+  "/me/analytics/top-listings",
+  protect,
+  getMyBusinessTopListingPerformance
 );
 /**
  * =========================================================
