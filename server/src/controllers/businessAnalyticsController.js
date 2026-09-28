@@ -10,16 +10,18 @@ import {
   getBusinessAnalyticsOverview,
   getBusinessListingAnalytics,
   getBusinessTopListingPerformance,
-  
+
   getBusinessOfferAnalytics,
   getBusinessTradeAnalytics,
   getBusinessThirtyDayPerformance,
   getBusinessPromotionAnalytics,
+
+  getBusinessConversionIntelligence,
+  getBusinessDemandIntelligence,
+
   DEFAULT_ANALYTICS_DAYS,
 } from "../services/businessAnalyticsService.js";
 
-
-// UPDATE — server/src/controllers/businessAnalyticsController.js
 
 /**
  * ============================================================
@@ -50,8 +52,11 @@ const BUSINESS_PRO_MAX_HISTORY_DAYS =
  * Business status controls public storefront visibility.
  * It does not transfer analytics ownership.
  *
- * Business Free / Business Pro entitlement filtering is NOT
- * handled here yet. That comes in later Business Pro steps.
+ * Business Free / Business Pro analytics access is resolved
+ * server-side from the authenticated user's subscription.
+ *
+ * Individual endpoints determine which capabilities belong to
+ * Business Free and which require Business Pro.
  * ============================================================
  */
 
@@ -2201,6 +2206,938 @@ export const getMyBusinessThirtyDayPerformance = async (
   }
 };
 
+/**
+ * ============================================================
+ * GET BUSINESS CONVERSION INTELLIGENCE
+ * ============================================================
+ *
+ * 9.11.14.16 — FREE PREVIEW / UPGRADE BOUNDARY
+ *
+ * GET /api/business/me/analytics/conversions
+ *
+ * BUSINESS FREE:
+ *
+ * - Does NOT execute advanced Conversion Intelligence.
+ * - Does NOT receive paid intelligence.
+ * - Receives a safe feature preview.
+ * - Keeps all existing basic business analytics.
+ *
+ * BUSINESS PRO:
+ *
+ * - Receives full Conversion Intelligence.
+ *
+ * SECURITY:
+ *
+ * - Authentication is enforced by `protect`.
+ * - Business ownership comes from req.user.id.
+ * - Business Pro entitlement is resolved server-side.
+ * - Client-supplied tier/business flags are ignored.
+ *
+ * ============================================================
+ */
+
+export const getMyBusinessConversionIntelligence = async (req, res) => {
+    try {
+      /**
+       * ------------------------------------------------------
+       * 1. Resolve authenticated owner's business
+       * ------------------------------------------------------
+       */
+
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 2. Resolve server-side analytics entitlement
+       * ------------------------------------------------------
+       */
+
+      const access =
+        await resolveBusinessAnalyticsAccess(
+          req.user.id,
+          business
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 3. BUSINESS FREE PREVIEW BOUNDARY
+       * ------------------------------------------------------
+       *
+       * IMPORTANT:
+       *
+       * We return BEFORE calling
+       * getBusinessConversionIntelligence().
+       *
+       * Therefore:
+       *
+       * - no Pro intelligence is calculated
+       * - no Pro listing recommendations are exposed
+       * - no Pro conversion funnel is exposed
+       * - no Pro opportunity detection is exposed
+       * - no Pro historical trends are exposed
+       */
+
+      if (!access.isBusinessPro) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            code:
+              "BUSINESS_PRO_REQUIRED",
+
+            message:
+              "Conversion Intelligence is available with Business Pro.",
+
+            business: {
+              id:
+                business.id,
+
+              businessName:
+                business.businessName,
+
+              slug:
+                business.slug,
+
+              status:
+                business.status,
+
+              verificationStatus:
+                business.verificationStatus,
+            },
+
+            access: {
+              analyticsTier:
+                "BUSINESS_FREE",
+
+              isBusinessPro:
+                false,
+
+              requiredPlan:
+                "BUSINESS_PRO",
+
+              conversionIntelligence:
+                false,
+
+              maxHistoryDays:
+                access.maxHistoryDays,
+
+              customDateRange:
+                access.customDateRange,
+
+              advancedHistoricalAnalytics:
+                access
+                  .advancedHistoricalAnalytics,
+            },
+
+            preview: {
+              feature:
+                "CONVERSION_INTELLIGENCE",
+
+              title:
+                "Conversion Intelligence",
+
+              description:
+                "Understand how listing activity moves from views and engagement to offers, accepted offers, and completed trades.",
+
+              locked:
+                true,
+
+              requiresBusinessPro:
+                true,
+
+              capabilities: [
+                {
+                  code:
+                    "CONVERSION_FUNNEL",
+
+                  title:
+                    "Conversion Funnel",
+
+                  description:
+                    "See how marketplace activity progresses from listing views to completed trades.",
+                },
+
+                {
+                  code:
+                    "LISTING_CONVERSION_ANALYSIS",
+
+                  title:
+                    "Listing Conversion Analysis",
+
+                  description:
+                    "Understand how individual listings convert attention into offers and completed trades.",
+                },
+
+                {
+                  code:
+                    "CONVERSION_BLOCKERS",
+
+                  title:
+                    "Conversion Blockers",
+
+                  description:
+                    "Identify stages where listings are losing potential conversions.",
+                },
+
+                {
+                  code:
+                    "HIGH_OPPORTUNITY_LISTINGS",
+
+                  title:
+                    "High-Opportunity Listings",
+
+                  description:
+                    "Identify listings showing promising marketplace activity and conversion signals.",
+                },
+
+                {
+                  code:
+                    "CONVERSION_RECOMMENDATIONS",
+
+                  title:
+                    "Conversion Recommendations",
+
+                  description:
+                    "Receive actionable recommendations based on observed listing conversion behaviour.",
+                },
+
+                {
+                  code:
+                    "HISTORICAL_CONVERSION_TRENDS",
+
+                  title:
+                    "Historical Conversion Trends",
+
+                  description:
+                    "Track how conversion performance changes across extended historical periods.",
+                },
+
+                {
+                  code:
+                    "EXTENDED_HISTORY",
+
+                  title:
+                    "Extended Analytics History",
+
+                  description:
+                    "Analyze business performance across longer historical periods.",
+                },
+
+                {
+                  code:
+                    "CUSTOM_DATE_RANGES",
+
+                  title:
+                    "Custom Date Ranges",
+
+                  description:
+                    "Analyze conversion performance across selected historical periods.",
+                },
+              ],
+
+              /**
+               * These are capability descriptions only.
+               *
+               * They MUST NOT contain:
+               *
+               * - actual listing IDs
+               * - actual listing performance
+               * - actual blockers
+               * - actual opportunities
+               * - actual recommendations
+               * - actual Pro conversion rates
+               */
+
+              dataExposed:
+                false,
+            },
+
+            upgrade: {
+              required:
+                true,
+
+              plan:
+                "BUSINESS_PRO",
+
+              /**
+               * Pricing intentionally remains absent.
+               *
+               * Business Pro pricing/payment has not yet
+               * been finalized in the roadmap.
+               */
+
+              pricing:
+                null,
+
+              message:
+                "Upgrade to Business Pro to unlock advanced conversion intelligence.",
+            },
+          });
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 4. BUSINESS PRO — determine requested window
+       * ------------------------------------------------------
+       */
+
+      const startDate =
+        req.query.startDate;
+
+      const endDate =
+        req.query.endDate;
+
+      const hasCustomRange =
+        Boolean(
+          startDate ||
+          endDate
+        );
+
+      let analyticsOptions;
+
+      /**
+       * ------------------------------------------------------
+       * 5. Validate custom date range
+       * ------------------------------------------------------
+       */
+
+      if (hasCustomRange) {
+        const rangeResult =
+          validateAnalyticsDateRange(
+            startDate,
+            endDate,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!rangeResult.valid) {
+          const statusCode =
+            rangeResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                rangeResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                rangeResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          startDate:
+            rangeResult.startDate,
+
+          endDate:
+            rangeResult.endDate,
+        };
+      } else {
+        /**
+         * ----------------------------------------------------
+         * 6. Validate day-based range
+         * ----------------------------------------------------
+         */
+
+        const daysResult =
+          parseDays(
+            req.query.days,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!daysResult.valid) {
+          const statusCode =
+            daysResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                daysResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                daysResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          days:
+            daysResult.value,
+        };
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 7. BUSINESS PRO — calculate intelligence
+       * ------------------------------------------------------
+       *
+       * This line can only be reached after the server has
+       * verified an active Business Pro entitlement.
+       */
+
+      const intelligence =
+        await getBusinessConversionIntelligence(
+          analyticsOptions
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 8. Return Business Pro intelligence
+       * ------------------------------------------------------
+       */
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          business: {
+            id:
+              business.id,
+
+            businessName:
+              business.businessName,
+
+            slug:
+              business.slug,
+
+            status:
+              business.status,
+
+            verificationStatus:
+              business.verificationStatus,
+          },
+
+          access: {
+            analyticsTier:
+              access.analyticsTier,
+
+            isBusinessPro:
+              true,
+
+            conversionIntelligence:
+              true,
+
+            maxHistoryDays:
+              access.maxHistoryDays,
+
+            customDateRange:
+              access.customDateRange,
+
+            advancedHistoricalAnalytics:
+              access
+                .advancedHistoricalAnalytics,
+
+            subscription:
+              access.subscription,
+          },
+
+          intelligence,
+        });
+    } catch (error) {
+      console.error(
+        "GET BUSINESS CONVERSION INTELLIGENCE ERROR:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          code:
+            "CONVERSION_INTELLIGENCE_ERROR",
+
+          message:
+            "Failed to load business conversion intelligence.",
+        });
+    }
+  };
+
+  // UPDATE — server/src/controllers/businessAnalyticsController.js
+
+/**
+ * ============================================================
+ * GET BUSINESS DEMAND INTELLIGENCE
+ * ============================================================
+ *
+ * 9.11.15 — BUSINESS PRO DEMAND INTELLIGENCE
+ *
+ * GET /api/business/me/analytics/demand
+ *
+ * BUSINESS FREE:
+ *
+ * - Does NOT execute Demand Intelligence.
+ * - Does NOT receive demand scores.
+ * - Does NOT receive demand classifications.
+ * - Does NOT receive listing demand opportunities.
+ * - Does NOT receive demand recommendations.
+ * - Receives only a safe feature preview.
+ *
+ * BUSINESS PRO:
+ *
+ * - Receives full Demand Intelligence.
+ * - Supports extended historical analytics.
+ * - Supports custom historical ranges.
+ *
+ * SECURITY:
+ *
+ * - Authentication is enforced by `protect`.
+ * - Business ownership comes from req.user.id.
+ * - Business Pro entitlement is resolved server-side.
+ * - Client-supplied tier/business flags are ignored.
+ *
+ * ============================================================
+ */
+
+export const getMyBusinessDemandIntelligence =
+  async (req, res) => {
+    try {
+      /**
+       * ------------------------------------------------------
+       * 1. Resolve authenticated owner's business
+       * ------------------------------------------------------
+       */
+
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 2. Resolve Business Pro entitlement server-side
+       * ------------------------------------------------------
+       */
+
+      const access =
+        await resolveBusinessAnalyticsAccess(
+          req.user.id,
+          business
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 3. BUSINESS FREE PREVIEW BOUNDARY
+       * ------------------------------------------------------
+       *
+       * IMPORTANT:
+       *
+       * Return BEFORE calling getBusinessDemandIntelligence().
+       *
+       * This prevents Business Free accounts from receiving:
+       *
+       * - real demand scores
+       * - listing demand classifications
+       * - actual demand opportunities
+       * - actual demand recommendations
+       * - strongest-demand listing rankings
+       */
+
+      if (!access.isBusinessPro) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            code:
+              "BUSINESS_PRO_REQUIRED",
+
+            message:
+              "Demand Intelligence is available with Business Pro.",
+
+            business: {
+              id:
+                business.id,
+
+              businessName:
+                business.businessName,
+
+              slug:
+                business.slug,
+
+              status:
+                business.status,
+
+              verificationStatus:
+                business.verificationStatus,
+            },
+
+            access: {
+              analyticsTier:
+                "BUSINESS_FREE",
+
+              isBusinessPro:
+                false,
+
+              requiredPlan:
+                "BUSINESS_PRO",
+
+              demandIntelligence:
+                false,
+
+              maxHistoryDays:
+                access.maxHistoryDays,
+
+              customDateRange:
+                access.customDateRange,
+
+              advancedHistoricalAnalytics:
+                access
+                  .advancedHistoricalAnalytics,
+            },
+
+            preview: {
+              feature:
+                "DEMAND_INTELLIGENCE",
+
+              title:
+                "Demand Intelligence",
+
+              description:
+                "Understand which listings are attracting the strongest observed marketplace demand and where your business has opportunities to improve performance.",
+
+              locked:
+                true,
+
+              requiresBusinessPro:
+                true,
+
+              capabilities: [
+                {
+                  code:
+                    "DEMAND_SCORE",
+
+                  title:
+                    "Listing Demand Score",
+
+                  description:
+                    "Measure observed demand strength across your business listings using traffic, engagement, offers and trade signals.",
+                },
+
+                {
+                  code:
+                    "DEMAND_CLASSIFICATION",
+
+                  title:
+                    "Demand Classification",
+
+                  description:
+                    "Identify listings showing very high, high, moderate, low or no observed demand.",
+                },
+
+                {
+                  code:
+                    "HIGH_DEMAND_LISTINGS",
+
+                  title:
+                    "High-Demand Listings",
+
+                  description:
+                    "Discover which listings are generating your strongest observed demand signals.",
+                },
+
+                {
+                  code:
+                    "HIGH_INTEREST_LOW_CONVERSION",
+
+                  title:
+                    "High Interest, Low Conversion",
+
+                  description:
+                    "Identify listings attracting interest but failing to progress into completed trades.",
+                },
+
+                {
+                  code:
+                    "DEMAND_OPPORTUNITIES",
+
+                  title:
+                    "Demand Opportunities",
+
+                  description:
+                    "Find listings with meaningful demand signals that still have room to convert.",
+                },
+
+                {
+                  code:
+                    "DEMAND_RECOMMENDATIONS",
+
+                  title:
+                    "Demand Recommendations",
+
+                  description:
+                    "Receive actionable recommendations based on observed listing demand behaviour.",
+                },
+
+                {
+                  code:
+                    "EXTENDED_DEMAND_HISTORY",
+
+                  title:
+                    "Extended Demand History",
+
+                  description:
+                    "Analyze demand across longer historical periods with Business Pro.",
+                },
+
+                {
+                  code:
+                    "CUSTOM_DEMAND_RANGES",
+
+                  title:
+                    "Custom Date Ranges",
+
+                  description:
+                    "Analyze demand across selected historical periods.",
+                },
+              ],
+
+              /**
+               * IMPORTANT:
+               *
+               * No actual Business Pro analytics belong here.
+               *
+               * Do NOT expose:
+               *
+               * - listing IDs
+               * - demand scores
+               * - demand classifications
+               * - actual opportunities
+               * - actual recommendations
+               * - real demand rankings
+               */
+
+              pricing:
+                null,
+            },
+          });
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 4. Detect requested analytics window
+       * ------------------------------------------------------
+       */
+
+      const startDate =
+        req.query.startDate;
+
+      const endDate =
+        req.query.endDate;
+
+      const hasCustomRange =
+        Boolean(
+          startDate ||
+          endDate
+        );
+
+      let analyticsOptions;
+
+      /**
+       * ------------------------------------------------------
+       * 5. Custom historical range
+       * ------------------------------------------------------
+       */
+
+      if (hasCustomRange) {
+        const rangeResult =
+          validateAnalyticsDateRange(
+            startDate,
+            endDate,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!rangeResult.valid) {
+          const statusCode =
+            rangeResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                rangeResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                rangeResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          startDate:
+            rangeResult.startDate,
+
+          endDate:
+            rangeResult.endDate,
+        };
+      } else {
+        /**
+         * ----------------------------------------------------
+         * 6. Day-based historical range
+         * ----------------------------------------------------
+         */
+
+        const daysResult =
+          parseDays(
+            req.query.days,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!daysResult.valid) {
+          const statusCode =
+            daysResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                daysResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                daysResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          days:
+            daysResult.value,
+        };
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 7. Calculate Demand Intelligence
+       * ------------------------------------------------------
+       *
+       * We reach this point ONLY when Business Pro entitlement
+       * has been verified server-side.
+       */
+
+      const intelligence =
+        await getBusinessDemandIntelligence(
+          analyticsOptions
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 8. Return Demand Intelligence
+       * ------------------------------------------------------
+       */
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          access: {
+            analyticsTier:
+              access.analyticsTier,
+
+            isBusinessPro:
+              true,
+
+            requiredPlan:
+              "BUSINESS_PRO",
+
+            demandIntelligence:
+              true,
+
+            maxHistoryDays:
+              access.maxHistoryDays,
+
+            customDateRange:
+              access.customDateRange,
+
+            advancedHistoricalAnalytics:
+              access
+                .advancedHistoricalAnalytics,
+
+            subscription:
+              access.subscription,
+          },
+
+          intelligence,
+        });
+    } catch (error) {
+      console.error(
+        "GET BUSINESS DEMAND INTELLIGENCE ERROR:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          code:
+            "DEMAND_INTELLIGENCE_ERROR",
+
+          message:
+            "Failed to load business demand intelligence.",
+        });
+    }
+  };
 /**
  * ============================================================
  * GET TOP LISTING PERFORMANCE

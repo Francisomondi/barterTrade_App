@@ -24,6 +24,8 @@ import {
   getMyBusinessThirtyDayPerformance,
   getMyBusinessPromotionAnalytics,
   getMyBusinessAnalyticsEntitlement,
+  getMyBusinessConversionIntelligence,
+  getMyBusinessDemandIntelligence,
 } from "../controllers/businessAnalyticsController.js";
 
 import {
@@ -164,6 +166,39 @@ router.get(
   "/me/analytics/performance",
   protect,
   getMyBusinessThirtyDayPerformance
+);
+
+router.get(
+  "/me/analytics/conversions",
+  protect,
+  getMyBusinessConversionIntelligence
+);
+
+/**
+ * =========================================================
+ * BUSINESS PRO — DEMAND INTELLIGENCE
+ * =========================================================
+ *
+ * GET /api/business/me/analytics/demand
+ *
+ * Authentication:
+ *   Required.
+ *
+ * Business Free:
+ *   Receives a locked Business Pro preview.
+ *
+ * Business Pro:
+ *   Receives full Demand Intelligence.
+ *
+ * IMPORTANT:
+ *   Business ownership and Business Pro entitlement are
+ *   resolved server-side by the controller.
+ */
+
+router.get(
+  "/me/analytics/demand",
+  protect,
+  getMyBusinessDemandIntelligence
 );
 
 router.get(
