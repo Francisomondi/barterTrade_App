@@ -26,6 +26,9 @@ import {
   getMyBusinessAnalyticsEntitlement,
   getMyBusinessConversionIntelligence,
   getMyBusinessDemandIntelligence,
+  getMyBusinessCategoryBenchmarks,
+  getMyBusinessGrowthRecommendations,
+  getMyBusinessAdvancedPromotionAnalytics,
 } from "../controllers/businessAnalyticsController.js";
 
 import {
@@ -117,7 +120,11 @@ router.delete(
   deleteBusinessCover
 );
 
-
+/**
+ * =========================================================
+ * BUSINESS ANALYTICS
+ * =========================================================
+ */
 
 router.get(
   "/me/analytics",
@@ -143,11 +150,83 @@ router.get(
   getMyBusinessListingAnalytics
 );
 
+/**
+ * =========================================================
+ * BUSINESS FREE — BASIC PROMOTION ANALYTICS
+ * =========================================================
+ *
+ * GET /api/business/me/analytics/promotions
+ *
+ * Available to:
+ *
+ * - Business Free
+ * - Business Pro
+ *
+ * Provides the existing basic promotion analytics:
+ *
+ * - promotion views
+ * - promotion clicks
+ * - click-through rate
+ * - promotion spend
+ * - top promotion performance
+ *
+ * This route MUST remain available to Business Free.
+ */
+
 router.get(
   "/me/analytics/promotions",
   protect,
   getMyBusinessPromotionAnalytics
 );
+
+/**
+ * =========================================================
+ * BUSINESS PRO — ADVANCED PROMOTION ANALYTICS
+ * =========================================================
+ *
+ * GET /api/business/me/analytics/promotions/advanced
+ *
+ * Authentication:
+ *   Required.
+ *
+ * Business Free:
+ *   Receives a locked Business Pro feature preview.
+ *
+ * Business Pro:
+ *   Receives full Advanced Promotion Analytics.
+ *
+ * Advanced analytics include:
+ *
+ * - promotion performance intelligence
+ * - promotion traffic analysis
+ * - promotion engagement analysis
+ * - observed promotion uplift
+ * - cost-efficiency metrics
+ * - promotion outcome analysis
+ * - best-performing promotions
+ * - underperforming promotions
+ * - promotion recommendations
+ * - historical promotion trends
+ *
+ * IMPORTANT:
+ *
+ * The controller resolves:
+ *
+ * - authenticated business ownership
+ * - Business Pro entitlement
+ * - historical range access
+ *
+ * server-side.
+ *
+ * Client-supplied tier/business flags cannot unlock this route.
+ */
+
+router.get(
+  "/me/analytics/promotions/advanced",
+  protect,
+  getMyBusinessAdvancedPromotionAnalytics
+);
+
 router.get(
   "/me/analytics/offers",
   protect,
@@ -159,8 +238,6 @@ router.get(
   protect,
   getMyBusinessTradeAnalytics
 );
-
-
 
 router.get(
   "/me/analytics/performance",
@@ -201,11 +278,42 @@ router.get(
   getMyBusinessDemandIntelligence
 );
 
+/**
+ * =========================================================
+ * BUSINESS PRO — CATEGORY BENCHMARKS
+ * =========================================================
+ */
+
+router.get(
+  "/me/analytics/category-benchmarks",
+  protect,
+  getMyBusinessCategoryBenchmarks
+);
+
+/**
+ * =========================================================
+ * BUSINESS PRO — GROWTH RECOMMENDATIONS
+ * =========================================================
+ */
+
+router.get(
+  "/me/analytics/growth-recommendations",
+  protect,
+  getMyBusinessGrowthRecommendations
+);
+
+/**
+ * =========================================================
+ * BUSINESS TOP LISTINGS
+ * =========================================================
+ */
+
 router.get(
   "/me/analytics/top-listings",
   protect,
   getMyBusinessTopListingPerformance
 );
+
 /**
  * =========================================================
  * PUBLIC BUSINESS ANALYTICS EVENT
@@ -234,7 +342,6 @@ router.post(
   trackPublicBusinessEvent
 );
 
-
 router.get(
   "/:slug/listings",
   optionalAuth,
@@ -247,9 +354,8 @@ router.get(
  * PUBLIC BUSINESS STOREFRONT
  * =========================================================
  *
- * In the next controller integration, this request will
- * record STOREFRONT_VIEW after the ACTIVE business has
- * successfully been found.
+ * STOREFRONT_VIEW is recorded after the ACTIVE business
+ * has successfully been found by the controller.
  */
 
 router.get(

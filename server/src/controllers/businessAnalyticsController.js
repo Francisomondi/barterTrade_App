@@ -18,6 +18,9 @@ import {
 
   getBusinessConversionIntelligence,
   getBusinessDemandIntelligence,
+  getBusinessCategoryBenchmarks,
+   getBusinessGrowthRecommendations,
+    getBusinessAdvancedPromotionAnalytics,
 
   DEFAULT_ANALYTICS_DAYS,
 } from "../services/businessAnalyticsService.js";
@@ -2686,8 +2689,6 @@ export const getMyBusinessConversionIntelligence = async (req, res) => {
     }
   };
 
-  // UPDATE — server/src/controllers/businessAnalyticsController.js
-
 /**
  * ============================================================
  * GET BUSINESS DEMAND INTELLIGENCE
@@ -2722,8 +2723,7 @@ export const getMyBusinessConversionIntelligence = async (req, res) => {
  * ============================================================
  */
 
-export const getMyBusinessDemandIntelligence =
-  async (req, res) => {
+export const getMyBusinessDemandIntelligence = async (req, res) => {
     try {
       /**
        * ------------------------------------------------------
@@ -3138,6 +3138,844 @@ export const getMyBusinessDemandIntelligence =
         });
     }
   };
+
+
+/**
+ * ============================================================
+ * GET BUSINESS CATEGORY BENCHMARKS
+ * ============================================================
+ *
+ * 9.11.16 — BUSINESS PRO CATEGORY BENCHMARKS
+ *
+ * GET /api/business/me/analytics/category-benchmarks
+ *
+ * BUSINESS FREE:
+ *
+ * - Does NOT execute marketplace benchmark calculations.
+ * - Does NOT receive category benchmark values.
+ * - Does NOT receive competitor aggregate performance.
+ * - Does NOT receive listing/category comparisons.
+ * - Does NOT receive benchmark opportunities.
+ * - Receives only a safe feature preview.
+ *
+ * BUSINESS PRO:
+ *
+ * - Receives privacy-safe aggregated category benchmarks.
+ * - Receives listing vs category comparisons.
+ * - Receives category performance positions.
+ * - Receives benchmark opportunities and recommendations.
+ * - Supports extended historical analytics.
+ * - Supports custom historical ranges.
+ *
+ * SECURITY:
+ *
+ * - Authentication is enforced by `protect`.
+ * - Business ownership comes from req.user.id.
+ * - Business Pro entitlement is resolved server-side.
+ * - Client-supplied tier/business flags are ignored.
+ * - Individual competitor analytics are never exposed.
+ *
+ * ============================================================
+ */
+
+export const getMyBusinessCategoryBenchmarks = async (req, res) => {
+    try {
+      /**
+       * ------------------------------------------------------
+       * 1. Resolve authenticated owner's business
+       * ------------------------------------------------------
+       */
+
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 2. Resolve Business Pro entitlement server-side
+       * ------------------------------------------------------
+       */
+
+      const access =
+        await resolveBusinessAnalyticsAccess(
+          req.user.id,
+          business
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 3. BUSINESS FREE PREVIEW BOUNDARY
+       * ------------------------------------------------------
+       *
+       * IMPORTANT:
+       *
+       * Return BEFORE calling getBusinessCategoryBenchmarks().
+       *
+       * Therefore Business Free does not cause:
+       *
+       * - marketplace benchmark calculation
+       * - category aggregate exposure
+       * - listing/category comparison
+       * - benchmark opportunity detection
+       * - benchmark recommendations
+       */
+
+      if (!access.isBusinessPro) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            code:
+              "BUSINESS_PRO_REQUIRED",
+
+            message:
+              "Category Benchmarks are available with Business Pro.",
+
+            business: {
+              id:
+                business.id,
+
+              businessName:
+                business.businessName,
+
+              slug:
+                business.slug,
+
+              status:
+                business.status,
+
+              verificationStatus:
+                business.verificationStatus,
+            },
+
+            access: {
+              analyticsTier:
+                "BUSINESS_FREE",
+
+              isBusinessPro:
+                false,
+
+              requiredPlan:
+                "BUSINESS_PRO",
+
+              categoryBenchmarks:
+                false,
+
+              maxHistoryDays:
+                access.maxHistoryDays,
+
+              customDateRange:
+                access.customDateRange,
+
+              advancedHistoricalAnalytics:
+                access
+                  .advancedHistoricalAnalytics,
+            },
+
+            /**
+             * ------------------------------------------------
+             * Safe Business Free feature preview
+             * ------------------------------------------------
+             *
+             * Capability descriptions only.
+             *
+             * No real benchmark numbers or competitor
+             * marketplace aggregates are returned here.
+             */
+
+            preview: {
+              feature:
+                "CATEGORY_BENCHMARKS",
+
+              title:
+                "Category Benchmarks",
+
+              description:
+                "Compare your listings with privacy-safe aggregated performance from other businesses operating in the same marketplace categories.",
+
+              locked: true,
+
+              requiresBusinessPro:
+                true,
+
+              capabilities: [
+                {
+                  code:
+                    "CATEGORY_TRAFFIC_BENCHMARKS",
+
+                  title:
+                    "Category Traffic Benchmarks",
+
+                  description:
+                    "Compare listing visibility with aggregated traffic performance from the same category.",
+                },
+
+                {
+                  code:
+                    "CATEGORY_ENGAGEMENT_BENCHMARKS",
+
+                  title:
+                    "Category Engagement Benchmarks",
+
+                  description:
+                    "Understand how listing engagement compares with aggregated category activity.",
+                },
+
+                {
+                  code:
+                    "CATEGORY_OFFER_BENCHMARKS",
+
+                  title:
+                    "Category Offer Benchmarks",
+
+                  description:
+                    "Compare offer generation and offer acceptance with category-level marketplace activity.",
+                },
+
+                {
+                  code:
+                    "CATEGORY_TRADE_BENCHMARKS",
+
+                  title:
+                    "Category Trade Benchmarks",
+
+                  description:
+                    "Compare completed-trade performance with privacy-safe category aggregates.",
+                },
+
+                {
+                  code:
+                    "CATEGORY_CONVERSION_BENCHMARKS",
+
+                  title:
+                    "Category Conversion Benchmarks",
+
+                  description:
+                    "Compare view-to-offer, offer-to-trade and other conversion indicators with category benchmarks.",
+                },
+
+                {
+                  code:
+                    "LISTING_CATEGORY_COMPARISON",
+
+                  title:
+                    "Listing vs Category",
+
+                  description:
+                    "See whether individual listings are above, near or below their category benchmark.",
+                },
+
+                {
+                  code:
+                    "CATEGORY_OPPORTUNITIES",
+
+                  title:
+                    "Category Opportunities",
+
+                  description:
+                    "Identify listings with strong conversion, weak visibility or other benchmark-based growth opportunities.",
+                },
+
+                {
+                  code:
+                    "BENCHMARK_RECOMMENDATIONS",
+
+                  title:
+                    "Benchmark Recommendations",
+
+                  description:
+                    "Receive actionable recommendations based on category-relative listing performance.",
+                },
+
+                {
+                  code:
+                    "EXTENDED_BENCHMARK_HISTORY",
+
+                  title:
+                    "Extended Benchmark History",
+
+                  description:
+                    "Analyze category-relative performance across longer historical periods.",
+                },
+
+                {
+                  code:
+                    "CUSTOM_BENCHMARK_RANGES",
+
+                  title:
+                    "Custom Benchmark Ranges",
+
+                  description:
+                    "Analyze category benchmarks across selected historical periods.",
+                },
+              ],
+
+              dataExposed:
+                false,
+            },
+
+            upgrade: {
+              required: true,
+
+              plan:
+                "BUSINESS_PRO",
+
+              /**
+               * Business Pro pricing remains intentionally
+               * unset until 9.11.20 monetization.
+               */
+
+              pricing: null,
+
+              message:
+                "Upgrade to Business Pro to unlock category benchmarks and marketplace-relative business intelligence.",
+            },
+          });
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 4. BUSINESS PRO — determine requested window
+       * ------------------------------------------------------
+       */
+
+      const startDate =
+        req.query.startDate;
+
+      const endDate =
+        req.query.endDate;
+
+      const hasCustomRange =
+        Boolean(
+          startDate ||
+          endDate
+        );
+
+      let analyticsOptions;
+
+      /**
+       * ------------------------------------------------------
+       * 5. Validate Business Pro custom date range
+       * ------------------------------------------------------
+       */
+
+      if (hasCustomRange) {
+        const rangeResult =
+          validateAnalyticsDateRange(
+            startDate,
+            endDate,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!rangeResult.valid) {
+          const statusCode =
+            rangeResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                rangeResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                rangeResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          startDate:
+            rangeResult.startDate,
+
+          endDate:
+            rangeResult.endDate,
+        };
+      } else {
+        /**
+         * ----------------------------------------------------
+         * 6. Validate Business Pro day-based range
+         * ----------------------------------------------------
+         */
+
+        const daysResult =
+          parseDays(
+            req.query.days,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!daysResult.valid) {
+          const statusCode =
+            daysResult.code ===
+            "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                daysResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                daysResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          days:
+            daysResult.value,
+        };
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 7. BUSINESS PRO — calculate category benchmarks
+       * ------------------------------------------------------
+       *
+       * This can only execute after active Business Pro
+       * entitlement has been confirmed server-side.
+       */
+
+      const benchmarks =
+        await getBusinessCategoryBenchmarks(
+          analyticsOptions
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 8. Return privacy-safe Business Pro benchmarks
+       * ------------------------------------------------------
+       */
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          business: {
+            id:
+              business.id,
+
+            businessName:
+              business.businessName,
+
+            slug:
+              business.slug,
+
+            status:
+              business.status,
+
+            verificationStatus:
+              business.verificationStatus,
+          },
+
+          access: {
+            analyticsTier:
+              access.analyticsTier,
+
+            isBusinessPro:
+              true,
+
+            categoryBenchmarks:
+              true,
+
+            maxHistoryDays:
+              access.maxHistoryDays,
+
+            customDateRange:
+              access.customDateRange,
+
+            advancedHistoricalAnalytics:
+              access
+                .advancedHistoricalAnalytics,
+
+            subscription:
+              access.subscription,
+          },
+
+          benchmarks,
+        });
+    } catch (error) {
+      console.error(
+        "GET BUSINESS CATEGORY BENCHMARKS ERROR:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          code:
+            "CATEGORY_BENCHMARKS_ERROR",
+
+          message:
+            "Failed to load business category benchmarks.",
+        });
+    }
+  };
+
+/**
+ * ============================================================
+ * GET MY BUSINESS GROWTH RECOMMENDATIONS
+ * ============================================================
+ *
+ * GET /api/business/me/analytics/growth-recommendations
+ *
+ * Business Pro only.
+ *
+ * Combines:
+ *
+ * - Conversion Intelligence
+ * - Demand Intelligence
+ * - Category Benchmarks
+ *
+ * into prioritized, actionable growth recommendations.
+ *
+ * SECURITY:
+ *
+ * - authenticated owner only
+ * - business resolved from req.user.id
+ * - Business Pro entitlement resolved server-side
+ * - client cannot supply businessId
+ * - query parameters cannot elevate entitlement
+ * - Business Free receives metadata preview only
+ * ============================================================
+ */
+
+export const getMyBusinessGrowthRecommendations =
+  async (req, res) => {
+    try {
+      /**
+       * ------------------------------------------------------
+       * 1. Resolve authenticated owner's business
+       * ------------------------------------------------------
+       */
+
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 2. Resolve analytics entitlement server-side
+       * ------------------------------------------------------
+       *
+       * IMPORTANT:
+       *
+       * We do NOT read:
+       *
+       * req.query.isBusinessPro
+       * req.query.plan
+       * req.query.tier
+       * req.body.isBusinessPro
+       *
+       * Entitlement comes from the subscription service.
+       */
+
+      const access =
+        await resolveBusinessAnalyticsAccess(
+          req.user.id
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 3. Business Free preview boundary
+       * ------------------------------------------------------
+       *
+       * Business Free users can discover the feature, but
+       * receive no recommendation intelligence.
+       */
+
+      if (!access.isBusinessPro) {
+        return res.status(403).json({
+          success: false,
+
+          code:
+            "BUSINESS_PRO_REQUIRED",
+
+          message:
+            "Business Pro is required to access Growth Recommendations.",
+
+          business: {
+            id:
+              business.id,
+
+            businessName:
+              business.businessName,
+
+            slug:
+              business.slug,
+
+            status:
+              business.status,
+
+            verificationStatus:
+              business.verificationStatus,
+          },
+
+          access: {
+            tier:
+              access.tier,
+
+            isBusinessPro:
+              false,
+
+            maxHistoryDays:
+              access.maxHistoryDays,
+
+            customDateRange:
+              access.customDateRange,
+          },
+
+          preview: {
+            feature:
+              "GROWTH_RECOMMENDATIONS",
+
+            title:
+              "Growth Recommendations",
+
+            description:
+              "Turn your business analytics into prioritized actions based on observed conversion, demand and privacy-safe category benchmark signals.",
+
+            capabilities: [
+              "PRIORITIZED_GROWTH_ACTIONS",
+              "LISTING_LEVEL_RECOMMENDATIONS",
+              "BUSINESS_LEVEL_RECOMMENDATIONS",
+              "VISIBILITY_RECOMMENDATIONS",
+              "ENGAGEMENT_RECOMMENDATIONS",
+              "OFFER_RECOMMENDATIONS",
+              "CONVERSION_RECOMMENDATIONS",
+              "TRADE_COMPLETION_RECOMMENDATIONS",
+              "CATEGORY_OPPORTUNITIES",
+              "HIGH_PERFORMANCE_RECOMMENDATIONS",
+              "RECOMMENDATION_RANKING",
+              "EXTENDED_RECOMMENDATION_HISTORY",
+              "CUSTOM_RECOMMENDATION_RANGES",
+            ],
+
+            dataExposed:
+              false,
+
+            sampleRecommendations:
+              null,
+          },
+
+          upgrade: {
+            requiredPlan:
+              "BUSINESS_PRO",
+
+            pricing:
+              null,
+          },
+        });
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 4. Build analytics options
+       * ------------------------------------------------------
+       */
+
+      const {
+        startDate,
+        endDate,
+      } = req.query;
+
+      const hasCustomDateRange =
+        Boolean(
+          startDate ||
+          endDate
+        );
+
+      const analyticsOptions = {
+        businessId:
+          business.id,
+      };
+
+      /**
+       * ------------------------------------------------------
+       * 5. Business Pro custom date range
+       * ------------------------------------------------------
+       */
+
+      if (hasCustomDateRange) {
+        const validatedRange =
+          validateAnalyticsDateRange({
+            startDate,
+            endDate,
+
+            maxDays:
+              access.maxHistoryDays,
+          });
+
+        if (!validatedRange.valid) {
+          return res
+            .status(
+              validatedRange.status ||
+                400
+            )
+            .json({
+              success: false,
+
+              code:
+                validatedRange.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                validatedRange.message ||
+                "Invalid analytics date range.",
+            });
+        }
+
+        analyticsOptions.startDate =
+          validatedRange.startDate;
+
+        analyticsOptions.endDate =
+          validatedRange.endDate;
+      } else {
+        /**
+         * ----------------------------------------------------
+         * 6. Business Pro day-based history
+         * ----------------------------------------------------
+         */
+
+        const days =
+          parseDays(
+            req.query.days,
+            DEFAULT_ANALYTICS_DAYS
+          );
+
+        if (
+          days >
+          access.maxHistoryDays
+        ) {
+          return res.status(400).json({
+            success: false,
+
+            code:
+              "ANALYTICS_RANGE_TOO_LARGE",
+
+            message:
+              `Business Pro analytics history cannot exceed ${access.maxHistoryDays} days.`,
+          });
+        }
+
+        analyticsOptions.days =
+          days;
+      }
+
+      /**
+       * ------------------------------------------------------
+       * 7. Generate recommendations
+       * ------------------------------------------------------
+       *
+       * The service composes:
+       *
+       * - Conversion Intelligence
+       * - Demand Intelligence
+       * - Category Benchmarks
+       *
+       * It does not determine entitlement.
+       */
+
+      const recommendations =
+        await getBusinessGrowthRecommendations(
+          analyticsOptions
+        );
+
+      /**
+       * ------------------------------------------------------
+       * 8. Success
+       * ------------------------------------------------------
+       */
+
+      return res.status(200).json({
+        success: true,
+
+        business: {
+          id:
+            business.id,
+
+          businessName:
+            business.businessName,
+
+          slug:
+            business.slug,
+
+          status:
+            business.status,
+
+          verificationStatus:
+            business.verificationStatus,
+        },
+
+        access: {
+          tier:
+            access.tier,
+
+          isBusinessPro:
+            true,
+
+          maxHistoryDays:
+            access.maxHistoryDays,
+
+          customDateRange:
+            access.customDateRange,
+        },
+
+        recommendations,
+      });
+    } catch (error) {
+      console.error(
+        "GET BUSINESS GROWTH RECOMMENDATIONS ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+
+        code:
+          "GROWTH_RECOMMENDATIONS_ERROR",
+
+        message:
+          "Unable to load business growth recommendations.",
+      });
+    }
+  };
 /**
  * ============================================================
  * GET TOP LISTING PERFORMANCE
@@ -3156,11 +3994,7 @@ export const getMyBusinessDemandIntelligence =
  * - basic conversion rates
  * ============================================================
  */
-
-export const getMyBusinessTopListingPerformance = async (
-  req,
-  res
-) => {
+export const getMyBusinessTopListingPerformance = async (req,res) => {
   try {
     /**
      * ----------------------------------------------------------
@@ -3388,3 +4222,555 @@ export const getMyBusinessTopListingPerformance = async (
       });
   }
 };
+
+/**
+ * ============================================================
+ * GET ADVANCED BUSINESS PROMOTION ANALYTICS
+ * ============================================================
+ *
+ * 9.11.18.15 — SECURE PROMOTION INTELLIGENCE API
+ * 9.11.18.16 — BUSINESS PRO ENFORCEMENT
+ * 9.11.18.17 — BUSINESS FREE BOUNDARY
+ *
+ * GET /api/business/me/analytics/promotions/advanced
+ *
+ * BUSINESS FREE:
+ *
+ * - Keeps existing basic promotion analytics.
+ * - Does NOT execute Advanced Promotion Analytics.
+ * - Does NOT receive promotion uplift calculations.
+ * - Does NOT receive advanced cost-efficiency metrics.
+ * - Does NOT receive promotion outcome intelligence.
+ * - Does NOT receive advanced promotion recommendations.
+ * - Receives only a safe feature preview.
+ *
+ * BUSINESS PRO:
+ *
+ * - Receives full Advanced Promotion Analytics.
+ * - Supports extended history up to 365 days.
+ * - Supports custom historical ranges.
+ *
+ * SECURITY:
+ *
+ * - Route MUST be behind `protect`.
+ * - Business ownership comes only from req.user.id.
+ * - Client NEVER supplies businessId.
+ * - Business Pro entitlement is resolved server-side.
+ * - Personal Premium does not unlock this endpoint.
+ * - Query parameters cannot elevate analytics tier.
+ *
+ * IMPORTANT:
+ *
+ * Basic promotion analytics remain available separately at:
+ *
+ * GET /api/business/me/analytics/promotions
+ *
+ * ============================================================
+ */
+
+export const getMyBusinessAdvancedPromotionAnalytics =
+  async (req, res) => {
+    try {
+      /**
+       * --------------------------------------------------------
+       * 1. Resolve authenticated owner's business
+       * --------------------------------------------------------
+       *
+       * Ownership is derived exclusively from req.user.id.
+       *
+       * We intentionally do NOT trust:
+       *
+       * req.params.businessId
+       * req.query.businessId
+       * req.body.businessId
+       */
+
+      const business =
+        await requireOwnerBusiness(
+          req,
+          res
+        );
+
+      if (!business) {
+        return;
+      }
+
+      /**
+       * --------------------------------------------------------
+       * 2. Resolve Business Pro entitlement server-side
+       * --------------------------------------------------------
+       *
+       * This is the authorization source of truth.
+       *
+       * Client-supplied values such as:
+       *
+       * ?isBusinessPro=true
+       * ?tier=BUSINESS_PRO
+       * ?plan=BUSINESS_PRO
+       *
+       * have no effect.
+       */
+
+      const access =
+        await resolveBusinessAnalyticsAccess(
+          req.user.id,
+          business
+        );
+
+      /**
+       * --------------------------------------------------------
+       * 3. BUSINESS FREE BOUNDARY
+       * --------------------------------------------------------
+       *
+       * IMPORTANT:
+       *
+       * Return BEFORE calling:
+       *
+       * getBusinessAdvancedPromotionAnalytics()
+       *
+       * This guarantees Business Free users cannot cause the
+       * paid intelligence service to execute through this API.
+       *
+       * Existing Business Free promotion analytics remain
+       * available through:
+       *
+       * GET /api/business/me/analytics/promotions
+       */
+
+      if (!access.isBusinessPro) {
+        return res
+          .status(403)
+          .json({
+            success: false,
+
+            code:
+              "BUSINESS_PRO_REQUIRED",
+
+            message:
+              "Advanced Promotion Analytics is available with Business Pro.",
+
+            business: {
+              id:
+                business.id,
+
+              businessName:
+                business.businessName,
+
+              slug:
+                business.slug,
+
+              status:
+                business.status,
+
+              verificationStatus:
+                business.verificationStatus,
+            },
+
+            access: {
+              analyticsTier:
+                "BUSINESS_FREE",
+
+              isBusinessPro:
+                false,
+
+              requiredPlan:
+                "BUSINESS_PRO",
+
+              advancedPromotionAnalytics:
+                false,
+
+              maxHistoryDays:
+                access.maxHistoryDays,
+
+              customDateRange:
+                access.customDateRange,
+
+              advancedHistoricalAnalytics:
+                access
+                  .advancedHistoricalAnalytics,
+            },
+
+            /**
+             * --------------------------------------------------
+             * SAFE BUSINESS FREE PREVIEW
+             * --------------------------------------------------
+             *
+             * Capability descriptions only.
+             *
+             * Do NOT expose:
+             *
+             * - actual promotion IDs
+             * - actual listing IDs
+             * - actual spend analysis
+             * - actual cost-per-outcome metrics
+             * - actual uplift values
+             * - actual offers/trades
+             * - actual recommendations
+             * - actual advanced trends
+             */
+
+            preview: {
+              feature:
+                "ADVANCED_PROMOTION_ANALYTICS",
+
+              title:
+                "Advanced Promotion Analytics",
+
+              description:
+                "Understand promotion efficiency, observed performance changes, marketplace outcomes during promotions, and opportunities to improve future promotion decisions.",
+
+              locked:
+                true,
+
+              requiresBusinessPro:
+                true,
+
+              capabilities: [
+                {
+                  code:
+                    "PROMOTION_UPLIFT",
+
+                  title:
+                    "Observed Promotion Uplift",
+
+                  description:
+                    "Compare listing activity during a promotion with an immediately preceding equal-duration baseline.",
+                },
+
+                {
+                  code:
+                    "PROMOTION_COST_EFFICIENCY",
+
+                  title:
+                    "Promotion Cost Efficiency",
+
+                  description:
+                    "Measure promotion spend against observed views, clicks, engagement, offers, and completed trades.",
+                },
+
+                {
+                  code:
+                    "PROMOTION_CONVERSION_ANALYSIS",
+
+                  title:
+                    "Promotion Conversion Analysis",
+
+                  description:
+                    "Understand marketplace activity observed while promoted listings are active.",
+                },
+
+                {
+                  code:
+                    "BEST_PERFORMING_PROMOTIONS",
+
+                  title:
+                    "Best Performing Promotions",
+
+                  description:
+                    "Identify promotions showing the strongest observed performance signals.",
+                },
+
+                {
+                  code:
+                    "UNDERPERFORMING_PROMOTIONS",
+
+                  title:
+                    "Underperforming Promotions",
+
+                  description:
+                    "Identify promotions showing weak activity, poor efficiency, or limited observed uplift.",
+                },
+
+                {
+                  code:
+                    "PROMOTION_RECOMMENDATIONS",
+
+                  title:
+                    "Promotion Recommendations",
+
+                  description:
+                    "Receive deterministic recommendations based on observed promotion performance.",
+                },
+
+                {
+                  code:
+                    "PROMOTION_TRENDS",
+
+                  title:
+                    "Historical Promotion Trends",
+
+                  description:
+                    "Track promotion spend, traffic, clicks, offers, and completed trades across historical periods.",
+                },
+
+                {
+                  code:
+                    "EXTENDED_PROMOTION_HISTORY",
+
+                  title:
+                    "Extended Promotion History",
+
+                  description:
+                    "Analyze promotion performance across longer historical periods.",
+                },
+
+                {
+                  code:
+                    "CUSTOM_DATE_RANGES",
+
+                  title:
+                    "Custom Date Ranges",
+
+                  description:
+                    "Analyze promotion intelligence across selected historical periods.",
+                },
+              ],
+
+              dataExposed:
+                false,
+            },
+
+            upgrade: {
+              required:
+                true,
+
+              plan:
+                "BUSINESS_PRO",
+
+              /**
+               * Business Pro pricing remains intentionally
+               * undefined until the monetization step.
+               */
+
+              pricing:
+                null,
+
+              message:
+                "Upgrade to Business Pro to unlock advanced promotion analytics.",
+            },
+          });
+      }
+
+      /**
+       * --------------------------------------------------------
+       * 4. BUSINESS PRO — determine requested analytics window
+       * --------------------------------------------------------
+       */
+
+      const startDate =
+        req.query.startDate;
+
+      const endDate =
+        req.query.endDate;
+
+      const hasCustomRange =
+        Boolean(
+          startDate ||
+          endDate
+        );
+
+      let analyticsOptions;
+
+      /**
+       * --------------------------------------------------------
+       * 5. BUSINESS PRO — validate custom historical range
+       * --------------------------------------------------------
+       *
+       * validateAnalyticsDateRange() already enforces:
+       *
+       * - both dates required
+       * - valid dates
+       * - start <= end
+       * - no future dates
+       * - maximum 365 days
+       */
+
+      if (hasCustomRange) {
+        const rangeResult =
+          validateAnalyticsDateRange(
+            startDate,
+            endDate,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!rangeResult.valid) {
+          const statusCode =
+            rangeResult.code ===
+              "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                rangeResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                rangeResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          startDate:
+            rangeResult.startDate,
+
+          endDate:
+            rangeResult.endDate,
+        };
+      } else {
+        /**
+         * ------------------------------------------------------
+         * 6. BUSINESS PRO — validate day-based range
+         * ------------------------------------------------------
+         *
+         * Default:
+         *
+         * 30 days
+         *
+         * Business Pro maximum:
+         *
+         * 365 days
+         */
+
+        const daysResult =
+          parseDays(
+            req.query.days,
+            {
+              isBusinessPro:
+                access.isBusinessPro,
+            }
+          );
+
+        if (!daysResult.valid) {
+          const statusCode =
+            daysResult.code ===
+              "BUSINESS_PRO_REQUIRED"
+              ? 403
+              : 400;
+
+          return res
+            .status(statusCode)
+            .json({
+              success: false,
+
+              code:
+                daysResult.code ||
+                "INVALID_ANALYTICS_RANGE",
+
+              message:
+                daysResult.message,
+            });
+        }
+
+        analyticsOptions = {
+          businessId:
+            business.id,
+
+          days:
+            daysResult.value,
+        };
+      }
+
+      /**
+       * --------------------------------------------------------
+       * 7. Execute Advanced Promotion Analytics
+       * --------------------------------------------------------
+       *
+       * This point is reachable ONLY after:
+       *
+       * - authentication
+       * - business ownership resolution
+       * - active Business Pro entitlement verification
+       * - analytics-window validation
+       *
+       * The service itself remains entitlement-neutral.
+       */
+
+      const intelligence =
+        await getBusinessAdvancedPromotionAnalytics(
+          analyticsOptions
+        );
+
+      /**
+       * --------------------------------------------------------
+       * 8. Return Business Pro promotion intelligence
+       * --------------------------------------------------------
+       */
+
+      return res
+        .status(200)
+        .json({
+          success: true,
+
+          business: {
+            id:
+              business.id,
+
+            businessName:
+              business.businessName,
+
+            slug:
+              business.slug,
+
+            status:
+              business.status,
+
+            verificationStatus:
+              business.verificationStatus,
+          },
+
+          access: {
+            analyticsTier:
+              access.analyticsTier,
+
+            isBusinessPro:
+              true,
+
+            advancedPromotionAnalytics:
+              true,
+
+            maxHistoryDays:
+              access.maxHistoryDays,
+
+            customDateRange:
+              access.customDateRange,
+
+            advancedHistoricalAnalytics:
+              access
+                .advancedHistoricalAnalytics,
+
+            subscription:
+              access.subscription,
+          },
+
+          intelligence,
+        });
+    } catch (error) {
+      console.error(
+        "GET ADVANCED BUSINESS PROMOTION ANALYTICS ERROR:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          success: false,
+
+          code:
+            "ADVANCED_PROMOTION_ANALYTICS_ERROR",
+
+          message:
+            "Failed to load advanced promotion analytics.",
+        });
+    }
+  };

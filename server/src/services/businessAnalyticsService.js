@@ -8716,7 +8716,2937 @@ const getPromotionMetrics = async ({
     };
   };
 
+
   // UPDATE — server/src/services/businessAnalyticsService.js
+
+/**
+ * ============================================================
+ * ADVANCED PROMOTION ANALYTICS
+ * ============================================================
+ *
+ * Business Pro promotion intelligence.
+ *
+ * IMPORTANT:
+ *
+ * This service remains entitlement-neutral.
+ *
+ * Business Pro access is enforced by the controller.
+ *
+ * This service DOES NOT:
+ *
+ * - determine whether a user is Business Pro
+ * - calculate financial revenue
+ * - calculate financial ROI
+ * - claim promotions caused offers or trades
+ * - mutate promotion data
+ * - persist recommendations
+ *
+ * Offers and completed trades observed inside a promotion
+ * window are deliberately described as:
+ *
+ * - offersDuringPromotion
+ * - acceptedOffersDuringPromotion
+ * - completedTradesDuringPromotion
+ *
+ * They are NOT described as promotion-generated outcomes
+ * because the current schema does not provide direct
+ * promotion -> offer/trade attribution.
+ * ============================================================
+ */
+
+const ADVANCED_PROMOTION_PRIORITIES =
+  Object.freeze({
+    HIGH: "HIGH",
+    MEDIUM: "MEDIUM",
+    LOW: "LOW",
+  });
+
+
+/**
+ * ============================================================
+ * PROMOTION COST HELPER
+ * ============================================================
+ *
+ * Cost efficiency is undefined when no measurable outcome
+ * exists.
+ *
+ * Returning null is more accurate than returning 0 because
+ * KES 500 spent with zero clicks does NOT mean:
+ *
+ *     costPerClick = KES 0
+ *
+ * It means there is no calculable cost-per-click.
+ * ============================================================
+ */
+
+const promotionCostPerOutcome = (
+  amount,
+  outcomeCount
+) => {
+  const normalizedAmount =
+    safeNumber(amount);
+
+  const normalizedCount =
+    safeNumber(
+      outcomeCount
+    );
+
+  if (
+    normalizedCount <= 0
+  ) {
+    return null;
+  }
+
+  return round(
+    normalizedAmount /
+      normalizedCount
+  );
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION UPLIFT HELPER
+ * ============================================================
+ *
+ * Calculates observed percentage change between:
+ *
+ *     baseline period
+ *
+ * and:
+ *
+ *     promotion period
+ *
+ * This is descriptive uplift only.
+ *
+ * It MUST NOT be interpreted as causal lift.
+ * ============================================================
+ */
+
+const calculateObservedPromotionUplift = (
+  baselineValue,
+  promotionValue
+) => {
+  const baseline =
+    safeNumber(
+      baselineValue
+    );
+
+  const during =
+    safeNumber(
+      promotionValue
+    );
+
+  /**
+   * No baseline activity means a percentage uplift cannot
+   * be calculated responsibly.
+   */
+  if (baseline <= 0) {
+    return {
+      available: false,
+
+      baseline,
+
+      during,
+
+      absoluteChange:
+        round(
+          during -
+            baseline
+        ),
+
+      percentageChange:
+        null,
+
+      direction:
+        during > 0
+          ? "NEW_ACTIVITY"
+          : "NO_CHANGE",
+    };
+  }
+
+  const absoluteChange =
+    during -
+    baseline;
+
+  const percentageChange =
+    round(
+      (
+        absoluteChange /
+        baseline
+      ) * 100
+    );
+
+  let direction =
+    "UNCHANGED";
+
+  if (
+    percentageChange > 0
+  ) {
+    direction =
+      "INCREASED";
+  }
+
+  if (
+    percentageChange < 0
+  ) {
+    direction =
+      "DECREASED";
+  }
+
+  return {
+    available: true,
+
+    baseline,
+
+    during,
+
+    absoluteChange:
+      round(
+        absoluteChange
+      ),
+
+    percentageChange,
+
+    direction,
+  };
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION WINDOW HELPER
+ * ============================================================
+ *
+ * Restricts a promotion to the requested analytics window.
+ *
+ * This prevents a 30-day analytics request from accidentally
+ * exposing activity outside those 30 days.
+ * ============================================================
+ */
+
+const buildEffectivePromotionWindow = ({
+  promotion,
+  analyticsStart,
+  analyticsEnd,
+}) => {
+  const promotionStart =
+    promotion.startsAt
+      ? new Date(
+          promotion.startsAt
+        )
+      : null;
+
+  const promotionEnd =
+    promotion.endsAt
+      ? new Date(
+          promotion.endsAt
+        )
+      : null;
+
+  if (
+    !promotionStart ||
+    !promotionEnd ||
+    Number.isNaN(
+      promotionStart.getTime()
+    ) ||
+    Number.isNaN(
+      promotionEnd.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  const start =
+    new Date(
+      Math.max(
+        promotionStart.getTime(),
+        analyticsStart.getTime()
+      )
+    );
+
+  const end =
+    new Date(
+      Math.min(
+        promotionEnd.getTime(),
+        analyticsEnd.getTime()
+      )
+    );
+
+  if (start > end) {
+    return null;
+  }
+
+  return {
+    start,
+    end,
+
+    durationMs:
+      Math.max(
+        0,
+        end.getTime() -
+          start.getTime()
+      ),
+  };
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION BASELINE WINDOW
+ * ============================================================
+ *
+ * Baseline:
+ *
+ *     immediately preceding equal-duration period
+ *
+ * IMPORTANT:
+ *
+ * The baseline is only used when the entire baseline fits
+ * inside the analytics window selected by the caller.
+ *
+ * This prevents Business Pro history limits from being
+ * bypassed indirectly through uplift calculations.
+ * ============================================================
+ */
+
+const buildPromotionBaselineWindow = ({
+  promotionWindow,
+  comparisonDataStart,
+}) => {
+  if (!promotionWindow) {
+    return null;
+  }
+
+  const durationMs =
+    promotionWindow.durationMs;
+
+  if (durationMs <= 0) {
+    return null;
+  }
+
+  /**
+   * Baseline ends immediately before the effective
+   * promotion period begins.
+   */
+  const baselineEnd =
+    new Date(
+      promotionWindow.start.getTime() -
+        1
+    );
+
+  /**
+   * Use an equal-duration preceding period.
+   */
+  const baselineStart =
+    new Date(
+      baselineEnd.getTime() -
+        durationMs
+    );
+
+  /**
+   * Defensive internal-history boundary.
+   *
+   * Baseline data must never reach further back than the
+   * comparison data explicitly loaded by this service.
+   */
+  if (
+    comparisonDataStart &&
+    baselineStart <
+      comparisonDataStart
+  ) {
+    return null;
+  }
+
+  return {
+    start:
+      baselineStart,
+
+    end:
+      baselineEnd,
+  };
+};
+
+
+/**
+ * ============================================================
+ * DATE-IN-WINDOW HELPER
+ * ============================================================
+ */
+
+const dateFallsWithin = (
+  value,
+  window
+) => {
+  if (
+    !value ||
+    !window
+  ) {
+    return false;
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    date >= window.start &&
+    date <= window.end
+  );
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION LISTING ACTIVITY
+ * ============================================================
+ *
+ * Aggregates listing-level marketplace activity for one
+ * listing inside one time window.
+ *
+ * Analytics events:
+ *
+ * - listing views
+ * - contact clicks
+ * - website clicks
+ * - phone clicks
+ * - listing shares
+ *
+ * Offer/trade arrays are already scoped to the business's
+ * own listings before this helper is called.
+ * ============================================================
+ */
+
+const buildPromotionListingActivity = ({
+  listingId,
+  window,
+  analyticsEvents = [],
+  offers = [],
+  completedTrades = [],
+}) => {
+  if (
+    !listingId ||
+    !window
+  ) {
+    return {
+      listingViews: 0,
+
+      engagementActions:
+        0,
+
+      contactClicks: 0,
+
+      websiteClicks: 0,
+
+      phoneClicks: 0,
+
+      listingShares: 0,
+
+      offers: 0,
+
+      acceptedOffers: 0,
+
+      completedTrades: 0,
+
+      engagementRate: 0,
+
+      viewToOfferRate: 0,
+
+      offerAcceptanceRate:
+        0,
+
+      offerToTradeRate: 0,
+    };
+  }
+
+  let listingViews = 0;
+
+  let contactClicks = 0;
+  let websiteClicks = 0;
+  let phoneClicks = 0;
+  let listingShares = 0;
+
+  for (
+    const event of
+    analyticsEvents
+  ) {
+    if (
+      event.listingId !==
+        listingId ||
+      !dateFallsWithin(
+        event.createdAt,
+        window
+      )
+    ) {
+      continue;
+    }
+
+    switch (event.type) {
+      case ANALYTICS_EVENT_TYPES.LISTING_VIEW:
+        listingViews += 1;
+        break;
+
+      case ANALYTICS_EVENT_TYPES.CONTACT_CLICK:
+        contactClicks += 1;
+        break;
+
+      case ANALYTICS_EVENT_TYPES.WEBSITE_CLICK:
+        websiteClicks += 1;
+        break;
+
+      case ANALYTICS_EVENT_TYPES.PHONE_CLICK:
+        phoneClicks += 1;
+        break;
+
+      case ANALYTICS_EVENT_TYPES.LISTING_SHARE:
+        listingShares += 1;
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  const engagementActions =
+    contactClicks +
+    websiteClicks +
+    phoneClicks +
+    listingShares;
+
+  let offersDuringWindow =
+    0;
+
+  let acceptedOffersDuringWindow =
+    0;
+
+  for (
+    const offer of
+    offers
+  ) {
+    if (
+      offer.requestedListingId !==
+        listingId ||
+      !dateFallsWithin(
+        offer.createdAt,
+        window
+      )
+    ) {
+      continue;
+    }
+
+    offersDuringWindow +=
+      1;
+
+    /**
+     * Current schema caveat:
+     *
+     * Offer status is the current offer status.
+     *
+     * There is no acceptedAt timestamp in the known schema.
+     * Therefore this remains consistent with the existing
+     * conversion intelligence implementation.
+     */
+    if (
+      offer.status ===
+      "ACCEPTED"
+    ) {
+      acceptedOffersDuringWindow +=
+        1;
+    }
+  }
+
+  let tradesDuringWindow =
+    0;
+
+  for (
+    const trade of
+    completedTrades
+  ) {
+    if (
+      trade.offer
+        ?.requestedListingId !==
+        listingId ||
+      !dateFallsWithin(
+        trade.completedAt,
+        window
+      )
+    ) {
+      continue;
+    }
+
+    tradesDuringWindow +=
+      1;
+  }
+
+  return {
+    listingViews,
+
+    engagementActions,
+
+    contactClicks,
+
+    websiteClicks,
+
+    phoneClicks,
+
+    listingShares,
+
+    offers:
+      offersDuringWindow,
+
+    acceptedOffers:
+      acceptedOffersDuringWindow,
+
+    completedTrades:
+      tradesDuringWindow,
+
+    engagementRate:
+      percentage(
+        engagementActions,
+        listingViews
+      ),
+
+    viewToOfferRate:
+      percentage(
+        offersDuringWindow,
+        listingViews
+      ),
+
+    offerAcceptanceRate:
+      percentage(
+        acceptedOffersDuringWindow,
+        offersDuringWindow
+      ),
+
+    offerToTradeRate:
+      percentage(
+        tradesDuringWindow,
+        offersDuringWindow
+      ),
+  };
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION PERFORMANCE SIGNALS
+ * ============================================================
+ */
+
+const buildAdvancedPromotionSignals = ({
+  promotionViews = 0,
+  promotionClicks = 0,
+  listingActivity,
+  uplift,
+}) => {
+  const signals = [];
+
+  const views =
+    safeNumber(
+      promotionViews
+    );
+
+  const clicks =
+    safeNumber(
+      promotionClicks
+    );
+
+  const offers =
+    safeNumber(
+      listingActivity?.offers
+    );
+
+  const completedTrades =
+    safeNumber(
+      listingActivity
+        ?.completedTrades
+    );
+
+  if (views > 0) {
+    signals.push(
+      "GENERATING_VISIBILITY"
+    );
+  }
+
+  if (clicks > 0) {
+    signals.push(
+      "GENERATING_CLICKS"
+    );
+  }
+
+  if (
+    views === 0 &&
+    clicks === 0
+  ) {
+    signals.push(
+      "NO_OBSERVED_PROMOTION_ACTIVITY"
+    );
+  }
+
+  if (
+    views > 0 &&
+    clicks === 0
+  ) {
+    signals.push(
+      "VIEWS_WITHOUT_CLICKS"
+    );
+  }
+
+  if (offers > 0) {
+    signals.push(
+      "OFFERS_OBSERVED_DURING_PROMOTION"
+    );
+  }
+
+  if (
+    completedTrades > 0
+  ) {
+    signals.push(
+      "COMPLETED_TRADES_OBSERVED_DURING_PROMOTION"
+    );
+  }
+
+  if (
+    uplift?.listingViews
+      ?.available &&
+    safeNumber(
+      uplift.listingViews
+        .percentageChange
+    ) > 0
+  ) {
+    signals.push(
+      "TRAFFIC_UPLIFT"
+    );
+  }
+
+  if (
+    uplift?.engagement
+      ?.available &&
+    safeNumber(
+      uplift.engagement
+        .percentageChange
+    ) > 0
+  ) {
+    signals.push(
+      "ENGAGEMENT_UPLIFT"
+    );
+  }
+
+  if (
+    uplift?.offers
+      ?.available &&
+    safeNumber(
+      uplift.offers
+        .percentageChange
+    ) > 0
+  ) {
+    signals.push(
+      "OFFER_UPLIFT"
+    );
+  }
+
+  const comparableUplifts = [
+    uplift?.listingViews,
+    uplift?.engagement,
+    uplift?.offers,
+    uplift?.completedTrades,
+  ].filter(
+    (metric) =>
+      metric?.available
+  );
+
+  if (
+    comparableUplifts.length >
+      0 &&
+    comparableUplifts.every(
+      (metric) =>
+        safeNumber(
+          metric.percentageChange
+        ) <= 0
+    )
+  ) {
+    signals.push(
+      "NO_OBSERVED_UPLIFT"
+    );
+  }
+
+  return [
+    ...new Set(
+      signals
+    ),
+  ];
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION PERFORMANCE STATE
+ * ============================================================
+ *
+ * No arbitrary marketplace benchmark is manufactured here.
+ *
+ * States are derived from observable funnel conditions.
+ * ============================================================
+ */
+
+const classifyAdvancedPromotionPerformance = ({
+  amount,
+  promotionViews,
+  promotionClicks,
+  listingActivity,
+  uplift,
+}) => {
+  const spend =
+    safeNumber(amount);
+
+  const views =
+    safeNumber(
+      promotionViews
+    );
+
+  const clicks =
+    safeNumber(
+      promotionClicks
+    );
+
+  const offers =
+    safeNumber(
+      listingActivity?.offers
+    );
+
+  const completedTrades =
+    safeNumber(
+      listingActivity
+        ?.completedTrades
+    );
+
+  if (
+    spend > 0 &&
+    views === 0 &&
+    clicks === 0 &&
+    offers === 0 &&
+    completedTrades === 0
+  ) {
+    return "HIGH_COST_LOW_ACTIVITY";
+  }
+
+  if (
+    views > 0 &&
+    clicks === 0
+  ) {
+    return "VISIBILITY_WITH_LOW_ENGAGEMENT";
+  }
+
+  if (
+    clicks > 0 &&
+    offers === 0
+  ) {
+    return "ENGAGEMENT_WITH_LOW_OFFERS";
+  }
+
+  if (
+    offers > 0 &&
+    completedTrades === 0
+  ) {
+    return "OFFERS_WITH_LOW_COMPLETION";
+  }
+
+  const comparableUplifts = [
+    uplift?.listingViews,
+    uplift?.engagement,
+    uplift?.offers,
+    uplift?.completedTrades,
+  ].filter(
+    (metric) =>
+      metric?.available
+  );
+
+  if (
+    comparableUplifts.length >
+      0 &&
+    comparableUplifts.every(
+      (metric) =>
+        safeNumber(
+          metric.percentageChange
+        ) <= 0
+    )
+  ) {
+    return "NO_OBSERVED_UPLIFT";
+  }
+
+  if (
+    views > 0 &&
+    clicks > 0 &&
+    (
+      offers > 0 ||
+      completedTrades > 0
+    )
+  ) {
+    return "STRONG_PERFORMER";
+  }
+
+  return "INSUFFICIENT_DATA";
+};
+
+
+/**
+ * ============================================================
+ * PROMOTION RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildAdvancedPromotionRecommendations = ({
+  promotion,
+  state,
+  promotionViews,
+  promotionClicks,
+  listingActivity,
+  uplift,
+  costEfficiency,
+}) => {
+  const recommendations =
+    [];
+
+  const addRecommendation = ({
+    code,
+    priority,
+    title,
+    message,
+    reason,
+    actions,
+    evidence,
+  }) => {
+    recommendations.push({
+      code,
+
+      priority,
+
+      category:
+        "PROMOTION_OPTIMIZATION",
+
+      title,
+
+      message,
+
+      reason,
+
+      actions,
+
+      promotion: {
+        id:
+          promotion.id,
+
+        type:
+          promotion.type,
+
+        listingId:
+          promotion.listingId,
+
+        listingTitle:
+          promotion.listing
+            ?.title ||
+          null,
+      },
+
+      evidence,
+    });
+  };
+
+  if (
+    state ===
+    "HIGH_COST_LOW_ACTIVITY"
+  ) {
+    addRecommendation({
+      code:
+        "REVIEW_PROMOTION_EFFICIENCY",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.HIGH,
+
+      title:
+        "Review this promotion before increasing spend",
+
+      message:
+        "Promotion spend was recorded without corresponding observed promotion activity or downstream listing outcomes in the selected period.",
+
+      reason:
+        "Spend is present while tracked promotion views, clicks, offers during promotion, and completed trades during promotion are absent.",
+
+      actions: [
+        "Confirm the promotion was active and visible for the expected period",
+        "Review the promoted listing before purchasing additional promotion",
+        "Compare this promotion with stronger historical promotions",
+      ],
+
+      evidence: {
+        spend:
+          safeNumber(
+            promotion.amount
+          ),
+
+        promotionViews,
+
+        promotionClicks,
+
+        offersDuringPromotion:
+          listingActivity.offers,
+
+        completedTradesDuringPromotion:
+          listingActivity
+            .completedTrades,
+      },
+    });
+  }
+
+  if (
+    state ===
+    "VISIBILITY_WITH_LOW_ENGAGEMENT"
+  ) {
+    addRecommendation({
+      code:
+        "IMPROVE_PROMOTED_LISTING_PRESENTATION",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.HIGH,
+
+      title:
+        "Turn promotion visibility into interaction",
+
+      message:
+        "The promotion is receiving tracked views but has not produced tracked promotion clicks in the selected period.",
+
+      reason:
+        "Observed promotion visibility is not progressing to tracked promotion interaction.",
+
+      actions: [
+        "Review the listing's primary image",
+        "Review the listing title for clarity",
+        "Ensure important item details are visible and complete",
+        "Review the listing before extending or repeating the promotion",
+      ],
+
+      evidence: {
+        promotionViews,
+
+        promotionClicks,
+
+        clickThroughRate:
+          percentage(
+            promotionClicks,
+            promotionViews
+          ),
+      },
+    });
+  }
+
+  if (
+    state ===
+    "ENGAGEMENT_WITH_LOW_OFFERS"
+  ) {
+    addRecommendation({
+      code:
+        "REVIEW_PROMOTION_OFFER_CONVERSION",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.MEDIUM,
+
+      title:
+        "Review offer conversion on the promoted listing",
+
+      message:
+        "Tracked promotion interaction is present, but no offers were observed for the listing during the promotion window.",
+
+      reason:
+        "Promotion interaction is occurring without an observed offer during the same promotion period.",
+
+      actions: [
+        "Clarify the desired barter or exchange expectations",
+        "Review whether the listing answers likely exchange questions",
+        "Make item condition and value expectations clear",
+      ],
+
+      evidence: {
+        promotionClicks,
+
+        listingViewsDuringPromotion:
+          listingActivity
+            .listingViews,
+
+        engagementDuringPromotion:
+          listingActivity
+            .engagementActions,
+
+        offersDuringPromotion:
+          listingActivity.offers,
+      },
+    });
+  }
+
+  if (
+    state ===
+    "OFFERS_WITH_LOW_COMPLETION"
+  ) {
+    addRecommendation({
+      code:
+        "IMPROVE_PROMOTION_TRADE_COMPLETION",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.MEDIUM,
+
+      title:
+        "Review the path from offers to completed trades",
+
+      message:
+        "Offers were observed during the promotion window, but no completed trades were observed for the listing during that same period.",
+
+      reason:
+        "Observed demand reached the offer stage without an in-window completed trade.",
+
+      actions: [
+        "Review received offers promptly",
+        "Keep listing availability and exchange expectations current",
+        "Follow through on suitable accepted offers",
+      ],
+
+      evidence: {
+        offersDuringPromotion:
+          listingActivity.offers,
+
+        acceptedOffersDuringPromotion:
+          listingActivity
+            .acceptedOffers,
+
+        completedTradesDuringPromotion:
+          listingActivity
+            .completedTrades,
+      },
+    });
+  }
+
+  if (
+    state ===
+    "NO_OBSERVED_UPLIFT"
+  ) {
+    addRecommendation({
+      code:
+        "REVIEW_PROMOTION_UPLIFT",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.MEDIUM,
+
+      title:
+        "Review whether this promotion improved observed performance",
+
+      message:
+        "Comparable baseline data is available, but the tracked performance indicators did not show positive observed uplift during the promotion period.",
+
+      reason:
+        "Comparable before-versus-during metrics did not increase in the selected analytics window.",
+
+      actions: [
+        "Compare this promotion with previous promotion periods",
+        "Review the listing before repeating the same promotion setup",
+        "Use a broader analytics period before making a long-term decision",
+      ],
+
+      evidence: {
+        uplift,
+      },
+    });
+  }
+
+  if (
+    state ===
+    "STRONG_PERFORMER"
+  ) {
+    addRecommendation({
+      code:
+        "PRESERVE_STRONG_PROMOTION",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.LOW,
+
+      title:
+        "Preserve what is working in this promotion",
+
+      message:
+        "This promotion has observed visibility and interaction together with downstream listing activity during the promotion window.",
+
+      reason:
+        "The promotion progressed through multiple observable performance stages.",
+
+      actions: [
+        "Keep the listing presentation consistent while performance remains strong",
+        "Compare future promotions against this promotion's efficiency",
+        "Use this promotion as a historical reference point",
+      ],
+
+      evidence: {
+        promotionViews,
+
+        promotionClicks,
+
+        offersDuringPromotion:
+          listingActivity.offers,
+
+        completedTradesDuringPromotion:
+          listingActivity
+            .completedTrades,
+
+        costEfficiency,
+      },
+    });
+  }
+
+  if (
+    recommendations.length ===
+    0
+  ) {
+    addRecommendation({
+      code:
+        "COLLECT_MORE_PROMOTION_DATA",
+
+      priority:
+        ADVANCED_PROMOTION_PRIORITIES.LOW,
+
+      title:
+        "Collect more promotion performance data",
+
+      message:
+        "There is not yet enough observed activity in the selected period to produce a stronger optimization recommendation.",
+
+      reason:
+        "The current promotion data does not yet establish a clear performance pattern.",
+
+      actions: [
+        "Continue monitoring promotion views and clicks",
+        "Review offer activity during the promotion period",
+        "Compare performance again after more activity is recorded",
+      ],
+
+      evidence: {
+        promotionViews,
+
+        promotionClicks,
+
+        offersDuringPromotion:
+          listingActivity.offers,
+
+        completedTradesDuringPromotion:
+          listingActivity
+            .completedTrades,
+      },
+    });
+  }
+
+  return recommendations;
+};
+
+
+/**
+ * ============================================================
+ * ADVANCED PROMOTION TREND BUCKET
+ * ============================================================
+ */
+
+const getAdvancedPromotionTrendKey = (
+  date,
+  days
+) => {
+  const normalized =
+    new Date(date);
+
+  if (
+    Number.isNaN(
+      normalized.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  /**
+   * Short periods remain daily.
+   */
+  if (days <= 31) {
+    return formatDateKey(
+      normalized
+    );
+  }
+
+  /**
+   * Longer periods are grouped by the Monday of that week.
+   */
+  const weekStart =
+    startOfDay(
+      normalized
+    );
+
+  const day =
+    weekStart.getDay();
+
+  const difference =
+    day === 0
+      ? -6
+      : 1 - day;
+
+  weekStart.setDate(
+    weekStart.getDate() +
+      difference
+  );
+
+  return formatDateKey(
+    weekStart
+  );
+};
+
+
+/**
+ * ============================================================
+ * ADVANCED PROMOTION HISTORICAL TRENDS
+ * ============================================================
+ */
+
+const buildAdvancedPromotionTrends = ({
+  promotions,
+  analyticsEvents,
+  offers,
+  completedTrades,
+  days,
+}) => {
+  const trendMap =
+    new Map();
+
+  const ensureBucket = (
+    date
+  ) => {
+    const key =
+      getAdvancedPromotionTrendKey(
+        date,
+        days
+      );
+
+    if (!key) {
+      return null;
+    }
+
+    if (
+      !trendMap.has(key)
+    ) {
+      trendMap.set(
+        key,
+        {
+          period: key,
+
+          promotionViews: 0,
+
+          promotionClicks: 0,
+
+          offersDuringPromotions:
+            0,
+
+          acceptedOffersDuringPromotions:
+            0,
+
+          completedTradesDuringPromotions:
+            0,
+        }
+      );
+    }
+
+    return trendMap.get(
+      key
+    );
+  };
+
+  /**
+   * Direct promotion events.
+   */
+  for (
+    const promotion of
+    promotions
+  ) {
+    for (
+      const event of
+      promotion.analyticsEvents ||
+      []
+    ) {
+      const bucket =
+        ensureBucket(
+          event.createdAt
+        );
+
+      if (!bucket) {
+        continue;
+      }
+
+      if (
+        event.type ===
+        "VIEW"
+      ) {
+        bucket.promotionViews +=
+          1;
+      }
+
+      if (
+        event.type ===
+        "CLICK"
+      ) {
+        bucket.promotionClicks +=
+          1;
+      }
+    }
+  }
+
+  /**
+   * Downstream activity is only counted when it falls inside
+   * at least one promotion window for that listing.
+   *
+   * If overlapping promotions exist for the same listing, an
+   * offer/trade is counted once at the business trend level.
+   */
+  const listingPromotionWindows =
+    new Map();
+
+  for (
+    const promotion of
+    promotions
+  ) {
+    if (
+      !promotion.effectiveWindow
+    ) {
+      continue;
+    }
+
+    if (
+      !listingPromotionWindows.has(
+        promotion.listingId
+      )
+    ) {
+      listingPromotionWindows.set(
+        promotion.listingId,
+        []
+      );
+    }
+
+    listingPromotionWindows
+      .get(
+        promotion.listingId
+      )
+      .push(
+        promotion.effectiveWindow
+      );
+  }
+
+  for (
+    const offer of
+    offers
+  ) {
+    const windows =
+      listingPromotionWindows.get(
+        offer.requestedListingId
+      ) || [];
+
+    const insidePromotion =
+      windows.some(
+        (window) =>
+          dateFallsWithin(
+            offer.createdAt,
+            window
+          )
+      );
+
+    if (!insidePromotion) {
+      continue;
+    }
+
+    const bucket =
+      ensureBucket(
+        offer.createdAt
+      );
+
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.offersDuringPromotions +=
+      1;
+
+    if (
+      offer.status ===
+      "ACCEPTED"
+    ) {
+      bucket.acceptedOffersDuringPromotions +=
+        1;
+    }
+  }
+
+  for (
+    const trade of
+    completedTrades
+  ) {
+    const listingId =
+      trade.offer
+        ?.requestedListingId;
+
+    const windows =
+      listingPromotionWindows.get(
+        listingId
+      ) || [];
+
+    const insidePromotion =
+      windows.some(
+        (window) =>
+          dateFallsWithin(
+            trade.completedAt,
+            window
+          )
+      );
+
+    if (!insidePromotion) {
+      continue;
+    }
+
+    const bucket =
+      ensureBucket(
+        trade.completedAt
+      );
+
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.completedTradesDuringPromotions +=
+      1;
+  }
+
+  return Array.from(
+    trendMap.values()
+  )
+    .map(
+      (item) => ({
+        ...item,
+
+        clickThroughRate:
+          percentage(
+            item.promotionClicks,
+            item.promotionViews
+          ),
+      })
+    )
+    .sort(
+      (a, b) =>
+        a.period.localeCompare(
+          b.period
+        )
+    );
+};
+
+
+/**
+ * ============================================================
+ * ADVANCED PROMOTION RECOMMENDATION RANKING
+ * ============================================================
+ */
+
+const getAdvancedPromotionPriorityWeight = (
+  priority
+) => {
+  switch (priority) {
+    case ADVANCED_PROMOTION_PRIORITIES.HIGH:
+      return 3;
+
+    case ADVANCED_PROMOTION_PRIORITIES.MEDIUM:
+      return 2;
+
+    case ADVANCED_PROMOTION_PRIORITIES.LOW:
+      return 1;
+
+    default:
+      return 0;
+  }
+};
+
+
+const rankAdvancedPromotionRecommendations = (
+  recommendations
+) => {
+  return [
+    ...recommendations,
+  ].sort(
+    (a, b) => {
+      const priorityDifference =
+        getAdvancedPromotionPriorityWeight(
+          b.priority
+        ) -
+        getAdvancedPromotionPriorityWeight(
+          a.priority
+        );
+
+      if (
+        priorityDifference !==
+        0
+      ) {
+        return priorityDifference;
+      }
+
+      return (
+        a.code || ""
+      ).localeCompare(
+        b.code || ""
+      );
+    }
+  );
+};
+
+
+/**
+ * ============================================================
+ * 9.11.18.14
+ * ADVANCED PROMOTION ANALYTICS SERVICE
+ * ============================================================
+ */
+
+export const getBusinessAdvancedPromotionAnalytics = async ({
+    businessId,
+    days = DEFAULT_ANALYTICS_DAYS,
+    startDate = null,
+    endDate = null,
+  }) => {
+    if (!businessId) {
+      throw new Error(
+        "Business ID is required."
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 1. Resolve canonical business
+     * --------------------------------------------------------
+     */
+
+    const business =
+      await getBusinessAnalyticsContext(
+        businessId
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 2. Resolve analytics window
+     * --------------------------------------------------------
+     */
+
+    const window =
+      buildAnalyticsWindow({
+        days,
+        startDate,
+        endDate,
+      });
+
+  const {
+      start,
+      end,
+    } = window;
+
+    /**
+     * --------------------------------------------------------
+     * Internal comparison-data window
+     * --------------------------------------------------------
+     *
+     * Advanced Promotion Analytics compares activity observed
+     * during a promotion against an immediately preceding
+     * equal-duration baseline.
+     *
+     * The public analytics window remains:
+     *
+     *     start -> end
+     *
+     * But internal comparison data may need to begin before
+     * `start`.
+     *
+     * We therefore load up to one additional analytics-window
+     * length before `start`.
+     *
+     * IMPORTANT:
+     *
+     * This does NOT expand the analytics period returned to
+     * the client.
+     *
+     * It only supplies historical comparison observations
+     * needed for before-vs-during uplift calculations.
+     */
+
+    const comparisonLookbackMs =
+      Math.max(
+        DAY_MS,
+        window.days * DAY_MS
+      );
+
+    const comparisonDataStart =
+      new Date(
+        start.getTime() -
+          comparisonLookbackMs
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 3. Load promotions overlapping selected window
+     * --------------------------------------------------------
+     */
+
+    const promotions =
+      await prisma.promotion.findMany(
+        {
+          where: {
+            userId:
+              business.userId,
+
+            startsAt: {
+              lte: end,
+            },
+
+            endsAt: {
+              gte: start,
+            },
+          },
+
+          select: {
+            id: true,
+
+            listingId: true,
+
+            type: true,
+
+            status: true,
+
+            amount: true,
+
+            currency: true,
+
+            durationDays:
+              true,
+
+            startsAt: true,
+
+            endsAt: true,
+
+            createdAt: true,
+
+            listing: {
+              select: {
+                id: true,
+
+                title: true,
+
+                status: true,
+
+                images: {
+                  orderBy: [
+                    {
+                      isPrimary:
+                        "desc",
+                    },
+                    {
+                      sortOrder:
+                        "asc",
+                    },
+                  ],
+
+                  take: 1,
+
+                  select: {
+                    id: true,
+
+                    url: true,
+
+                    isPrimary:
+                      true,
+                  },
+                },
+              },
+            },
+
+            analyticsEvents: {
+              where: {
+                createdAt: {
+                  gte: start,
+                  lte: end,
+                },
+              },
+
+              select: {
+                type: true,
+
+                createdAt:
+                  true,
+              },
+            },
+          },
+
+          orderBy: {
+            createdAt:
+              "desc",
+          },
+        }
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 4. Safe empty state
+     * --------------------------------------------------------
+     */
+
+    if (
+      promotions.length ===
+      0
+    ) {
+      return {
+        business,
+
+        window: {
+          start,
+          end,
+          days:
+            window.days,
+        },
+
+        summary: {
+          totalPromotions: 0,
+
+          totalSpend: 0,
+
+          currencies: [],
+
+          totalPromotionViews:
+            0,
+
+          totalPromotionClicks:
+            0,
+
+          clickThroughRate: 0,
+
+          listingViewsDuringPromotions:
+            0,
+
+          engagementDuringPromotions:
+            0,
+
+          offersDuringPromotions:
+            0,
+
+          acceptedOffersDuringPromotions:
+            0,
+
+          completedTradesDuringPromotions:
+            0,
+
+          averageCostPerView:
+            null,
+
+          averageCostPerClick:
+            null,
+
+          averageCostPerOffer:
+            null,
+
+          averageCostPerCompletedTrade:
+            null,
+
+          strongPerformers: 0,
+
+          underperformers: 0,
+        },
+
+        bestPerformingPromotions:
+          [],
+
+        underperformingPromotions:
+          [],
+
+        recommendations: [],
+
+        trends: [],
+
+        promotions: [],
+
+        methodology: {
+          financialROI:
+            false,
+
+          causalAttribution:
+            false,
+
+          upliftType:
+            "OBSERVED_BEFORE_VS_DURING",
+
+          outcomeAttribution:
+            "ACTIVITY_DURING_PROMOTION_WINDOW",
+        },
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 5. Resolve business listing IDs
+     * --------------------------------------------------------
+     */
+
+    const listingIds =
+      [
+        ...new Set(
+          promotions.map(
+            (promotion) =>
+              promotion.listingId
+          )
+        ),
+      ];
+
+    /**
+     * --------------------------------------------------------
+     * 6. Load downstream listing activity ONCE
+     * --------------------------------------------------------
+     *
+     * This avoids N+1 queries for each promotion.
+     */
+
+    const [
+      listingAnalyticsEvents,
+      offers,
+      completedTrades,
+    ] =
+      await Promise.all([
+        prisma.businessAnalyticsEvent.findMany(
+          {
+            where: {
+              businessId,
+
+              listingId: {
+                in:
+                  listingIds,
+              },
+
+              createdAt: {
+                gte:
+                  comparisonDataStart,
+
+                lte: end,
+              },
+            },
+
+            select: {
+              listingId:
+                true,
+
+              type: true,
+
+              createdAt:
+                true,
+            },
+          }
+        ),
+
+        prisma.offer.findMany(
+          {
+            where: {
+              receiverId:
+                business.userId,
+
+              requestedListingId:
+                {
+                  in:
+                    listingIds,
+                },
+
+              createdAt: {
+                gte:
+                  comparisonDataStart,
+
+                lte: end,
+              },
+            },
+
+            select: {
+              id: true,
+
+              status: true,
+
+              requestedListingId:
+                true,
+
+              createdAt:
+                true,
+            },
+          }
+        ),
+
+        prisma.trade.findMany(
+          {
+            where: {
+              status:
+                "COMPLETED",
+
+              completedAt: {
+                gte:
+                  comparisonDataStart,
+
+                lte: end,
+              },
+
+              offer: {
+                receiverId:
+                  business.userId,
+
+                requestedListingId:
+                  {
+                    in:
+                      listingIds,
+                  },
+              },
+            },
+
+            select: {
+              id: true,
+
+              completedAt:
+                true,
+
+              offer: {
+                select: {
+                  requestedListingId:
+                    true,
+
+                  receiverId:
+                    true,
+                },
+              },
+            },
+          }
+        ),
+      ]);
+
+    /**
+     * --------------------------------------------------------
+     * 7. Build per-promotion intelligence
+     * --------------------------------------------------------
+     */
+
+    const enrichedPromotions =
+      [];
+
+    for (
+      const promotion of
+      promotions
+    ) {
+      const effectiveWindow =
+        buildEffectivePromotionWindow(
+          {
+            promotion,
+
+            analyticsStart:
+              start,
+
+            analyticsEnd:
+              end,
+          }
+        );
+
+      if (
+        !effectiveWindow
+      ) {
+        continue;
+      }
+
+      const baselineWindow =
+        buildPromotionBaselineWindow(
+          {
+            promotionWindow:
+              effectiveWindow,
+
+            comparisonDataStart,
+          }
+        );
+
+      /**
+       * Direct promotion events.
+       */
+
+      let promotionViews =
+        0;
+
+      let promotionClicks =
+        0;
+
+      for (
+        const event of
+        promotion.analyticsEvents ||
+        []
+      ) {
+        if (
+          !dateFallsWithin(
+            event.createdAt,
+            effectiveWindow
+          )
+        ) {
+          continue;
+        }
+
+        if (
+          event.type ===
+          "VIEW"
+        ) {
+          promotionViews +=
+            1;
+        }
+
+        if (
+          event.type ===
+          "CLICK"
+        ) {
+          promotionClicks +=
+            1;
+        }
+      }
+
+      /**
+       * Listing activity during promotion.
+       */
+
+      const duringActivity =
+        buildPromotionListingActivity(
+          {
+            listingId:
+              promotion.listingId,
+
+            window:
+              effectiveWindow,
+
+            analyticsEvents:
+              listingAnalyticsEvents,
+
+            offers,
+
+            completedTrades,
+          }
+        );
+
+      /**
+       * Listing activity immediately before promotion.
+       */
+
+      const baselineActivity =
+        baselineWindow
+          ? buildPromotionListingActivity(
+              {
+                listingId:
+                  promotion.listingId,
+
+                window:
+                  baselineWindow,
+
+                analyticsEvents:
+                  listingAnalyticsEvents,
+
+                offers,
+
+                completedTrades,
+              }
+            )
+          : null;
+
+      /**
+       * Observed uplift.
+       */
+
+      const uplift =
+        baselineActivity
+          ? {
+              available:
+                true,
+
+              listingViews:
+                calculateObservedPromotionUplift(
+                  baselineActivity
+                    .listingViews,
+                  duringActivity
+                    .listingViews
+                ),
+
+              engagement:
+                calculateObservedPromotionUplift(
+                  baselineActivity
+                    .engagementActions,
+                  duringActivity
+                    .engagementActions
+                ),
+
+              offers:
+                calculateObservedPromotionUplift(
+                  baselineActivity
+                    .offers,
+                  duringActivity
+                    .offers
+                ),
+
+              acceptedOffers:
+                calculateObservedPromotionUplift(
+                  baselineActivity
+                    .acceptedOffers,
+                  duringActivity
+                    .acceptedOffers
+                ),
+
+              completedTrades:
+                calculateObservedPromotionUplift(
+                  baselineActivity
+                    .completedTrades,
+                  duringActivity
+                    .completedTrades
+                ),
+            }
+          : {
+              available:
+                false,
+
+              reason:
+                "BASELINE_OUTSIDE_SELECTED_ANALYTICS_WINDOW",
+            };
+
+      /**
+       * Cost efficiency.
+       */
+
+      const amount =
+        safeNumber(
+          promotion.amount
+        );
+
+      const costEfficiency = {
+        costPerPromotionView:
+          promotionCostPerOutcome(
+            amount,
+            promotionViews
+          ),
+
+        costPerPromotionClick:
+          promotionCostPerOutcome(
+            amount,
+            promotionClicks
+          ),
+
+        costPerListingViewDuringPromotion:
+          promotionCostPerOutcome(
+            amount,
+            duringActivity
+              .listingViews
+          ),
+
+        costPerEngagementDuringPromotion:
+          promotionCostPerOutcome(
+            amount,
+            duringActivity
+              .engagementActions
+          ),
+
+        costPerOfferDuringPromotion:
+          promotionCostPerOutcome(
+            amount,
+            duringActivity
+              .offers
+          ),
+
+        costPerCompletedTradeDuringPromotion:
+          promotionCostPerOutcome(
+            amount,
+            duringActivity
+              .completedTrades
+          ),
+      };
+
+      const signals =
+        buildAdvancedPromotionSignals(
+          {
+            promotionViews,
+
+            promotionClicks,
+
+            listingActivity:
+              duringActivity,
+
+            uplift,
+          }
+        );
+
+      const performanceState =
+        classifyAdvancedPromotionPerformance(
+          {
+            amount,
+
+            promotionViews,
+
+            promotionClicks,
+
+            listingActivity:
+              duringActivity,
+
+            uplift,
+          }
+        );
+
+      const recommendations =
+        buildAdvancedPromotionRecommendations(
+          {
+            promotion,
+
+            state:
+              performanceState,
+
+            promotionViews,
+
+            promotionClicks,
+
+            listingActivity:
+              duringActivity,
+
+            uplift,
+
+            costEfficiency,
+          }
+        );
+
+      enrichedPromotions.push({
+        id:
+          promotion.id,
+
+        type:
+          promotion.type,
+
+        status:
+          promotion.status,
+
+        amount,
+
+        currency:
+          promotion.currency,
+
+        durationDays:
+          promotion.durationDays,
+
+        startsAt:
+          promotion.startsAt,
+
+        endsAt:
+          promotion.endsAt,
+
+        listing: {
+          id:
+            promotion.listing
+              ?.id ||
+            promotion.listingId,
+
+          title:
+            promotion.listing
+              ?.title ||
+            null,
+
+          status:
+            promotion.listing
+              ?.status ||
+            null,
+
+          image:
+            promotion.listing
+              ?.images?.[0] ||
+            null,
+        },
+
+        effectiveWindow: {
+          start:
+            effectiveWindow.start,
+
+          end:
+            effectiveWindow.end,
+        },
+
+        baselineWindow:
+          baselineWindow
+            ? {
+                start:
+                  baselineWindow.start,
+
+                end:
+                  baselineWindow.end,
+              }
+            : null,
+
+        promotionTraffic: {
+          views:
+            promotionViews,
+
+          clicks:
+            promotionClicks,
+
+          clickThroughRate:
+            percentage(
+              promotionClicks,
+              promotionViews
+            ),
+        },
+
+        activityDuringPromotion: {
+          listingViews:
+            duringActivity
+              .listingViews,
+
+          engagementActions:
+            duringActivity
+              .engagementActions,
+
+          contactClicks:
+            duringActivity
+              .contactClicks,
+
+          websiteClicks:
+            duringActivity
+              .websiteClicks,
+
+          phoneClicks:
+            duringActivity
+              .phoneClicks,
+
+          listingShares:
+            duringActivity
+              .listingShares,
+
+          offersDuringPromotion:
+            duringActivity
+              .offers,
+
+          acceptedOffersDuringPromotion:
+            duringActivity
+              .acceptedOffers,
+
+          completedTradesDuringPromotion:
+            duringActivity
+              .completedTrades,
+
+          engagementRate:
+            duringActivity
+              .engagementRate,
+
+          viewToOfferRate:
+            duringActivity
+              .viewToOfferRate,
+
+          offerAcceptanceRate:
+            duringActivity
+              .offerAcceptanceRate,
+
+          offerToTradeRate:
+            duringActivity
+              .offerToTradeRate,
+        },
+
+        baselineActivity:
+          baselineActivity
+            ? {
+                listingViews:
+                  baselineActivity
+                    .listingViews,
+
+                engagementActions:
+                  baselineActivity
+                    .engagementActions,
+
+                offers:
+                  baselineActivity
+                    .offers,
+
+                acceptedOffers:
+                  baselineActivity
+                    .acceptedOffers,
+
+                completedTrades:
+                  baselineActivity
+                    .completedTrades,
+              }
+            : null,
+
+        uplift,
+
+        costEfficiency,
+
+        performanceState,
+
+        signals,
+
+        recommendations,
+      });
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 8. Business-level totals
+     * --------------------------------------------------------
+     */
+
+    let totalSpend = 0;
+
+    let totalPromotionViews =
+      0;
+
+    let totalPromotionClicks =
+      0;
+
+    let listingViewsDuringPromotions =
+      0;
+
+    let engagementDuringPromotions =
+      0;
+
+    let offersDuringPromotions =
+      0;
+
+    let acceptedOffersDuringPromotions =
+      0;
+
+    let completedTradesDuringPromotions =
+      0;
+
+    let strongPerformers =
+      0;
+
+    let underperformers =
+      0;
+
+    const currencies =
+      new Set();
+
+    const allRecommendations =
+      [];
+
+    for (
+      const promotion of
+      enrichedPromotions
+    ) {
+      totalSpend +=
+        safeNumber(
+          promotion.amount
+        );
+
+      if (
+        promotion.currency
+      ) {
+        currencies.add(
+          promotion.currency
+        );
+      }
+
+      totalPromotionViews +=
+        safeNumber(
+          promotion
+            .promotionTraffic
+            .views
+        );
+
+      totalPromotionClicks +=
+        safeNumber(
+          promotion
+            .promotionTraffic
+            .clicks
+        );
+
+      listingViewsDuringPromotions +=
+        safeNumber(
+          promotion
+            .activityDuringPromotion
+            .listingViews
+        );
+
+      engagementDuringPromotions +=
+        safeNumber(
+          promotion
+            .activityDuringPromotion
+            .engagementActions
+        );
+
+      offersDuringPromotions +=
+        safeNumber(
+          promotion
+            .activityDuringPromotion
+            .offersDuringPromotion
+        );
+
+      acceptedOffersDuringPromotions +=
+        safeNumber(
+          promotion
+            .activityDuringPromotion
+            .acceptedOffersDuringPromotion
+        );
+
+      completedTradesDuringPromotions +=
+        safeNumber(
+          promotion
+            .activityDuringPromotion
+            .completedTradesDuringPromotion
+        );
+
+      if (
+        promotion.performanceState ===
+        "STRONG_PERFORMER"
+      ) {
+        strongPerformers +=
+          1;
+      }
+
+      if (
+        [
+          "HIGH_COST_LOW_ACTIVITY",
+          "VISIBILITY_WITH_LOW_ENGAGEMENT",
+          "ENGAGEMENT_WITH_LOW_OFFERS",
+          "OFFERS_WITH_LOW_COMPLETION",
+          "NO_OBSERVED_UPLIFT",
+        ].includes(
+          promotion.performanceState
+        )
+      ) {
+        underperformers +=
+          1;
+      }
+
+      allRecommendations.push(
+        ...(
+          promotion.recommendations ||
+          []
+        )
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 9. Promotion ranking
+     * --------------------------------------------------------
+     *
+     * This is NOT a marketplace ranking.
+     *
+     * It only ranks this business's own promotions using
+     * observed funnel depth.
+     */
+
+    const promotionPerformanceWeight =
+      (promotion) => {
+        const activity =
+          promotion
+            .activityDuringPromotion;
+
+        return (
+          safeNumber(
+            activity
+              .completedTradesDuringPromotion
+          ) *
+            1000000 +
+          safeNumber(
+            activity
+              .acceptedOffersDuringPromotion
+          ) *
+            10000 +
+          safeNumber(
+            activity
+              .offersDuringPromotion
+          ) *
+            100 +
+          safeNumber(
+            promotion
+              .promotionTraffic
+              .clicks
+          ) *
+            10 +
+          safeNumber(
+            promotion
+              .promotionTraffic
+              .views
+          )
+        );
+      };
+
+    const rankedPromotions =
+      [
+        ...enrichedPromotions,
+      ].sort(
+        (a, b) => {
+          const difference =
+            promotionPerformanceWeight(
+              b
+            ) -
+            promotionPerformanceWeight(
+              a
+            );
+
+          if (
+            difference !== 0
+          ) {
+            return difference;
+          }
+
+          return (
+            new Date(
+              b.startsAt ||
+                b.endsAt ||
+                0
+            ).getTime() -
+            new Date(
+              a.startsAt ||
+                a.endsAt ||
+                0
+            ).getTime()
+          );
+        }
+      );
+
+    const bestPerformingPromotions =
+      rankedPromotions
+        .filter(
+          (promotion) =>
+            promotion.performanceState ===
+              "STRONG_PERFORMER" ||
+            promotion
+              .activityDuringPromotion
+              .offersDuringPromotion >
+              0 ||
+            promotion
+              .activityDuringPromotion
+              .completedTradesDuringPromotion >
+              0
+        )
+        .slice(
+          0,
+          5
+        );
+
+    const underperformingPromotions =
+      enrichedPromotions
+        .filter(
+          (promotion) =>
+            [
+              "HIGH_COST_LOW_ACTIVITY",
+              "VISIBILITY_WITH_LOW_ENGAGEMENT",
+              "ENGAGEMENT_WITH_LOW_OFFERS",
+              "OFFERS_WITH_LOW_COMPLETION",
+              "NO_OBSERVED_UPLIFT",
+            ].includes(
+              promotion.performanceState
+            )
+        )
+        .sort(
+          (a, b) =>
+            safeNumber(
+              b.amount
+            ) -
+            safeNumber(
+              a.amount
+            )
+        )
+        .slice(
+          0,
+          5
+        );
+
+    /**
+     * --------------------------------------------------------
+     * 10. Historical promotion trends
+     * --------------------------------------------------------
+     */
+
+    const promotionsForTrends =
+      enrichedPromotions.map(
+        (promotion) => {
+          const source =
+            promotions.find(
+              (item) =>
+                item.id ===
+                promotion.id
+            );
+
+          return {
+            ...source,
+
+            effectiveWindow:
+              promotion
+                .effectiveWindow,
+          };
+        }
+      );
+
+    const trends =
+      buildAdvancedPromotionTrends(
+        {
+          promotions:
+            promotionsForTrends,
+
+          analyticsEvents:
+            listingAnalyticsEvents,
+
+          offers,
+
+          completedTrades,
+
+          days:
+            window.days,
+        }
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 11. Business-level recommendations
+     * --------------------------------------------------------
+     */
+
+    const recommendations =
+      rankAdvancedPromotionRecommendations(
+        allRecommendations
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 12. Final response
+     * --------------------------------------------------------
+     */
+
+    return {
+      business,
+
+      window: {
+        start,
+        end,
+
+        days:
+          window.days,
+      },
+
+      summary: {
+        totalPromotions:
+          enrichedPromotions.length,
+
+        totalSpend:
+          round(
+            totalSpend
+          ),
+
+        currencies:
+          Array.from(
+            currencies
+          ),
+
+        totalPromotionViews,
+
+        totalPromotionClicks,
+
+        clickThroughRate:
+          percentage(
+            totalPromotionClicks,
+            totalPromotionViews
+          ),
+
+        listingViewsDuringPromotions,
+
+        engagementDuringPromotions,
+
+        offersDuringPromotions,
+
+        acceptedOffersDuringPromotions,
+
+        completedTradesDuringPromotions,
+
+        averageCostPerView:
+          promotionCostPerOutcome(
+            totalSpend,
+            totalPromotionViews
+          ),
+
+        averageCostPerClick:
+          promotionCostPerOutcome(
+            totalSpend,
+            totalPromotionClicks
+          ),
+
+        averageCostPerOffer:
+          promotionCostPerOutcome(
+            totalSpend,
+            offersDuringPromotions
+          ),
+
+        averageCostPerCompletedTrade:
+          promotionCostPerOutcome(
+            totalSpend,
+            completedTradesDuringPromotions
+          ),
+
+        strongPerformers,
+
+        underperformers,
+
+        recommendationCount:
+          recommendations.length,
+      },
+
+      bestPerformingPromotions,
+
+      underperformingPromotions,
+
+      /**
+       * Top five optimization actions for dashboard display.
+       */
+      topRecommendations:
+        recommendations.slice(
+          0,
+          5
+        ),
+
+      recommendations,
+
+      trends,
+
+      promotions:
+        enrichedPromotions,
+
+      methodology: {
+        financialROI:
+          false,
+
+        revenueAttribution:
+          false,
+
+        causalAttribution:
+          false,
+
+        promotionTraffic:
+          "DIRECT_PROMOTION_ANALYTICS_EVENTS",
+
+        downstreamOutcomes:
+          "LISTING_ACTIVITY_OBSERVED_DURING_PROMOTION_WINDOW",
+
+        upliftType:
+          "OBSERVED_BEFORE_VS_DURING",
+
+        baselinePolicy:
+          "IMMEDIATELY_PRECEDING_EQUAL_DURATION_WITHIN_SELECTED_ANALYTICS_WINDOW",
+
+        acceptedOfferCaveat:
+          "Accepted offers use the current offer status because the current schema does not provide acceptedAt.",
+
+        overlappingPromotionCaveat:
+          "Per-promotion downstream activity may overlap when multiple promotions for the same listing overlap. Business trend activity is deduplicated by checking whether an outcome occurred inside any promotion window.",
+
+        financialInterpretation:
+          "Promotion spend is monetary cost. Completed barter trades are not treated as revenue or profit.",
+      },
+    };
+  };
 
 /**
  * ============================================================
@@ -12360,6 +15290,2727 @@ const buildCategoryBenchmarkRecommendations = ({
 
   return recommendations;
 };
+
+// UPDATE — server/src/services/businessAnalyticsService.js
+
+/**
+ * ============================================================
+ * BUSINESS CATEGORY BENCHMARKS
+ * ============================================================
+ *
+ * Main Business Pro category-benchmark intelligence service.
+ *
+ * Answers:
+ *
+ * "How are my listings performing compared with aggregated
+ * activity from other ACTIVE businesses in the same category?"
+ *
+ * IMPORTANT:
+ *
+ * - Business Pro authorization is NOT handled here.
+ * - Subscription state is NOT read here.
+ * - The requesting business is excluded from its benchmark.
+ * - Individual competitor analytics are NEVER returned.
+ * - Small marketplace samples are suppressed.
+ * - Benchmarks are calculated from listing categories.
+ * - BusinessProfile.category is NOT used for benchmarking.
+ *
+ * Controller/access layer decides whether the authenticated
+ * business owner may access this service.
+ * ============================================================
+ */
+
+export const getBusinessCategoryBenchmarks = async ({
+    businessId,
+    days = DEFAULT_ANALYTICS_DAYS,
+    startDate = null,
+    endDate = null,
+  } = {}) => {
+    /**
+     * --------------------------------------------------------
+     * 1. Validate input
+     * --------------------------------------------------------
+     */
+
+    if (!businessId) {
+      throw new Error(
+        "Business ID is required for category benchmarks."
+      );
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 2. Resolve canonical business
+     * --------------------------------------------------------
+     */
+
+    const business =
+      await getBusinessAnalyticsContext(
+        businessId
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 3. Build analytics window
+     * --------------------------------------------------------
+     */
+
+    const window =
+      buildAnalyticsWindow({
+        days,
+        startDate,
+        endDate,
+      });
+
+    /**
+     * --------------------------------------------------------
+     * 4. Load canonical business listing performance
+     * --------------------------------------------------------
+     *
+     * This is the SAME listing-performance engine already used
+     * by Conversion Intelligence and Demand Intelligence.
+     *
+     * We therefore preserve one source of truth for:
+     *
+     * - views
+     * - unique viewers
+     * - engagement
+     * - offers
+     * - accepted offers
+     * - completed trades
+     * - conversion rates
+     */
+
+    const listingPerformance =
+      await getListingPerformance({
+        businessId:
+          business.id,
+
+        userId:
+          business.userId,
+
+        start:
+          window.start,
+
+        end:
+          window.end,
+      });
+
+    /**
+     * --------------------------------------------------------
+     * 5. Empty business
+     * --------------------------------------------------------
+     */
+
+    if (
+      listingPerformance.length ===
+      0
+    ) {
+      return {
+        business: {
+          id:
+            business.id,
+
+          businessName:
+            business.businessName,
+
+          slug:
+            business.slug,
+
+          status:
+            business.status,
+
+          verificationStatus:
+            business.verificationStatus,
+        },
+
+        window: {
+          start:
+            window.start.toISOString(),
+
+          end:
+            window.end.toISOString(),
+
+          days:
+            window.days,
+        },
+
+        summary: {
+          totalListings: 0,
+
+          categoriesRepresented: 0,
+
+          categoriesWithBenchmarks: 0,
+
+          categoriesSuppressed: 0,
+
+          listingsAboveCategory: 0,
+
+          listingsNearCategory: 0,
+
+          listingsBelowCategory: 0,
+
+          listingsWithoutBenchmark: 0,
+
+          opportunityListings: 0,
+        },
+
+        categories: [],
+
+        listings: [],
+
+        opportunities: [],
+
+        recommendations: [],
+      };
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 6. Determine categories represented by this business
+     * --------------------------------------------------------
+     */
+
+    const categoryMap =
+      new Map();
+
+    for (
+      const listing of
+      listingPerformance
+    ) {
+      const category =
+        listing.category;
+
+      if (
+        !category?.id
+      ) {
+        continue;
+      }
+
+      if (
+        !categoryMap.has(
+          category.id
+        )
+      ) {
+        categoryMap.set(
+          category.id,
+          {
+            id:
+              category.id,
+
+            name:
+              category.name,
+
+            listings: [],
+          }
+        );
+      }
+
+      categoryMap
+        .get(category.id)
+        .listings.push(
+          listing
+        );
+    }
+
+    const representedCategories =
+      Array.from(
+        categoryMap.values()
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 7. Load external marketplace benchmarks
+     * --------------------------------------------------------
+     *
+     * Each category benchmark excludes:
+     *
+     * - this BusinessProfile
+     * - this business owner
+     *
+     * The helper also applies minimum privacy thresholds.
+     */
+
+    const benchmarkResults =
+      await Promise.all(
+        representedCategories.map(
+          async (
+            categoryGroup
+          ) => {
+            const benchmark =
+              await getCategoryMarketplaceBenchmark(
+                {
+                  categoryId:
+                    categoryGroup.id,
+
+                  requestingBusinessId:
+                    business.id,
+
+                  requestingUserId:
+                    business.userId,
+
+                  start:
+                    window.start,
+
+                  end:
+                    window.end,
+                }
+              );
+
+            return {
+              categoryGroup,
+
+              benchmark,
+            };
+          }
+        )
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 8. Build listing-level category comparisons
+     * --------------------------------------------------------
+     */
+
+    const listingComparisons =
+      [];
+
+    const categoryResults =
+      [];
+
+    for (
+      const {
+        categoryGroup,
+        benchmark,
+      } of benchmarkResults
+    ) {
+      const categoryListings =
+        [];
+
+      for (
+        const listing of
+        categoryGroup.listings
+      ) {
+        /**
+         * ----------------------------------------------------
+         * Normalize canonical listing metrics
+         * ----------------------------------------------------
+         */
+
+        const conversion =
+          listing.conversion ||
+          {};
+
+        const counts =
+          conversion.counts ||
+          {};
+
+        const rates =
+          conversion.rates ||
+          {};
+
+        const normalizedListing =
+          {
+            id:
+              listing.id,
+
+            title:
+              listing.title,
+
+            status:
+              listing.status,
+
+            estimatedValue:
+              listing.estimatedValue,
+
+            location:
+              listing.location,
+
+            category:
+              listing.category,
+
+            image:
+              listing.image,
+
+            metrics: {
+              views:
+                safeNumber(
+                  counts.views ??
+                    listing.views
+                ),
+
+              uniqueViewers:
+                safeNumber(
+                  counts.uniqueViewers ??
+                    listing.uniqueViewers
+                ),
+
+              engagementActions:
+                safeNumber(
+                  counts.engagementActions ??
+                    listing.engagementActions
+                ),
+
+              offersReceived:
+                safeNumber(
+                  counts.offersReceived ??
+                    listing.offersReceived
+                ),
+
+              acceptedOffers:
+                safeNumber(
+                  counts.acceptedOffers ??
+                    listing.acceptedOffers
+                ),
+
+              completedTrades:
+                safeNumber(
+                  counts.completedTrades ??
+                    listing.completedTrades
+                ),
+            },
+
+            rates: {
+              engagementRate:
+                safeNumber(
+                  rates.engagementRate ??
+                    listing
+                      .engagementRate
+                ),
+
+              viewToOfferRate:
+                safeNumber(
+                  rates.viewToOfferRate ??
+                    listing
+                      .viewToOfferRate
+                ),
+
+              offerAcceptanceRate:
+                safeNumber(
+                  rates.offerAcceptanceRate ??
+                    listing
+                      .offerAcceptanceRate
+                ),
+
+              offerToTradeRate:
+                safeNumber(
+                  rates.offerToTradeRate ??
+                    listing
+                      .offerToTradeRate
+                ),
+
+              viewToTradeRate:
+                safeNumber(
+                  rates.viewToTradeRate ??
+                    listing
+                      .viewToTradeRate
+                ),
+            },
+          };
+
+        /**
+         * ----------------------------------------------------
+         * Compare listing with category
+         * ----------------------------------------------------
+         */
+
+        const comparison =
+          buildListingCategoryComparison(
+            {
+              listing:
+                normalizedListing,
+
+              benchmark,
+            }
+          );
+
+        /**
+         * ----------------------------------------------------
+         * Detect opportunities
+         * ----------------------------------------------------
+         */
+
+        const opportunities =
+          detectCategoryBenchmarkOpportunities(
+            {
+              listing:
+                normalizedListing,
+
+              comparison,
+            }
+          );
+
+        const result = {
+          id:
+            normalizedListing.id,
+
+          title:
+            normalizedListing.title,
+
+          status:
+            normalizedListing.status,
+
+          estimatedValue:
+            normalizedListing.estimatedValue,
+
+          location:
+            normalizedListing.location,
+
+          category:
+            normalizedListing.category,
+
+          image:
+            normalizedListing.image,
+
+          metrics:
+            normalizedListing.metrics,
+
+          rates:
+            normalizedListing.rates,
+
+          benchmark: {
+            available:
+              comparison.available,
+
+            reason:
+              comparison.reason,
+
+            sample:
+              comparison.sample,
+
+            overallPosition:
+              comparison.overallPosition,
+
+            metrics:
+              comparison.metrics,
+          },
+
+          opportunities,
+        };
+
+        listingComparisons.push(
+          result
+        );
+
+        categoryListings.push(
+          result
+        );
+      }
+
+      /**
+       * ------------------------------------------------------
+       * Category-level business position
+       * ------------------------------------------------------
+       */
+
+      const availableListings =
+        categoryListings.filter(
+          (listing) =>
+            listing.benchmark
+              .available
+        );
+
+      const aboveCount =
+        availableListings.filter(
+          (listing) =>
+            listing.benchmark
+              .overallPosition ===
+            "ABOVE_CATEGORY"
+        ).length;
+
+      const nearCount =
+        availableListings.filter(
+          (listing) =>
+            listing.benchmark
+              .overallPosition ===
+            "NEAR_CATEGORY"
+        ).length;
+
+      const belowCount =
+        availableListings.filter(
+          (listing) =>
+            listing.benchmark
+              .overallPosition ===
+            "BELOW_CATEGORY"
+        ).length;
+
+      let businessPosition =
+        "INSUFFICIENT_DATA";
+
+      if (
+        availableListings.length >
+        0
+      ) {
+        if (
+          aboveCount >
+            belowCount &&
+          aboveCount >
+            nearCount
+        ) {
+          businessPosition =
+            "ABOVE_CATEGORY";
+        } else if (
+          belowCount >
+            aboveCount &&
+          belowCount >
+            nearCount
+        ) {
+          businessPosition =
+            "BELOW_CATEGORY";
+        } else {
+          businessPosition =
+            "NEAR_CATEGORY";
+        }
+      }
+
+      categoryResults.push({
+        category: {
+          id:
+            categoryGroup.id,
+
+          name:
+            categoryGroup.name,
+        },
+
+        available:
+          Boolean(
+            benchmark?.available
+          ),
+
+        reason:
+          benchmark?.reason ||
+          null,
+
+        sample:
+          benchmark?.sample ||
+          null,
+
+        marketplaceBenchmark:
+          benchmark?.available
+            ? benchmark.benchmark
+            : null,
+
+        businessPosition,
+
+        businessListings:
+          categoryListings.length,
+
+        listingPositions: {
+          above:
+            aboveCount,
+
+          near:
+            nearCount,
+
+          below:
+            belowCount,
+
+          unavailable:
+            categoryListings.length -
+            availableListings.length,
+        },
+      });
+    }
+
+    /**
+     * --------------------------------------------------------
+     * 9. Aggregate benchmark summary
+     * --------------------------------------------------------
+     */
+
+    const listingsAboveCategory =
+      listingComparisons.filter(
+        (listing) =>
+          listing.benchmark
+            .overallPosition ===
+          "ABOVE_CATEGORY"
+      ).length;
+
+    const listingsNearCategory =
+      listingComparisons.filter(
+        (listing) =>
+          listing.benchmark
+            .overallPosition ===
+          "NEAR_CATEGORY"
+      ).length;
+
+    const listingsBelowCategory =
+      listingComparisons.filter(
+        (listing) =>
+          listing.benchmark
+            .overallPosition ===
+          "BELOW_CATEGORY"
+      ).length;
+
+    const listingsWithoutBenchmark =
+      listingComparisons.filter(
+        (listing) =>
+          !listing.benchmark
+            .available
+      ).length;
+
+    const categoriesWithBenchmarks =
+      categoryResults.filter(
+        (category) =>
+          category.available
+      ).length;
+
+    const categoriesSuppressed =
+      categoryResults.filter(
+        (category) =>
+          !category.available
+      ).length;
+
+    /**
+     * --------------------------------------------------------
+     * 10. Aggregate opportunities
+     * --------------------------------------------------------
+     */
+
+    const opportunities =
+      listingComparisons
+        .filter(
+          (listing) =>
+            listing
+              .opportunities
+              .length > 0
+        )
+        .map(
+          (listing) => ({
+            listing: {
+              id:
+                listing.id,
+
+              title:
+                listing.title,
+
+              category:
+                listing.category,
+            },
+
+            overallPosition:
+              listing.benchmark
+                .overallPosition,
+
+            opportunities:
+              listing.opportunities,
+          })
+        );
+
+    /**
+     * --------------------------------------------------------
+     * 11. Business-level recommendations
+     * --------------------------------------------------------
+     */
+
+    const recommendations =
+      buildCategoryBenchmarkRecommendations(
+        {
+          comparisons:
+            listingComparisons,
+        }
+      );
+
+    /**
+     * --------------------------------------------------------
+     * 12. Final privacy-safe response
+     * --------------------------------------------------------
+     */
+
+    return {
+      business: {
+        id:
+          business.id,
+
+        businessName:
+          business.businessName,
+
+        slug:
+          business.slug,
+
+        status:
+          business.status,
+
+        verificationStatus:
+          business.verificationStatus,
+      },
+
+      window: {
+        start:
+          window.start.toISOString(),
+
+        end:
+          window.end.toISOString(),
+
+        days:
+          window.days,
+      },
+
+      privacy: {
+        requestingBusinessExcluded:
+          true,
+
+        minimumExternalBusinesses:
+          CATEGORY_BENCHMARK_MIN_BUSINESSES,
+
+        minimumExternalListings:
+          CATEGORY_BENCHMARK_MIN_LISTINGS,
+
+        smallSamplesSuppressed:
+          true,
+
+        competitorIdentitiesExposed:
+          false,
+      },
+
+      summary: {
+        totalListings:
+          listingComparisons.length,
+
+        categoriesRepresented:
+          representedCategories.length,
+
+        categoriesWithBenchmarks,
+
+        categoriesSuppressed,
+
+        listingsAboveCategory,
+
+        listingsNearCategory,
+
+        listingsBelowCategory,
+
+        listingsWithoutBenchmark,
+
+        opportunityListings:
+          opportunities.length,
+      },
+
+      categories:
+        categoryResults,
+
+      listings:
+        listingComparisons,
+
+      opportunities,
+
+      recommendations,
+    };
+  };
+
+
+  /**
+ * ============================================================
+ * BUSINESS PRO — GROWTH RECOMMENDATIONS
+ * ============================================================
+ *
+ * Combines:
+ *
+ * - Conversion Intelligence
+ * - Demand Intelligence
+ * - Category Benchmarks
+ *
+ * into deterministic, explainable growth recommendations.
+ *
+ * IMPORTANT:
+ *
+ * - No recommendation is persisted.
+ * - No Business Pro entitlement is checked here.
+ * - No client-provided business ownership is trusted here.
+ * - No competitor identity is exposed.
+ * - No unsupported cause is inferred.
+ *
+ * This engine describes OBSERVED marketplace behaviour only.
+ * ============================================================
+ */
+
+const GROWTH_RECOMMENDATION_PRIORITIES =
+  Object.freeze({
+    HIGH: "HIGH",
+    MEDIUM: "MEDIUM",
+    LOW: "LOW",
+  });
+
+const GROWTH_RECOMMENDATION_SCOPES =
+  Object.freeze({
+    BUSINESS: "BUSINESS",
+    LISTING: "LISTING",
+  });
+
+const GROWTH_RECOMMENDATION_CATEGORIES =
+  Object.freeze({
+    VISIBILITY: "VISIBILITY",
+    ENGAGEMENT: "ENGAGEMENT",
+    OFFERS: "OFFERS",
+    CONVERSION: "CONVERSION",
+    TRADE_COMPLETION:
+      "TRADE_COMPLETION",
+    CATEGORY_OPPORTUNITY:
+      "CATEGORY_OPPORTUNITY",
+    HIGH_PERFORMANCE:
+      "HIGH_PERFORMANCE",
+  });
+
+/**
+ * ============================================================
+ * PRIORITY WEIGHT
+ * ============================================================
+ */
+
+const getGrowthPriorityWeight = (
+  priority
+) => {
+  switch (priority) {
+    case GROWTH_RECOMMENDATION_PRIORITIES.HIGH:
+      return 3;
+
+    case GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM:
+      return 2;
+
+    case GROWTH_RECOMMENDATION_PRIORITIES.LOW:
+      return 1;
+
+    default:
+      return 0;
+  }
+};
+
+/**
+ * ============================================================
+ * NORMALIZE SIGNAL CODE
+ * ============================================================
+ */
+
+const getGrowthSignalCode = (
+  signal
+) => {
+  if (!signal) {
+    return null;
+  }
+
+  if (
+    typeof signal ===
+    "string"
+  ) {
+    return signal;
+  }
+
+  if (
+    typeof signal ===
+      "object" &&
+    signal.code
+  ) {
+    return signal.code;
+  }
+
+  return null;
+};
+
+/**
+ * ============================================================
+ * BUILD GROWTH RECOMMENDATION
+ * ============================================================
+ */
+
+const buildGrowthRecommendation = ({
+  code,
+  scope,
+  priority,
+  category,
+  title,
+  message,
+  reason,
+  action,
+  listing = null,
+  evidence = null,
+}) => {
+  return {
+    code,
+
+    scope,
+
+    priority,
+
+    category,
+
+    title,
+
+    message,
+
+    reason,
+
+    action,
+
+    listing:
+      listing
+        ? {
+            id:
+              listing.id,
+
+            title:
+              listing.title,
+
+            category:
+              listing.category ||
+              null,
+
+            image:
+              listing.image ||
+              null,
+          }
+        : null,
+
+    evidence:
+      evidence || null,
+  };
+};
+
+/**
+ * ============================================================
+ * VISIBILITY RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildVisibilityGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+    demand,
+    benchmark,
+  }) => {
+    const recommendations = [];
+
+    const benchmarkOpportunityCodes =
+      new Set(
+        (
+          benchmark
+            ?.opportunities ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    const demandSignalCodes =
+      new Set(
+        (
+          demand?.signals ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    /**
+     * Strong category conversion but weak visibility.
+     */
+    if (
+      benchmarkOpportunityCodes.has(
+        "STRONG_CONVERSION_LOW_VISIBILITY"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "INCREASE_CONVERTING_LISTING_VISIBILITY",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY,
+
+          title:
+            "Increase visibility on a proven listing",
+
+          message:
+            "This listing converts better than its category benchmark but receives below-category traffic.",
+
+          reason: {
+            signal:
+              "STRONG_CONVERSION_LOW_VISIBILITY",
+          },
+
+          action: {
+            type:
+              "IMPROVE_VISIBILITY",
+
+            suggestions: [
+              "Improve the listing's primary image and presentation.",
+              "Share the listing through available marketplace sharing tools.",
+              "Consider promotion if additional visibility fits the business strategy.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            views:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.views
+              ),
+
+            demandScore:
+              safeNumber(
+                demand
+                  ?.demand
+                  ?.score
+              ),
+
+            categoryPosition:
+              benchmark
+                ?.benchmark
+                ?.overallPosition ||
+              null,
+          },
+        })
+      );
+    }
+
+    /**
+     * No observed demand.
+     *
+     * This is LOW priority because absence of activity alone
+     * does not prove that the listing is poor.
+     */
+    if (
+      demand
+        ?.demand
+        ?.classification
+        ?.level ===
+      "NO_OBSERVED_DEMAND"
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "BUILD_LISTING_VISIBILITY",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.LOW,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY,
+
+          title:
+            "Build listing visibility",
+
+          message:
+            "This listing has little or no observed demand activity in the selected analytics period.",
+
+          reason: {
+            signal:
+              "NO_OBSERVED_DEMAND",
+          },
+
+          action: {
+            type:
+              "IMPROVE_VISIBILITY",
+
+            suggestions: [
+              "Review whether the listing is complete and clearly presented.",
+              "Improve discoverability before drawing conclusions about conversion.",
+              "Continue collecting activity before making major changes.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            demandScore:
+              safeNumber(
+                demand
+                  ?.demand
+                  ?.score
+              ),
+          },
+        })
+      );
+    }
+
+    if (
+      demandSignalCodes.has(
+        "DEMAND_WITH_LIMITED_OBSERVED_TRAFFIC"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "EXPAND_VISIBILITY_ON_DEMAND_LISTING",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY,
+
+          title:
+            "Expand visibility on an active listing",
+
+          message:
+            "The listing shows observed demand despite limited recorded traffic.",
+
+          reason: {
+            signal:
+              "DEMAND_WITH_LIMITED_OBSERVED_TRAFFIC",
+          },
+
+          action: {
+            type:
+              "EXPAND_VISIBILITY",
+          },
+
+          listing,
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * ENGAGEMENT RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildEngagementGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+  }) => {
+    const recommendations = [];
+
+    const blockerCodes =
+      new Set(
+        (
+          conversion
+            ?.underperformance
+            ?.issues ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    if (
+      blockerCodes.has(
+        "TRAFFIC_NO_ENGAGEMENT"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "IMPROVE_LISTING_ENGAGEMENT",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.ENGAGEMENT,
+
+          title:
+            "Turn listing traffic into engagement",
+
+          message:
+            "The listing receives observed traffic but that traffic is not producing recorded engagement actions.",
+
+          reason: {
+            signal:
+              "TRAFFIC_NO_ENGAGEMENT",
+          },
+
+          action: {
+            type:
+              "IMPROVE_LISTING_PRESENTATION",
+
+            suggestions: [
+              "Review the listing title, images and description.",
+              "Make exchange expectations and item details easier to understand.",
+              "Ensure contact and sharing actions are easy to discover.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            views:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.views
+              ),
+
+            engagementActions:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.engagementActions
+              ),
+
+            engagementRate:
+              safeNumber(
+                conversion
+                  ?.rates
+                  ?.engagementRate
+              ),
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * OFFER GROWTH RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildOfferGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+    benchmark,
+  }) => {
+    const recommendations = [];
+
+    const blockerCodes =
+      new Set(
+        (
+          conversion
+            ?.underperformance
+            ?.issues ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    const benchmarkOpportunityCodes =
+      new Set(
+        (
+          benchmark
+            ?.opportunities ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    if (
+      blockerCodes.has(
+        "ENGAGEMENT_NO_OFFERS"
+      ) ||
+      benchmarkOpportunityCodes.has(
+        "HIGH_TRAFFIC_LOW_OFFER_CONVERSION"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "IMPROVE_OFFER_GENERATION",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.OFFERS,
+
+          title:
+            "Turn interest into more offers",
+
+          message:
+            benchmarkOpportunityCodes.has(
+              "HIGH_TRAFFIC_LOW_OFFER_CONVERSION"
+            )
+              ? "This listing receives strong traffic relative to its category but converts fewer views into offers."
+              : "This listing receives engagement but is not generating observed offers.",
+
+          reason: {
+            signal:
+              benchmarkOpportunityCodes.has(
+                "HIGH_TRAFFIC_LOW_OFFER_CONVERSION"
+              )
+                ? "HIGH_TRAFFIC_LOW_OFFER_CONVERSION"
+                : "ENGAGEMENT_NO_OFFERS",
+          },
+
+          action: {
+            type:
+              "IMPROVE_OFFER_CONVERSION",
+
+            suggestions: [
+              "Review the listing description and exchange expectations.",
+              "Make the expected value or acceptable exchange clearer.",
+              "Check whether important item details are missing.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            views:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.views
+              ),
+
+            engagementActions:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.engagementActions
+              ),
+
+            offersReceived:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.offersReceived
+              ),
+
+            viewToOfferRate:
+              safeNumber(
+                conversion
+                  ?.rates
+                  ?.viewToOfferRate
+              ),
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * OFFER ACCEPTANCE / CONVERSION RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildConversionGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+    benchmark,
+  }) => {
+    const recommendations = [];
+
+    const blockerCodes =
+      new Set(
+        (
+          conversion
+            ?.underperformance
+            ?.issues ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    const benchmarkOpportunityCodes =
+      new Set(
+        (
+          benchmark
+            ?.opportunities ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    if (
+      blockerCodes.has(
+        "OFFERS_NO_ACCEPTANCE"
+      ) ||
+      benchmarkOpportunityCodes.has(
+        "OFFERS_BELOW_ACCEPTANCE_BENCHMARK"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "REVIEW_OFFER_ACCEPTANCE",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.CONVERSION,
+
+          title:
+            "Review offer acceptance patterns",
+
+          message:
+            "The listing is receiving offers, but observed offer acceptance is weak or below the available category benchmark.",
+
+          reason: {
+            signal:
+              benchmarkOpportunityCodes.has(
+                "OFFERS_BELOW_ACCEPTANCE_BENCHMARK"
+              )
+                ? "OFFERS_BELOW_ACCEPTANCE_BENCHMARK"
+                : "OFFERS_NO_ACCEPTANCE",
+          },
+
+          action: {
+            type:
+              "REVIEW_EXCHANGE_EXPECTATIONS",
+
+            suggestions: [
+              "Review whether the stated exchange expectations are clear.",
+              "Check whether received offers align with the listing's value expectations.",
+              "Respond promptly to relevant offers where possible.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            offersReceived:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.offersReceived
+              ),
+
+            acceptedOffers:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.acceptedOffers
+              ),
+
+            offerAcceptanceRate:
+              safeNumber(
+                conversion
+                  ?.rates
+                  ?.offerAcceptanceRate
+              ),
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * TRADE COMPLETION RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildTradeCompletionGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+    benchmark,
+  }) => {
+    const recommendations = [];
+
+    const blockerCodes =
+      new Set(
+        (
+          conversion
+            ?.underperformance
+            ?.issues ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    const benchmarkOpportunityCodes =
+      new Set(
+        (
+          benchmark
+            ?.opportunities ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    if (
+      blockerCodes.has(
+        "ACCEPTED_NO_COMPLETION"
+      ) ||
+      benchmarkOpportunityCodes.has(
+        "INTEREST_NOT_REACHING_TRADE"
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "IMPROVE_TRADE_COMPLETION",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.TRADE_COMPLETION,
+
+          title:
+            "Improve trade completion",
+
+          message:
+            "Observed interest is progressing into offers or accepted offers, but completed trades are not keeping pace.",
+
+          reason: {
+            signal:
+              blockerCodes.has(
+                "ACCEPTED_NO_COMPLETION"
+              )
+                ? "ACCEPTED_NO_COMPLETION"
+                : "INTEREST_NOT_REACHING_TRADE",
+          },
+
+          action: {
+            type:
+              "IMPROVE_TRADE_COMPLETION",
+
+            suggestions: [
+              "Follow up promptly after an offer is accepted.",
+              "Clarify handover expectations early.",
+              "Review where active exchanges are stalling before completion.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            acceptedOffers:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.acceptedOffers
+              ),
+
+            completedTrades:
+              safeNumber(
+                conversion
+                  ?.metrics
+                  ?.completedTrades
+              ),
+
+            acceptedOfferToTradeRate:
+              safeNumber(
+                conversion
+                  ?.rates
+                  ?.acceptedOfferToTradeRate
+              ),
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * HIGH-PERFORMANCE RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildHighPerformanceGrowthRecommendations =
+  ({
+    listing,
+    conversion,
+    demand,
+    benchmark,
+  }) => {
+    const recommendations = [];
+
+    const benchmarkOpportunityCodes =
+      new Set(
+        (
+          benchmark
+            ?.opportunities ||
+          []
+        )
+          .map(
+            getGrowthSignalCode
+          )
+          .filter(Boolean)
+      );
+
+    const demandLevel =
+      demand
+        ?.demand
+        ?.classification
+        ?.level ||
+      null;
+
+    const completedTrades =
+      safeNumber(
+        conversion
+          ?.metrics
+          ?.completedTrades
+      );
+
+    if (
+      benchmarkOpportunityCodes.has(
+        "CATEGORY_OUTPERFORMER"
+      ) ||
+      (
+        [
+          "VERY_HIGH",
+          "HIGH",
+        ].includes(
+          demandLevel
+        ) &&
+        completedTrades > 0
+      )
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "PRESERVE_AND_SCALE_STRONG_LISTING",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.LISTING,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.HIGH_PERFORMANCE,
+
+          title:
+            "Preserve and scale a strong listing",
+
+          message:
+            "This listing shows strong observed marketplace performance. Preserve what is working before making major changes.",
+
+          reason: {
+            signal:
+              benchmarkOpportunityCodes.has(
+                "CATEGORY_OUTPERFORMER"
+              )
+                ? "CATEGORY_OUTPERFORMER"
+                : "HIGH_DEMAND_WITH_COMPLETED_TRADES",
+          },
+
+          action: {
+            type:
+              "PRESERVE_AND_SCALE",
+
+            suggestions: [
+              "Preserve the listing elements currently producing results.",
+              "Consider carefully increasing visibility.",
+              "Monitor conversion quality as visibility grows.",
+            ],
+          },
+
+          listing,
+
+          evidence: {
+            demandScore:
+              safeNumber(
+                demand
+                  ?.demand
+                  ?.score
+              ),
+
+            demandLevel,
+
+            completedTrades,
+
+            categoryPosition:
+              benchmark
+                ?.benchmark
+                ?.overallPosition ||
+              null,
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * DEDUPLICATE RECOMMENDATIONS
+ * ============================================================
+ *
+ * Same recommendation code + same listing = one recommendation.
+ *
+ * When duplicates exist, retain the highest-priority version.
+ * ============================================================
+ */
+
+const deduplicateGrowthRecommendations =
+  (
+    recommendations = []
+  ) => {
+    const map =
+      new Map();
+
+    for (
+      const recommendation of
+      recommendations
+    ) {
+      if (
+        !recommendation?.code
+      ) {
+        continue;
+      }
+
+      const listingId =
+        recommendation
+          ?.listing
+          ?.id ||
+        "BUSINESS";
+
+      const key =
+        `${recommendation.code}:${listingId}`;
+
+      const existing =
+        map.get(key);
+
+      if (!existing) {
+        map.set(
+          key,
+          recommendation
+        );
+
+        continue;
+      }
+
+      const currentWeight =
+        getGrowthPriorityWeight(
+          recommendation.priority
+        );
+
+      const existingWeight =
+        getGrowthPriorityWeight(
+          existing.priority
+        );
+
+      if (
+        currentWeight >
+        existingWeight
+      ) {
+        map.set(
+          key,
+          recommendation
+        );
+      }
+    }
+
+    return Array.from(
+      map.values()
+    );
+  };
+
+/**
+ * ============================================================
+ * RANK RECOMMENDATIONS
+ * ============================================================
+ */
+
+const rankGrowthRecommendations =
+  (
+    recommendations = []
+  ) => {
+    return [
+      ...recommendations,
+    ].sort(
+      (a, b) => {
+        const priorityDifference =
+          getGrowthPriorityWeight(
+            b.priority
+          ) -
+          getGrowthPriorityWeight(
+            a.priority
+          );
+
+        if (
+          priorityDifference !==
+          0
+        ) {
+          return priorityDifference;
+        }
+
+        /**
+         * Listing-specific recommendations are shown before
+         * generic business recommendations when priority ties.
+         */
+        if (
+          a.scope !==
+          b.scope
+        ) {
+          return a.scope ===
+            GROWTH_RECOMMENDATION_SCOPES.LISTING
+            ? -1
+            : 1;
+        }
+
+        return String(
+          a.code
+        ).localeCompare(
+          String(
+            b.code
+          )
+        );
+      }
+    );
+  };
+
+/**
+ * ============================================================
+ * BUSINESS-LEVEL GROWTH RECOMMENDATIONS
+ * ============================================================
+ */
+
+const buildBusinessLevelGrowthRecommendations =
+  ({
+    listingRecommendations = [],
+    conversionIntelligence,
+    demandIntelligence,
+    categoryBenchmarks,
+  }) => {
+    const recommendations = [];
+
+    const categoryCounts =
+      new Map();
+
+    for (
+      const recommendation of
+      listingRecommendations
+    ) {
+      const category =
+        recommendation.category;
+
+      if (!category) {
+        continue;
+      }
+
+      categoryCounts.set(
+        category,
+        (
+          categoryCounts.get(
+            category
+          ) || 0
+        ) + 1
+      );
+    }
+
+    /**
+     * Repeated visibility problem.
+     */
+    if (
+      (
+        categoryCounts.get(
+          GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY
+        ) || 0
+      ) >= 2
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "BUSINESS_VISIBILITY_OPPORTUNITY",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.BUSINESS,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY,
+
+          title:
+            "Improve visibility across multiple listings",
+
+          message:
+            "Multiple listings show observed visibility opportunities in the selected period.",
+
+          reason: {
+            signal:
+              "MULTIPLE_VISIBILITY_OPPORTUNITIES",
+          },
+
+          action: {
+            type:
+              "REVIEW_BUSINESS_VISIBILITY",
+          },
+
+          evidence: {
+            affectedListings:
+              categoryCounts.get(
+                GROWTH_RECOMMENDATION_CATEGORIES.VISIBILITY
+              ),
+          },
+        })
+      );
+    }
+
+    /**
+     * Repeated offer/conversion problems.
+     */
+    const offerAndConversionCount =
+      (
+        categoryCounts.get(
+          GROWTH_RECOMMENDATION_CATEGORIES.OFFERS
+        ) || 0
+      ) +
+      (
+        categoryCounts.get(
+          GROWTH_RECOMMENDATION_CATEGORIES.CONVERSION
+        ) || 0
+      );
+
+    if (
+      offerAndConversionCount >=
+      2
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "BUSINESS_CONVERSION_OPPORTUNITY",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.BUSINESS,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.CONVERSION,
+
+          title:
+            "Review conversion across the business",
+
+          message:
+            "Multiple listings show observed offer or conversion opportunities.",
+
+          reason: {
+            signal:
+              "MULTIPLE_CONVERSION_OPPORTUNITIES",
+          },
+
+          action: {
+            type:
+              "REVIEW_BUSINESS_CONVERSION",
+          },
+
+          evidence: {
+            affectedListings:
+              offerAndConversionCount,
+
+            businessViewToOfferRate:
+              safeNumber(
+                conversionIntelligence
+                  ?.rates
+                  ?.viewToOfferRate
+              ),
+
+            businessOfferToTradeRate:
+              safeNumber(
+                conversionIntelligence
+                  ?.rates
+                  ?.offerToTradeRate
+              ),
+          },
+        })
+      );
+    }
+
+    /**
+     * Repeated trade-completion problem.
+     */
+    const completionCount =
+      categoryCounts.get(
+        GROWTH_RECOMMENDATION_CATEGORIES.TRADE_COMPLETION
+      ) || 0;
+
+    if (
+      completionCount >= 2
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "BUSINESS_TRADE_COMPLETION_OPPORTUNITY",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.BUSINESS,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.HIGH,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.TRADE_COMPLETION,
+
+          title:
+            "Review trade completion workflow",
+
+          message:
+            "Multiple listings show observed activity reaching offers or acceptance without matching completed-trade activity.",
+
+          reason: {
+            signal:
+              "MULTIPLE_TRADE_COMPLETION_OPPORTUNITIES",
+          },
+
+          action: {
+            type:
+              "REVIEW_TRADE_COMPLETION_PROCESS",
+          },
+
+          evidence: {
+            affectedListings:
+              completionCount,
+          },
+        })
+      );
+    }
+
+    /**
+     * Strong demand across business.
+     */
+    if (
+      safeNumber(
+        demandIntelligence
+          ?.summary
+          ?.listingsWithDemand
+      ) > 0 &&
+      safeNumber(
+        demandIntelligence
+          ?.summary
+          ?.totalCompletedTrades
+      ) > 0 &&
+      (
+        categoryCounts.get(
+          GROWTH_RECOMMENDATION_CATEGORIES.HIGH_PERFORMANCE
+        ) || 0
+      ) > 0
+    ) {
+      recommendations.push(
+        buildGrowthRecommendation({
+          code:
+            "BUSINESS_SCALE_PROVEN_PERFORMANCE",
+
+          scope:
+            GROWTH_RECOMMENDATION_SCOPES.BUSINESS,
+
+          priority:
+            GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM,
+
+          category:
+            GROWTH_RECOMMENDATION_CATEGORIES.HIGH_PERFORMANCE,
+
+          title:
+            "Scale proven performance carefully",
+
+          message:
+            "The business has listings with observed demand and completed-trade activity. Preserve successful patterns while expanding carefully.",
+
+          reason: {
+            signal:
+              "PROVEN_BUSINESS_PERFORMANCE",
+          },
+
+          action: {
+            type:
+              "SCALE_PROVEN_PERFORMANCE",
+          },
+
+          evidence: {
+            listingsWithDemand:
+              safeNumber(
+                demandIntelligence
+                  ?.summary
+                  ?.listingsWithDemand
+              ),
+
+            completedTrades:
+              safeNumber(
+                demandIntelligence
+                  ?.summary
+                  ?.totalCompletedTrades
+              ),
+
+            categoriesWithBenchmarks:
+              safeNumber(
+                categoryBenchmarks
+                  ?.summary
+                  ?.categoriesWithBenchmarks
+              ),
+          },
+        })
+      );
+    }
+
+    return recommendations;
+  };
+
+/**
+ * ============================================================
+ * BUSINESS GROWTH RECOMMENDATIONS
+ * ============================================================
+ *
+ * Main Business Pro Growth Recommendation service.
+ *
+ * This composes the existing intelligence engines rather than
+ * rebuilding their calculations.
+ *
+ * Controller/access layer is responsible for Business Pro
+ * authorization.
+ * ============================================================
+ */
+
+export const getBusinessGrowthRecommendations =
+  async ({
+    businessId,
+    days =
+      DEFAULT_ANALYTICS_DAYS,
+    startDate = null,
+    endDate = null,
+  } = {}) => {
+    if (!businessId) {
+      throw new Error(
+        "Business ID is required for growth recommendations."
+      );
+    }
+
+    /**
+     * Resolve canonical business first.
+     *
+     * This also guarantees the business exists before expensive
+     * intelligence work begins.
+     */
+    const business =
+      await getBusinessAnalyticsContext(
+        businessId
+      );
+
+    const analyticsOptions = {
+      businessId:
+        business.id,
+
+      days,
+
+      startDate,
+
+      endDate,
+    };
+
+    /**
+     * Run the existing Business Pro intelligence engines.
+     *
+     * They remain independent sources of truth:
+     *
+     * Conversion -> funnel/conversion behaviour
+     * Demand     -> observed relative business demand
+     * Benchmark  -> privacy-safe category comparison
+     */
+    const [
+      conversionIntelligence,
+      demandIntelligence,
+      categoryBenchmarks,
+    ] =
+      await Promise.all([
+        getBusinessConversionIntelligence(
+          analyticsOptions
+        ),
+
+        getBusinessDemandIntelligence(
+          analyticsOptions
+        ),
+
+        getBusinessCategoryBenchmarks(
+          analyticsOptions
+        ),
+      ]);
+
+    /**
+     * --------------------------------------------------------
+     * Index intelligence by listing ID
+     * --------------------------------------------------------
+     */
+
+    const conversionByListing =
+      new Map(
+        (
+          conversionIntelligence
+            ?.listings ||
+          []
+        ).map(
+          (listing) => [
+            listing
+              ?.listing
+              ?.id,
+            listing,
+          ]
+        )
+      );
+
+    const demandByListing =
+      new Map(
+        (
+          demandIntelligence
+            ?.listings ||
+          []
+        ).map(
+          (listing) => [
+            listing.id,
+            listing,
+          ]
+        )
+      );
+
+    const benchmarkByListing =
+      new Map(
+        (
+          categoryBenchmarks
+            ?.listings ||
+          []
+        ).map(
+          (listing) => [
+            listing.id,
+            listing,
+          ]
+        )
+      );
+
+    const listingIds =
+      new Set([
+        ...conversionByListing.keys(),
+        ...demandByListing.keys(),
+        ...benchmarkByListing.keys(),
+      ]);
+
+    listingIds.delete(
+      undefined
+    );
+
+    listingIds.delete(
+      null
+    );
+
+    /**
+     * --------------------------------------------------------
+     * Build listing-level recommendations
+     * --------------------------------------------------------
+     */
+
+    const listingResults = [];
+
+    const allListingRecommendations =
+      [];
+
+    for (
+      const listingId of
+      listingIds
+    ) {
+      const conversion =
+        conversionByListing.get(
+          listingId
+        ) || null;
+
+      const demand =
+        demandByListing.get(
+          listingId
+        ) || null;
+
+      const benchmark =
+        benchmarkByListing.get(
+          listingId
+        ) || null;
+
+      const listing = {
+        id:
+          listingId,
+
+        title:
+          conversion
+            ?.listing
+            ?.title ||
+          demand?.title ||
+          benchmark?.title ||
+          null,
+
+        category:
+          conversion
+            ?.listing
+            ?.category ||
+          demand?.category ||
+          benchmark?.category ||
+          null,
+
+        image:
+          conversion
+            ?.listing
+            ?.image ||
+          demand?.image ||
+          benchmark?.image ||
+          null,
+      };
+
+      const rawRecommendations = [
+        ...buildVisibilityGrowthRecommendations({
+          listing,
+          conversion,
+          demand,
+          benchmark,
+        }),
+
+        ...buildEngagementGrowthRecommendations({
+          listing,
+          conversion,
+        }),
+
+        ...buildOfferGrowthRecommendations({
+          listing,
+          conversion,
+          benchmark,
+        }),
+
+        ...buildConversionGrowthRecommendations({
+          listing,
+          conversion,
+          benchmark,
+        }),
+
+        ...buildTradeCompletionGrowthRecommendations({
+          listing,
+          conversion,
+          benchmark,
+        }),
+
+        ...buildHighPerformanceGrowthRecommendations({
+          listing,
+          conversion,
+          demand,
+          benchmark,
+        }),
+      ];
+
+      const recommendations =
+        rankGrowthRecommendations(
+          deduplicateGrowthRecommendations(
+            rawRecommendations
+          )
+        );
+
+      allListingRecommendations.push(
+        ...recommendations
+      );
+
+      listingResults.push({
+        listing,
+
+        recommendationCount:
+          recommendations.length,
+
+        highestPriority:
+          recommendations[0]
+            ?.priority ||
+          null,
+
+        recommendations,
+
+        intelligence: {
+          conversionState:
+            conversion
+              ?.intelligenceState ||
+            null,
+
+          demandScore:
+            safeNumber(
+              demand
+                ?.demand
+                ?.score
+            ),
+
+          demandLevel:
+            demand
+              ?.demand
+              ?.classification
+              ?.level ||
+            null,
+
+          categoryBenchmarkAvailable:
+            Boolean(
+              benchmark
+                ?.benchmark
+                ?.available
+            ),
+
+          categoryPosition:
+            benchmark
+              ?.benchmark
+              ?.overallPosition ||
+            null,
+        },
+      });
+    }
+
+    /**
+     * --------------------------------------------------------
+     * Business-level recommendations
+     * --------------------------------------------------------
+     */
+
+    const businessRecommendations =
+      buildBusinessLevelGrowthRecommendations({
+        listingRecommendations:
+          allListingRecommendations,
+
+        conversionIntelligence,
+
+        demandIntelligence,
+
+        categoryBenchmarks,
+      });
+
+    /**
+     * --------------------------------------------------------
+     * Final recommendation collection
+     * --------------------------------------------------------
+     */
+
+    const allRecommendations =
+      rankGrowthRecommendations(
+        deduplicateGrowthRecommendations([
+          ...allListingRecommendations,
+          ...businessRecommendations,
+        ])
+      );
+
+    /**
+     * --------------------------------------------------------
+     * Summary
+     * --------------------------------------------------------
+     */
+
+    const highPriority =
+      allRecommendations.filter(
+        (recommendation) =>
+          recommendation.priority ===
+          GROWTH_RECOMMENDATION_PRIORITIES.HIGH
+      ).length;
+
+    const mediumPriority =
+      allRecommendations.filter(
+        (recommendation) =>
+          recommendation.priority ===
+          GROWTH_RECOMMENDATION_PRIORITIES.MEDIUM
+      ).length;
+
+    const lowPriority =
+      allRecommendations.filter(
+        (recommendation) =>
+          recommendation.priority ===
+          GROWTH_RECOMMENDATION_PRIORITIES.LOW
+      ).length;
+
+    const affectedListings =
+      new Set(
+        allListingRecommendations
+          .map(
+            (recommendation) =>
+              recommendation
+                ?.listing
+                ?.id
+          )
+          .filter(Boolean)
+      ).size;
+
+    /**
+     * Top actions are intentionally capped.
+     *
+     * The frontend should present a focused set of actions
+     * rather than overwhelming the business with every signal.
+     */
+    const topActions =
+      allRecommendations.slice(
+        0,
+        5
+      );
+
+    /**
+     * --------------------------------------------------------
+     * Final contract
+     * --------------------------------------------------------
+     */
+
+    return {
+      business: {
+        id:
+          business.id,
+
+        businessName:
+          business.businessName,
+
+        slug:
+          business.slug,
+
+        status:
+          business.status,
+
+        verificationStatus:
+          business.verificationStatus,
+      },
+
+      window:
+        demandIntelligence
+          ?.window ||
+        categoryBenchmarks
+          ?.window ||
+        conversionIntelligence
+          ?.window ||
+        null,
+
+      summary: {
+        totalRecommendations:
+          allRecommendations.length,
+
+        highPriority,
+
+        mediumPriority,
+
+        lowPriority,
+
+        affectedListings,
+
+        listingsAnalyzed:
+          listingResults.length,
+
+        businessRecommendations:
+          businessRecommendations.length,
+
+        listingRecommendations:
+          allListingRecommendations.length,
+      },
+
+      topActions,
+
+      businessRecommendations:
+        rankGrowthRecommendations(
+          businessRecommendations
+        ),
+
+      listings:
+        listingResults
+          .filter(
+            (item) =>
+              item
+                .recommendations
+                .length >
+              0
+          )
+          .sort(
+            (a, b) => {
+              const priorityDifference =
+                getGrowthPriorityWeight(
+                  b.highestPriority
+                ) -
+                getGrowthPriorityWeight(
+                  a.highestPriority
+                );
+
+              if (
+                priorityDifference !==
+                0
+              ) {
+                return priorityDifference;
+              }
+
+              return (
+                b.recommendationCount -
+                a.recommendationCount
+              );
+            }
+          ),
+
+      recommendations:
+        allRecommendations,
+
+      sources: {
+        conversionIntelligence:
+          true,
+
+        demandIntelligence:
+          true,
+
+        categoryBenchmarks:
+          true,
+
+        categoryBenchmarkPrivacyPreserved:
+          true,
+      },
+
+      methodology: {
+        deterministic:
+          true,
+
+        persisted:
+          false,
+
+        usesObservedSignalsOnly:
+          true,
+
+        infersCustomerMotives:
+          false,
+
+        priorityOrder: [
+          "HIGH",
+          "MEDIUM",
+          "LOW",
+        ],
+      },
+    };
+  };
+
 /**
  * ============================================================
  * BUSINESS CONVERSION METRICS
