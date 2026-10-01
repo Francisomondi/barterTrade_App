@@ -1,4 +1,4 @@
-// CREATE — frontend/src/api/businessAnalytics.js
+
 
 import api from "./axios";
 

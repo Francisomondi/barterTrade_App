@@ -19,6 +19,7 @@ import {
   Crown,
   ExternalLink,
   Eye,
+  FileBarChart,
   Globe,
   Mail,
   MapPin,
@@ -1301,7 +1302,7 @@ const BusinessDashboard = () => {
             Quick Actions
           </h2>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <DashboardAction
               to="/listings/create"
               icon={Package}
@@ -1314,6 +1315,13 @@ const BusinessDashboard = () => {
               icon={BriefcaseBusiness}
               title="Manage Listings"
               description="Update your items"
+            />
+
+            <DashboardAction
+              to="/business/reports"
+              icon={FileBarChart}
+              title="Business Reports"
+              description="View performance reports"
             />
 
             {business.slug &&

@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed": "node prisma/seed.js"
+    "seed": "node prisma/seed.js",
+    "test:reports:http": "vitest run src/tests/businessReportController.test.js",
+    "test:reports:routes": "vitest run src/tests/businessReportRoutes.test.js",
+    "test:reports:20.6": "vitest run src/tests/businessReportController.test.js src/tests/businessReportRoutes.test.js"
   },
   "keywords": [],
   "author": "",
@@ -37,6 +40,8 @@
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/pg": "^8.23.1",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "supertest": "^7.3.0",
+    "vitest": "^5.0.3"
   }
 }

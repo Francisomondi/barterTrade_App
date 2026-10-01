@@ -32,6 +32,11 @@ import {
 } from "../controllers/businessAnalyticsController.js";
 
 import {
+  generateMyBusinessReport,
+  getMyBusinessReportAccess,
+} from "../controllers/businessReportController.js";
+
+import {
   trackPublicBusinessEvent,
 } from "../controllers/businessAnalyticsTrackingController.js";
 
@@ -251,26 +256,6 @@ router.get(
   getMyBusinessConversionIntelligence
 );
 
-/**
- * =========================================================
- * BUSINESS PRO — DEMAND INTELLIGENCE
- * =========================================================
- *
- * GET /api/business/me/analytics/demand
- *
- * Authentication:
- *   Required.
- *
- * Business Free:
- *   Receives a locked Business Pro preview.
- *
- * Business Pro:
- *   Receives full Demand Intelligence.
- *
- * IMPORTANT:
- *   Business ownership and Business Pro entitlement are
- *   resolved server-side by the controller.
- */
 
 router.get(
   "/me/analytics/demand",
@@ -314,26 +299,17 @@ router.get(
   getMyBusinessTopListingPerformance
 );
 
-/**
- * =========================================================
- * PUBLIC BUSINESS ANALYTICS EVENT
- * =========================================================
- *
- * Examples:
- *
- * CONTACT_CLICK
- * WEBSITE_CLICK
- * PHONE_CLICK
- * LISTING_SHARE
- *
- * optionalAuth:
- *   Identifies logged-in visitors when possible.
- *
- * analyticsVisitor:
- *   Generates visitorKey/sessionKey.
- *
- * The route remains accessible to anonymous visitors.
- */
+
+router.get(
+  "/me/reports",
+  protect,
+  getMyBusinessReportAccess
+);
+router.get(
+  "/me/reports/:reportType",
+  protect,
+  generateMyBusinessReport
+);
 
 router.post(
   "/:slug/analytics/event",

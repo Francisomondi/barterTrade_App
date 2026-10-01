@@ -154,19 +154,126 @@ export const BUSINESS_REPORT_HISTORY =
 
 export const BUSINESS_REPORT_EXPORT_LIMITS =
   Object.freeze({
-    MAX_LISTING_ROWS: 5000,
+    /**
+     * -----------------------------------------------------
+     * ANALYTICS / REPORT COLLECTION LIMITS
+     * -----------------------------------------------------
+     */
 
-    MAX_PROMOTION_ROWS: 5000,
+    MAX_LISTING_ROWS:
+      5000,
 
-    MAX_RECOMMENDATIONS: 100,
+    MAX_PROMOTION_ROWS:
+      5000,
 
-    MAX_REPORT_SECTIONS: 25,
+    MAX_RECOMMENDATIONS:
+      100,
 
-    MAX_CSV_ROWS: 10000,
+    MAX_REPORT_SECTIONS:
+      25,
 
-    MAX_EXPORT_DAYS: 365,
+    /**
+     * -----------------------------------------------------
+     * REPORTING PERIOD
+     * -----------------------------------------------------
+     *
+     * Business Pro reports currently support at most one
+     * year of historical data.
+     */
+
+    MAX_EXPORT_DAYS:
+      365,
+
+    /**
+     * -----------------------------------------------------
+     * CSV EXPORT
+     * -----------------------------------------------------
+     *
+     * MAX_CSV_ROWS:
+     *
+     * Absolute number of exported data rows across the
+     * complete CSV export.
+     *
+     * MAX_CSV_DATASET_ROWS:
+     *
+     * Maximum rows allowed in any individual CSV dataset.
+     *
+     * A multi-dataset report must satisfy BOTH limits.
+     *
+     * Example:
+     *
+     * dataset A = 5,000
+     * dataset B = 5,000
+     *
+     * total = 10,000
+     *
+     * Anything beyond the global limit must be truncated
+     * explicitly by the CSV export service.
+     */
+
+    MAX_CSV_ROWS:
+      10000,
+
+    MAX_CSV_DATASET_ROWS:
+      5000,
+
+    /**
+     * -----------------------------------------------------
+     * JSON EXPORT
+     * -----------------------------------------------------
+     *
+     * JSON exports are rejected when the final serialized
+     * UTF-8 payload exceeds 5 MiB.
+     *
+     * Unlike CSV/PDF_READY, JSON should not silently truncate
+     * the canonical report because doing so could make the
+     * structured export semantically incomplete.
+     */
+
+    MAX_JSON_BYTES:
+      5 * 1024 * 1024,
+
+    /**
+     * Maximum recursive serialization depth.
+     *
+     * Protects against pathological or unexpectedly deeply
+     * nested report structures.
+     */
+
+    MAX_JSON_DEPTH:
+      30,
+
+    /**
+     * -----------------------------------------------------
+     * PDF-READY EXPORT
+     * -----------------------------------------------------
+     *
+     * PDF_READY is structured rendering data.
+     *
+     * It is NOT a binary PDF.
+     *
+     * These limits keep future rendering payloads bounded.
+     */
+
+    MAX_PDF_READY_SECTIONS:
+      25,
+
+    /**
+     * Maximum number of collection rows/items retained
+     * within one PDF-ready section.
+     */
+
+    MAX_PDF_READY_SECTION_ROWS:
+      5000,
+
+    /**
+     * Maximum number of collection rows/items retained
+     * across the complete PDF-ready document.
+     */
+
+    MAX_PDF_READY_ROWS:
+      10000,
   });
-
 
 /**
  * =========================================================

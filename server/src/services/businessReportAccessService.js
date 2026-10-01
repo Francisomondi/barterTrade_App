@@ -168,6 +168,16 @@ export const resolveBusinessReportAccess =
     userId,
     business,
     reportType,
+
+    /**
+     * Testability seam.
+     *
+     * Production callers do not provide this.
+     * The real subscription service remains the default
+     * source of truth.
+     */
+    entitlementResolver =
+      getBusinessProEntitlement,
   } = {}) => {
     /**
      * -----------------------------------------------------
@@ -266,10 +276,10 @@ export const resolveBusinessReportAccess =
      * req.body.businessId
      */
 
-    const entitlement =
-      await getBusinessProEntitlement(
-        userId
-      );
+        const entitlement =
+        await entitlementResolver(
+            userId
+        );
 
     /**
      * -----------------------------------------------------
@@ -461,19 +471,22 @@ export const resolveBusinessReportAccess =
  *
  * Throws a structured error when report access is denied.
  */
-
 export const requireBusinessReportAccess =
   async ({
     userId,
     business,
     reportType,
+
+    entitlementResolver =
+      getBusinessProEntitlement,
   } = {}) => {
     const result =
-      await resolveBusinessReportAccess({
+    await resolveBusinessReportAccess({
         userId,
         business,
         reportType,
-      });
+        entitlementResolver,
+    });
 
     if (result.allowed) {
       return result;
@@ -509,6 +522,9 @@ export const getBusinessReportEntitlement =
   async ({
     userId,
     business,
+
+    entitlementResolver =
+      getBusinessProEntitlement,
   } = {}) => {
     if (
       !userId ||
@@ -541,9 +557,9 @@ export const getBusinessReportEntitlement =
     }
 
     const entitlement =
-      await getBusinessProEntitlement(
+    await entitlementResolver(
         userId
-      );
+    );
 
     const isBusinessPro =
       Boolean(

@@ -2213,11 +2213,20 @@ export const generateBusinessReport =
 
     endDate = null,
 
-    analyticsTier =
-      "BUSINESS_PRO",
+analyticsTier =
+  "BUSINESS_PRO",
 
-    timezone = "UTC",
-  } = {}) => {
+timezone = "UTC",
+
+/**
+ * Unit-test seam for canonical report assembly.
+ *
+ * Production callers never provide this.
+ * When omitted, the registered production report builder
+ * remains the source of analytics-backed report sections.
+ */
+reportBuilder = null,
+} = {}) => {
     /**
      * -----------------------------------------------------
      * BUSINESS
@@ -2292,11 +2301,11 @@ export const generateBusinessReport =
      * -----------------------------------------------------
      */
 
-    const builder =
-      REPORT_BUILDERS[
-        validation.reportType
-      ];
-
+const builder =
+  reportBuilder ||
+  REPORT_BUILDERS[
+    validation.reportType
+  ];
     if (!builder) {
       const error =
         new Error(
@@ -2456,8 +2465,7 @@ export const getBusinessReportCatalog =
  * =========================================================
  */
 
-export const getBusinessReportServiceCapabilities =
-  () => ({
+export const getBusinessReportServiceCapabilities = () => ({
     reportVersion:
       BUSINESS_REPORT_VERSION,
 
@@ -2484,3 +2492,521 @@ export const getBusinessReportServiceCapabilities =
 
     scheduledReports: false,
   });
+
+  /**
+ * =========================================================
+ * GENERATE BUSINESS PERFORMANCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business
+ * Performance Report.
+ *
+ * This wrapper intentionally delegates to the canonical
+ * report generator so that:
+ *
+ * - report validation remains centralized
+ * - reporting periods remain centralized
+ * - metadata remains centralized
+ * - report IDs remain centralized
+ * - analytics calculations remain centralized
+ *
+ * Business Pro authorization must still be performed before
+ * this function is called.
+ */
+
+export const generateBusinessPerformanceReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.BUSINESS_PERFORMANCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE LISTING PERFORMANCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Listing Performance Report.
+ *
+ * This function does NOT:
+ *
+ * - calculate listing analytics
+ * - query Prisma directly
+ * - determine Business Pro entitlement
+ * - authorize business ownership
+ *
+ * It delegates to the canonical report generator.
+ *
+ * Business ownership and Business Pro entitlement must be
+ * verified before this function is called.
+ */
+
+export const generateListingPerformanceReport = async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.LISTING_PERFORMANCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE CONVERSION INTELLIGENCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Conversion Intelligence Report.
+ *
+ * The actual conversion calculations remain inside:
+ *
+ * getBusinessConversionIntelligence()
+ *
+ * This wrapper does NOT:
+ *
+ * - recalculate conversion rates
+ * - query Prisma
+ * - determine Business Pro entitlement
+ * - authorize business ownership
+ *
+ * The controller must establish ownership and Business Pro
+ * access before calling this function.
+ */
+
+export const generateConversionIntelligenceReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.CONVERSION_INTELLIGENCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE DEMAND INTELLIGENCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Demand Intelligence Report.
+ *
+ * Demand calculations remain inside:
+ *
+ * getBusinessDemandIntelligence()
+ *
+ * This wrapper does NOT:
+ *
+ * - calculate demand scores
+ * - classify demand
+ * - calculate demand trends
+ * - query Prisma directly
+ * - authorize business ownership
+ * - determine Business Pro entitlement
+ *
+ * The authenticated business and Business Pro entitlement
+ * must be verified before this function is called.
+ */
+
+export const generateDemandIntelligenceReport = async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.DEMAND_INTELLIGENCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE CATEGORY BENCHMARK REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Category Benchmark Report.
+ *
+ * Benchmark calculations and cohort privacy remain inside:
+ *
+ * getBusinessCategoryBenchmarks()
+ *
+ * This wrapper does NOT:
+ *
+ * - calculate marketplace benchmarks
+ * - query competitor businesses
+ * - query competitor listings
+ * - expose individual competitor metrics
+ * - authorize business ownership
+ * - determine Business Pro entitlement
+ *
+ * The authenticated business and Business Pro entitlement
+ * must be verified before this function is called.
+ */
+
+export const generateCategoryBenchmarkReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.CATEGORY_BENCHMARK,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE GROWTH RECOMMENDATIONS REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Growth Recommendations Report.
+ *
+ * Recommendation generation remains inside:
+ *
+ * getBusinessGrowthRecommendations()
+ *
+ * This wrapper does NOT:
+ *
+ * - calculate analytics
+ * - create recommendation rules
+ * - calculate recommendation priority
+ * - query Prisma directly
+ * - authorize business ownership
+ * - determine Business Pro entitlement
+ *
+ * The authenticated business and Business Pro entitlement
+ * must be verified before this function is called.
+ */
+
+export const generateGrowthRecommendationsReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.GROWTH_RECOMMENDATIONS,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE PROMOTION INTELLIGENCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the Business Pro
+ * Promotion Intelligence Report.
+ *
+ * Advanced promotion calculations remain inside:
+ *
+ * getBusinessAdvancedPromotionAnalytics()
+ *
+ * This wrapper does NOT:
+ *
+ * - calculate promotion performance
+ * - calculate observed uplift
+ * - calculate cost efficiency
+ * - attribute offers or trades to promotions
+ * - calculate revenue, profit, or ROI
+ * - query Prisma directly
+ * - authorize business ownership
+ * - determine Business Pro entitlement
+ *
+ * The authenticated business and Business Pro entitlement
+ * must be verified before this function is called.
+ */
+
+export const generatePromotionIntelligenceReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.PROMOTION_INTELLIGENCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
+    // UPDATE — server/src/services/businessReportService.js
+
+/**
+ * =========================================================
+ * GENERATE COMBINED BUSINESS INTELLIGENCE REPORT
+ * =========================================================
+ *
+ * Public convenience entry point for the flagship
+ * Business Pro intelligence report.
+ *
+ * The combined report brings together existing analytics:
+ *
+ * - business performance
+ * - listing performance
+ * - conversion intelligence
+ * - demand intelligence
+ * - category benchmarks
+ * - promotion intelligence
+ * - growth recommendations
+ *
+ * This wrapper does NOT:
+ *
+ * - calculate analytics
+ * - query Prisma directly
+ * - calculate benchmark metrics
+ * - calculate promotion attribution
+ * - generate recommendations
+ * - authorize business ownership
+ * - determine Business Pro entitlement
+ *
+ * Authorization must be completed before this function
+ * is called.
+ */
+
+export const generateCombinedBusinessIntelligenceReport =
+  async ({
+    business,
+
+    format =
+      DEFAULT_BUSINESS_REPORT_FORMAT,
+
+    days =
+      BUSINESS_REPORT_HISTORY.DEFAULT_DAYS,
+
+    startDate = null,
+
+    endDate = null,
+
+    analyticsTier =
+      "BUSINESS_PRO",
+
+    timezone = "UTC",
+  } = {}) =>
+    generateBusinessReport({
+      business,
+
+      reportType:
+        BUSINESS_REPORT_TYPES.BUSINESS_INTELLIGENCE,
+
+      format,
+
+      days,
+
+      startDate,
+
+      endDate,
+
+      analyticsTier,
+
+      timezone,
+    });
+
