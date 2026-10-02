@@ -808,31 +808,34 @@ export const promotionPaymentCallback =
                   new Date();
 
                 /*
-                 * --------------------------------------------------
-                 * PREVENT TWO ACTIVE PREMIUM MEMBERSHIPS
-                 * --------------------------------------------------
-                 *
-                 * This protects against an old STK callback arriving
-                 * after another subscription already became active.
-                 */
-                const anotherActiveSubscription =
-                  await tx.subscription.findFirst(
-                    {
+                * --------------------------------------------------
+                * PREVENT TWO ACTIVE SUBSCRIPTIONS OF THE SAME PLAN
+                * --------------------------------------------------
+                *
+                * Personal Premium and Business Pro are independent.
+                *
+                * This protects against an old STK callback arriving
+                * after another subscription of the SAME plan has
+                * already become active.
+                */
+                  const subscriptionPlan =
+                    currentPayment.subscription.plan;
+
+                  const anotherActiveSubscription =
+                    await tx.subscription.findFirst({
                       where: {
                         userId:
-                          currentPayment
-                            .userId,
+                          currentPayment.userId,
 
                         plan:
-                          "PREMIUM",
+                          subscriptionPlan,
 
                         status:
                           "ACTIVE",
 
                         id: {
                           not:
-                            currentPayment
-                              .subscriptionId,
+                            currentPayment.subscriptionId,
                         },
 
                         startsAt: {
@@ -848,13 +851,11 @@ export const promotionPaymentCallback =
 
                       select: {
                         id: true,
-                        startsAt:
-                          true,
-                        endsAt:
-                          true,
+                        plan: true,
+                        startsAt: true,
+                        endsAt: true,
                       },
-                    }
-                  );
+                    });
 
                 if (
                   anotherActiveSubscription
@@ -895,7 +896,7 @@ export const promotionPaymentCallback =
                             ),
 
                           resultDescription:
-                            "M-PESA payment completed after another Premium subscription had already become active. Premium was not extended. Manual reconciliation required.",
+                            `M-PESA payment completed after another ${subscriptionPlan} subscription had already become active. The subscription was not activated again. Manual reconciliation required.`,
                         },
                       }
                     );
@@ -1000,7 +1001,7 @@ export const promotionPaymentCallback =
               .conflict
           ) {
             console.warn(
-              `Subscription payment ${payment.id} completed, but another Premium subscription is already active. Manual reconciliation required.`
+             `Subscription payment ${payment.id} completed, but another subscription of the same plan is already active. Manual reconciliation required.`
             );
           } else if (
             transactionResult

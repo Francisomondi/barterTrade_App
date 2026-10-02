@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import {
   ArrowLeft,
   ArrowRight,
@@ -6,6 +12,7 @@ import {
   BarChart3,
   CalendarDays,
   CheckCircle2,
+  Download,
   Crown,
   FileBarChart,
   FileJson,
@@ -18,6 +25,10 @@ import {
   RefreshCw,
   Repeat2,
   Search,
+  AlertCircle,
+  Loader2,
+  Smartphone,
+  X,
   ShieldCheck,
   ShoppingBag,
   Store,
@@ -26,19 +37,35 @@ import {
   Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
-
-import {
-  BUSINESS_REPORT_FORMATS,
-  BUSINESS_REPORT_TYPES,
-  generateMyBusinessReport,
-  getMyBusinessReportAccess,
-} from "../api/businessReports";
+import { BUSINESS_REPORT_FORMATS, BUSINESS_REPORT_TYPES, generateMyBusinessReport, getMyBusinessReportAccess} from "../api/businessReports";
+import { createSubscription, getSubscriptionPlans, getSubscriptionPaymentStatus, payForSubscription} from "../api/subscriptionApi";
 
 /**
  * =========================================================
  * BUSINESS REPORT CATALOG
  * =========================================================
  */
+
+
+/**
+ * =========================================================
+ * BUSINESS PRO PAYMENT CONFIG
+ * =========================================================
+ */
+
+const BUSINESS_PRO_PLAN_TYPE =
+  "BUSINESS_PRO";
+
+const PAYMENT_POLL_INTERVAL =
+  3000;
+
+const PAYMENT_MAX_ATTEMPTS =
+  40;
+
+const wait = (milliseconds) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 
 const BUSINESS_REPORT_CATALOG = [
   {
@@ -209,6 +236,12 @@ const REPORT_ACCENTS = {
  * 9.11.20.12 — JSON Export Experience
  * 9.11.20.14 — PDF_READY Preview
  * 9.11.20.15 — Export Download UX
+ * 9.11.20.16 — Loading / Error / Empty States
+ * 9.11.20.17 — Responsive Mobile Experience
+ * 9.11.20.18 — Frontend Security / Entitlement Handling
+ * * 9.11.20.19 — Testing
+ * 
+ * 
  *
  * SECURITY MODEL
  *
@@ -239,33 +272,679 @@ const REPORT_ACCENTS = {
  */
 
 const BusinessReports = () => {
-  const [accessResponse, setAccessResponse] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [accessResponse, setAccessResponse] =
+    useState(null);
 
-  const loadReportAccess = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
+  const [loading, setLoading] =
+    useState(true);
 
-      const response = await getMyBusinessReportAccess();
-      setAccessResponse(response || null);
-    } catch (err) {
-      console.error("LOAD BUSINESS REPORT ACCESS ERROR:", err);
+  const [error, setError] =
+    useState("");
 
-      setAccessResponse(null);
-      setError(
-        err?.response?.data?.message ||
-          "We couldn't load your business report access. Please try again."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  /*
+   * =======================================================
+   * BUSINESS PRO PAYMENT STATE
+   * =======================================================
+   */
+
+  const [businessProPlan, setBusinessProPlan] =
+    useState(null);
+
+  const [planLoading, setPlanLoading] =
+    useState(false);
+
+  const [planError, setPlanError] =
+    useState("");
+
+  const [showPaymentModal, setShowPaymentModal] =
+    useState(false);
+
+  const [phoneNumber, setPhoneNumber] =
+    useState("");
+
+  const [paymentState, setPaymentState] =
+    useState("IDLE");
+
+  const [paymentMessage, setPaymentMessage] =
+    useState("");
+
+  const [paymentError, setPaymentError] =
+    useState("");
+
+  const [currentPayment, setCurrentPayment] =
+    useState(null);
+
+  const [currentSubscription, setCurrentSubscription] =
+    useState(null);
+
+  const pollingRef =
+    useRef(false);
+
+  const mountedRef =
+    useRef(true);
+
+  /*
+   * =======================================================
+   * LOAD REPORT ENTITLEMENT
+   * =======================================================
+   */
+
+  const loadReportAccess =
+    useCallback(async ({
+      showLoader = true,
+    } = {}) => {
+      try {
+        if (showLoader) {
+          setLoading(true);
+        }
+
+        setError("");
+
+        const response =
+          await getMyBusinessReportAccess();
+
+        if (!mountedRef.current) {
+          return null;
+        }
+
+        setAccessResponse(
+          response || null
+        );
+
+        return response || null;
+      } catch (err) {
+        console.error(
+          "LOAD BUSINESS REPORT ACCESS ERROR:",
+          err
+        );
+
+        if (!mountedRef.current) {
+          return null;
+        }
+
+        if (showLoader) {
+          setAccessResponse(null);
+        }
+
+        setError(
+          err?.response?.data?.message ||
+            "We couldn't load your business report access. Please try again."
+        );
+
+        return null;
+      } finally {
+        if (
+          showLoader &&
+          mountedRef.current
+        ) {
+          setLoading(false);
+        }
+      }
+    }, []);
+
+  /*
+   * =======================================================
+   * LOAD BUSINESS PRO PLAN
+   * =======================================================
+   *
+   * Price, currency and duration come from the backend.
+   *
+   * React does NOT define the Business Pro price.
+   */
+
+  const loadBusinessProPlan =
+    useCallback(async () => {
+      try {
+        setPlanLoading(true);
+        setPlanError("");
+
+        const response =
+          await getSubscriptionPlans();
+
+        const plan =
+          response?.plans?.find(
+            (item) =>
+              item?.type ===
+              BUSINESS_PRO_PLAN_TYPE
+          ) || null;
+
+        if (!mountedRef.current) {
+          return null;
+        }
+
+        if (!plan) {
+          setBusinessProPlan(null);
+
+          setPlanError(
+            "Business Pro is temporarily unavailable."
+          );
+
+          return null;
+        }
+
+        setBusinessProPlan(plan);
+
+        return plan;
+      } catch (err) {
+        console.error(
+          "LOAD BUSINESS PRO PLAN ERROR:",
+          err
+        );
+
+        if (!mountedRef.current) {
+          return null;
+        }
+
+        setBusinessProPlan(null);
+
+        setPlanError(
+          err?.response?.data?.message ||
+            "Unable to load the Business Pro plan."
+        );
+
+        return null;
+      } finally {
+        if (mountedRef.current) {
+          setPlanLoading(false);
+        }
+      }
+    }, []);
+
+  /*
+   * =======================================================
+   * INITIAL LOAD
+   * =======================================================
+   */
 
   useEffect(() => {
+    mountedRef.current = true;
+
     loadReportAccess();
-  }, [loadReportAccess]);
+    loadBusinessProPlan();
+
+    return () => {
+      mountedRef.current = false;
+      pollingRef.current = false;
+    };
+  }, [
+    loadReportAccess,
+    loadBusinessProPlan,
+  ]);
+
+  /*
+   * =======================================================
+   * PAYMENT MODAL
+   * =======================================================
+   */
+
+  const openPaymentModal = () => {
+    setPaymentError("");
+    setPaymentMessage("");
+    setPaymentState("IDLE");
+
+    setCurrentPayment(null);
+    setCurrentSubscription(null);
+
+    setShowPaymentModal(true);
+  };
+
+  const closePaymentModal = () => {
+    const processing =
+      paymentState === "CREATING" ||
+      paymentState === "INITIATING" ||
+      paymentState === "POLLING";
+
+    if (processing) {
+      return;
+    }
+
+    pollingRef.current = false;
+    setShowPaymentModal(false);
+  };
+
+  /*
+   * =======================================================
+   * POLL BUSINESS PRO PAYMENT
+   * =======================================================
+   */
+
+  const pollBusinessProPayment =
+    async (paymentId) => {
+      if (!paymentId) {
+        return;
+      }
+
+      pollingRef.current = true;
+
+      setPaymentState("POLLING");
+
+      setPaymentMessage(
+        "Waiting for M-Pesa confirmation..."
+      );
+
+      for (
+        let attempt = 1;
+        attempt <= PAYMENT_MAX_ATTEMPTS;
+        attempt += 1
+      ) {
+        if (
+          !pollingRef.current ||
+          !mountedRef.current
+        ) {
+          return;
+        }
+
+        try {
+          const response =
+            await getSubscriptionPaymentStatus(
+              paymentId
+            );
+
+          if (!mountedRef.current) {
+            return;
+          }
+
+          const payment =
+            response?.payment || null;
+
+          const subscription =
+            response?.subscription || null;
+
+          if (payment) {
+            setCurrentPayment(payment);
+          }
+
+          if (subscription) {
+            setCurrentSubscription(
+              subscription
+            );
+          }
+
+          /*
+           * ===============================================
+           * PAYMENT COMPLETED
+           * ===============================================
+           *
+           * IMPORTANT:
+           *
+           * COMPLETED payment does NOT cause React to set
+           * Business Pro access locally.
+           *
+           * We refresh /business/me/reports and require
+           * reports.isBusinessPro === true.
+           */
+
+          if (
+            payment?.status ===
+            "COMPLETED"
+          ) {
+            pollingRef.current = false;
+
+            setPaymentMessage(
+              "Payment confirmed. Verifying Business Pro access..."
+            );
+
+            const refreshedAccess =
+              await loadReportAccess({
+                showLoader: false,
+              });
+
+            const serverGrantedAccess =
+              refreshedAccess?.reports
+                ?.isBusinessPro === true;
+
+            if (serverGrantedAccess) {
+              setPaymentState(
+                "SUCCESS"
+              );
+
+              setPaymentMessage(
+                "Payment confirmed. Business Pro is now active."
+              );
+
+              return;
+            }
+
+            setPaymentState(
+              "VERIFYING"
+            );
+
+            setPaymentMessage(
+              "Payment was confirmed. Your Business Pro access is still being verified by the server."
+            );
+
+            return;
+          }
+
+          /*
+           * ===============================================
+           * PAYMENT FAILED / CANCELLED
+           * ===============================================
+           */
+
+          if (
+            payment?.status ===
+              "FAILED" ||
+            payment?.status ===
+              "CANCELLED"
+          ) {
+            pollingRef.current = false;
+
+            setPaymentState(
+              "FAILED"
+            );
+
+            setPaymentError(
+              payment
+                ?.resultDescription ||
+                (payment.status ===
+                "CANCELLED"
+                  ? "The M-Pesa request was cancelled."
+                  : "The M-Pesa payment failed.")
+            );
+
+            return;
+          }
+        } catch (err) {
+          console.error(
+            "BUSINESS PRO PAYMENT POLLING ERROR:",
+            err
+          );
+
+          /*
+           * A temporary network error must not make a
+           * successful M-Pesa payment appear failed.
+           */
+        }
+
+        if (
+          attempt <
+          PAYMENT_MAX_ATTEMPTS
+        ) {
+          await wait(
+            PAYMENT_POLL_INTERVAL
+          );
+        }
+      }
+
+      pollingRef.current = false;
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setPaymentState("TIMEOUT");
+
+      setPaymentError(
+        "Payment confirmation is taking longer than expected. If you completed the M-Pesa payment, your Business Pro access will update after the server confirms it."
+      );
+    };
+
+  /*
+   * =======================================================
+   * START BUSINESS PRO PAYMENT
+   * =======================================================
+   */
+
+  const handleBusinessProPayment =
+    async (event) => {
+      event.preventDefault();
+
+      const phone =
+        phoneNumber.trim();
+
+      if (!phone) {
+        setPaymentError(
+          "Enter the Safaricom number that will make the payment."
+        );
+
+        return;
+      }
+
+      if (!businessProPlan) {
+        setPaymentError(
+          "Business Pro is currently unavailable. Please try again."
+        );
+
+        return;
+      }
+
+      try {
+        pollingRef.current = false;
+
+        setPaymentError("");
+
+        setPaymentState(
+          "CREATING"
+        );
+
+        setPaymentMessage(
+          "Preparing your Business Pro subscription..."
+        );
+
+        /*
+         * ===============================================
+         * CREATE / REUSE BUSINESS_PRO SUBSCRIPTION
+         * ===============================================
+         */
+
+        const subscriptionResponse =
+          await createSubscription(
+            BUSINESS_PRO_PLAN_TYPE
+          );
+
+        const subscription =
+          subscriptionResponse
+            ?.subscription;
+
+        if (!subscription?.id) {
+          throw new Error(
+            "Business Pro subscription could not be created."
+          );
+        }
+
+        /*
+         * Defensive frontend validation only.
+         *
+         * The backend remains authoritative.
+         */
+
+        if (
+          subscription.plan !==
+          BUSINESS_PRO_PLAN_TYPE
+        ) {
+          throw new Error(
+            "Unexpected subscription plan returned by the server."
+          );
+        }
+
+        setCurrentSubscription(
+          subscription
+        );
+
+        /*
+         * ===============================================
+         * INITIATE M-PESA STK
+         * ===============================================
+         */
+
+        setPaymentState(
+          "INITIATING"
+        );
+
+        setPaymentMessage(
+          "Sending an M-Pesa request to your phone..."
+        );
+
+        const paymentResponse =
+          await payForSubscription(
+            subscription.id,
+            phone
+          );
+
+        const payment =
+          paymentResponse?.payment;
+
+        if (!payment?.id) {
+          throw new Error(
+            "Payment request could not be created."
+          );
+        }
+
+        setCurrentPayment(
+          payment
+        );
+
+        setPaymentMessage(
+          "Check your phone and enter your M-Pesa PIN."
+        );
+
+        await pollBusinessProPayment(
+          payment.id
+        );
+      } catch (err) {
+        console.error(
+          "BUSINESS PRO PAYMENT ERROR:",
+          err
+        );
+
+        pollingRef.current = false;
+
+        const response =
+          err?.response?.data;
+
+        /*
+         * Existing STK request.
+         */
+
+        if (
+          response?.code ===
+          "PAYMENT_ALREADY_PENDING"
+        ) {
+          const existingPayment =
+            response?.payment;
+
+          if (existingPayment?.id) {
+            setCurrentPayment(
+              existingPayment
+            );
+
+            setPaymentMessage(
+              "An M-Pesa request is already pending. Waiting for confirmation..."
+            );
+
+            await pollBusinessProPayment(
+              existingPayment.id
+            );
+
+            return;
+          }
+        }
+
+        /*
+         * If backend says Business Pro is already active,
+         * do NOT set entitlement locally.
+         *
+         * Refresh the canonical report-access endpoint.
+         */
+
+        if (
+          response?.code ===
+            "SUBSCRIPTION_ALREADY_ACTIVE" ||
+          response?.code ===
+            "ACTIVE_SUBSCRIPTION_EXISTS"
+        ) {
+          const refreshedAccess =
+            await loadReportAccess({
+              showLoader: false,
+            });
+
+          if (
+            refreshedAccess?.reports
+              ?.isBusinessPro === true
+          ) {
+            setPaymentState(
+              "SUCCESS"
+            );
+
+            setPaymentMessage(
+              "Business Pro is already active."
+            );
+
+            return;
+          }
+        }
+
+        setPaymentState("FAILED");
+
+        setPaymentError(
+          response?.message ||
+            response?.reason ||
+            err?.message ||
+            "Unable to start the Business Pro payment."
+        );
+      }
+    };
+
+  /*
+   * =======================================================
+   * RECHECK ENTITLEMENT
+   * =======================================================
+   */
+
+  const recheckBusinessProAccess =
+    async () => {
+      setPaymentError("");
+
+      setPaymentMessage(
+        "Checking Business Pro access..."
+      );
+
+      const refreshedAccess =
+        await loadReportAccess({
+          showLoader: false,
+        });
+
+      if (
+        refreshedAccess?.reports
+          ?.isBusinessPro === true
+      ) {
+        setPaymentState("SUCCESS");
+
+        setPaymentMessage(
+          "Business Pro is now active."
+        );
+
+        return;
+      }
+
+      setPaymentState("VERIFYING");
+
+      setPaymentMessage(
+        "Business Pro is not active yet. If your M-Pesa payment completed, please try again shortly."
+      );
+    };
+
+  const finishBusinessProPayment =
+    async () => {
+      pollingRef.current = false;
+
+      setShowPaymentModal(false);
+
+      setPaymentState("IDLE");
+      setPaymentError("");
+      setPaymentMessage("");
+
+      await loadReportAccess({
+        showLoader: false,
+      });
+    };
+
+  /*
+   * =======================================================
+   * PAGE STATES
+   * =======================================================
+   */
 
   if (loading) {
     return <BusinessReportsLoading />;
@@ -280,26 +959,104 @@ const BusinessReports = () => {
     );
   }
 
-  const business = accessResponse?.business || null;
-  const reports = accessResponse?.reports || null;
+  const business =
+    accessResponse?.business || null;
 
-  const hasBusinessProAccess = reports?.isBusinessPro === true;
+  const reports =
+    accessResponse?.reports || null;
+
+  /*
+   * SECURITY:
+   *
+   * This remains the ONLY frontend Business Pro
+   * entitlement decision.
+   */
+
+  const hasBusinessProAccess =
+    reports?.isBusinessPro === true;
 
   if (!hasBusinessProAccess) {
-    return <BusinessReportsLocked business={business} />;
+    return (
+      <>
+        <BusinessReportsLocked
+          business={business}
+          plan={businessProPlan}
+          planLoading={planLoading}
+          planError={planError}
+          onUpgrade={
+            openPaymentModal
+          }
+          onReloadPlan={
+            loadBusinessProPlan
+          }
+        />
+
+        {showPaymentModal && (
+          <BusinessProPaymentModal
+            plan={businessProPlan}
+            phoneNumber={phoneNumber}
+            setPhoneNumber={
+              setPhoneNumber
+            }
+            paymentState={
+              paymentState
+            }
+            paymentMessage={
+              paymentMessage
+            }
+            paymentError={
+              paymentError
+            }
+            currentPayment={
+              currentPayment
+            }
+            currentSubscription={
+              currentSubscription
+            }
+            onSubmit={
+              handleBusinessProPayment
+            }
+            onClose={
+              closePaymentModal
+            }
+            onFinish={
+              finishBusinessProPayment
+            }
+            onRecheck={
+              recheckBusinessProAccess
+            }
+            onRetry={() => {
+              pollingRef.current =
+                false;
+
+              setPaymentState(
+                "IDLE"
+              );
+
+              setPaymentError("");
+              setPaymentMessage("");
+              setCurrentPayment(null);
+            }}
+          />
+        )}
+      </>
+    );
   }
 
   return (
     <BusinessReportsUnlocked
       business={business}
       reports={reports}
+      hasBusinessProAccess={
+        hasBusinessProAccess
+      }
     />
   );
 };
 
 const ReportsPageShell = ({ children }) => (
-  <div className="min-h-screen bg-[#F8F5F3] pb-16 font-sans">
-    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+  <div className="min-h-screen overflow-x-hidden bg-[#F8F5F3] pb-12 font-sans sm:pb-16">
+    <main className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-6 sm:py-8 lg:px-8">
       {children}
     </main>
   </div>
@@ -309,13 +1066,13 @@ const ReportsHeader = ({ business, isBusinessPro }) => (
   <>
     <Link
       to="/business/dashboard"
-      className="inline-flex items-center gap-2 text-xs font-bold text-[#6B1D2C] transition hover:text-[#3D0F18]"
+      className="inline-flex min-h-10 items-center gap-2 rounded-lg pr-2 text-xs font-bold text-[#6B1D2C] transition hover:text-[#3D0F18] focus:outline-none focus:ring-2 focus:ring-[#8A2638]/20"
     >
       <ArrowLeft size={15} />
       Back to Business Dashboard
     </Link>
 
-    <div className="mt-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mt-4 flex flex-col gap-4 sm:mt-6 sm:gap-5 lg:flex-row lg:items-end lg:justify-between">
       <div className="max-w-3xl">
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#9A5D37]">
@@ -330,18 +1087,18 @@ const ReportsHeader = ({ business, isBusinessPro }) => (
           )}
         </div>
 
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-[#3D0F18] sm:text-3xl">
+        <h1 className="mt-2 text-xl font-black tracking-tight text-[#3D0F18] sm:text-3xl">
           Business Reports
         </h1>
 
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+        <p className="mt-2 max-w-2xl text-xs leading-5 text-gray-500 sm:text-sm sm:leading-6">
           Understand how your business is performing with clear,
           structured reports built from your marketplace activity.
         </p>
       </div>
 
       {business && (
-        <div className="w-full rounded-2xl border border-[#E8DFDB] bg-white p-3 shadow-sm sm:w-auto sm:min-w-[240px]">
+        <div className="min-w-0 w-full rounded-2xl border border-[#E8DFDB] bg-white p-3 shadow-sm sm:w-auto sm:min-w-[240px] sm:max-w-sm">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
               <Store size={18} className="text-[#5B1725]" />
@@ -371,12 +1128,19 @@ const ReportsHeader = ({ business, isBusinessPro }) => (
   </>
 );
 
-const BusinessReportsLocked = ({ business }) => (
+const BusinessReportsLocked = ({
+  business,
+  plan,
+  planLoading,
+  planError,
+  onUpgrade,
+  onReloadPlan,
+}) => (
   <ReportsPageShell>
     <ReportsHeader business={business} isBusinessPro={false} />
 
-    <section className="mt-7 overflow-hidden rounded-3xl border border-[#E8DFDB] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-5 overflow-hidden rounded-2xl border border-[#E8DFDB] bg-white shadow-sm sm:mt-7 sm:rounded-3xl">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
       <div className="grid lg:grid-cols-[1.15fr_0.85fr]">
         <div className="p-6 sm:p-8 lg:p-10">
@@ -416,6 +1180,141 @@ const BusinessReportsLocked = ({ business }) => (
               </p>
             </div>
           </div>
+          <div className="mt-6 overflow-hidden rounded-2xl border border-[#E8DFDB] bg-[#FBF9F8]">
+            <div className="p-5 sm:p-6">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Crown
+                      size={18}
+                      className="text-[#9A5D37]"
+                    />
+
+                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#9A5D37]">
+                      Business Pro Plan
+                    </p>
+                  </div>
+
+                  {planLoading ? (
+                    <div className="mt-4 flex items-center gap-2 text-sm font-bold text-gray-500">
+                      <Loader2
+                        size={17}
+                        className="animate-spin"
+                      />
+
+                      Loading Business Pro...
+                    </div>
+                  ) : plan ? (
+                    <>
+                      <div className="mt-3 flex flex-wrap items-end gap-x-2 gap-y-1">
+                        <span className="text-sm font-black text-gray-500">
+                          {plan.currency || "KES"}
+                        </span>
+
+                        <span className="text-4xl font-black tracking-tight text-[#3D0F18]">
+                          {Number(
+                            plan.amount
+                          ).toLocaleString()}
+                        </span>
+
+                        <span className="pb-1 text-xs font-bold text-gray-400">
+                          / {plan.durationDays || 30} days
+                        </span>
+                      </div>
+
+                      <p className="mt-2 max-w-lg text-xs leading-5 text-gray-500">
+                        {plan.description ||
+                          "Unlock advanced business analytics, reports and export tools for your business."}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-3 text-sm font-bold text-gray-500">
+                      Business Pro pricing is currently unavailable.
+                    </p>
+                  )}
+                </div>
+
+                {!planLoading && plan && (
+                  <button
+                    type="button"
+                    onClick={onUpgrade}
+                    className="inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-[#48101C] focus:outline-none focus:ring-2 focus:ring-[#8A2638]/30 sm:w-auto"
+                  >
+                    <Smartphone size={18} />
+
+                    Upgrade with M-Pesa
+                  </button>
+                )}
+              </div>
+
+              {plan && (
+                <div className="mt-5 flex flex-wrap gap-2 border-t border-[#E8DFDB] pt-4">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black text-emerald-700">
+                    <CheckCircle2 size={12} />
+                    Business Reports
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black text-emerald-700">
+                    <CheckCircle2 size={12} />
+                    Extended History
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black text-emerald-700">
+                    <CheckCircle2 size={12} />
+                    Custom Date Ranges
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black text-emerald-700">
+                    <CheckCircle2 size={12} />
+                    Report Exports
+                  </span>
+                </div>
+              )}
+
+              <div className="mt-4 flex items-start gap-2">
+                <ShieldCheck
+                  size={15}
+                  className="mt-0.5 shrink-0 text-gray-400"
+                />
+
+                <p className="text-[10px] leading-4 text-gray-400">
+                  Business Pro activates only after your M-Pesa
+                  payment is successfully confirmed by the server.
+                  Opening or completing the payment form does not
+                  grant report access by itself.
+                </p>
+              </div>
+            </div>
+          </div>
+          {planError && !planLoading && !plan && (
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertCircle
+                  size={18}
+                  className="mt-0.5 shrink-0 text-red-600"
+                />
+
+                <div>
+                  <p className="text-xs font-black text-red-900">
+                    Business Pro couldn't be loaded
+                  </p>
+
+                  <p className="mt-1 text-[11px] leading-5 text-red-700">
+                    {planError}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onReloadPlan}
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2 text-xs font-black text-red-700 transition hover:bg-red-100"
+              >
+                <RefreshCw size={14} />
+                Try Again
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-[#EEE6E2] bg-[#FBF9F8] p-6 sm:p-8 lg:border-l lg:border-t-0">
@@ -512,13 +1411,572 @@ const BusinessReportsLocked = ({ business }) => (
   </ReportsPageShell>
 );
 
+
+/**
+ * =========================================================
+ * BUSINESS PRO M-PESA PAYMENT MODAL
+ * =========================================================
+ *
+ * SECURITY:
+ *
+ * This modal never grants Business Pro access.
+ *
+ * Successful M-Pesa payment is followed by a refresh of
+ * the protected Business Reports entitlement endpoint.
+ *
+ * Only:
+ *
+ * reports.isBusinessPro === true
+ *
+ * unlocks the reporting experience.
+ */
+
+const BusinessProPaymentModal = ({
+  plan,
+  phoneNumber,
+  setPhoneNumber,
+  paymentState,
+  paymentMessage,
+  paymentError,
+  currentPayment,
+  currentSubscription,
+  onSubmit,
+  onClose,
+  onFinish,
+  onRecheck,
+  onRetry,
+}) => {
+  const isCreating =
+    paymentState === "CREATING";
+
+  const isInitiating =
+    paymentState === "INITIATING";
+
+  const isPolling =
+    paymentState === "POLLING";
+
+  const isProcessing =
+    isCreating ||
+    isInitiating ||
+    isPolling;
+
+  const isSuccess =
+    paymentState === "SUCCESS";
+
+  const isFailed =
+    paymentState === "FAILED";
+
+  const isTimeout =
+    paymentState === "TIMEOUT";
+
+  const isVerifying =
+    paymentState === "VERIFYING";
+
+  const canClose =
+    !isProcessing;
+
+  const paymentStatus =
+    currentPayment?.status || null;
+
+  const receiptNumber =
+    currentPayment?.receiptNumber ||
+    null;
+
+  const subscriptionStatus =
+    currentSubscription?.status ||
+    null;
+
+  const formattedAmount =
+    Number.isFinite(
+      Number(plan?.amount)
+    )
+      ? Number(
+          plan.amount
+        ).toLocaleString()
+      : "—";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="business-pro-payment-title"
+    >
+      <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:max-w-lg sm:rounded-3xl">
+        {/* HEADER */}
+
+        <div className="sticky top-0 z-10 border-b border-[#EEE6E2] bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
+                <Crown
+                  size={20}
+                  className="text-[#5B1725]"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#9A5D37]">
+                  Business Pro
+                </p>
+
+                <h2
+                  id="business-pro-payment-title"
+                  className="mt-0.5 text-lg font-black text-[#3D0F18]"
+                >
+                  Upgrade with M-Pesa
+                </h2>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={!canClose}
+              aria-label="Close payment"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <X size={19} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-6">
+          {/* PLAN SUMMARY */}
+
+          <div className="rounded-2xl border border-[#E8DFDB] bg-[#FBF9F8] p-4">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-gray-400">
+                  Subscription
+                </p>
+
+                <p className="mt-1 text-sm font-black text-[#3D0F18]">
+                  {plan?.name ||
+                    "BarterTrade Business Pro"}
+                </p>
+              </div>
+
+              <div className="shrink-0 text-right">
+                <div className="flex items-end justify-end gap-1">
+                  <span className="pb-1 text-[10px] font-black text-gray-400">
+                    {plan?.currency ||
+                      "KES"}
+                  </span>
+
+                  <span className="text-2xl font-black tracking-tight text-[#3D0F18]">
+                    {formattedAmount}
+                  </span>
+                </div>
+
+                <p className="text-[10px] font-bold text-gray-400">
+                  {plan?.durationDays
+                    ? `${plan.durationDays} days`
+                    : "30 days"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* IDLE PAYMENT FORM */}
+
+          {paymentState === "IDLE" && (
+            <form
+              onSubmit={onSubmit}
+              className="mt-6"
+            >
+              <label
+                htmlFor="business-pro-phone"
+                className="text-xs font-black text-[#3D0F18]"
+              >
+                Safaricom M-Pesa number
+              </label>
+
+              <p className="mt-1 text-[11px] leading-5 text-gray-500">
+                Enter the phone number that
+                should receive the M-Pesa STK
+                push.
+              </p>
+
+              <div className="relative mt-3">
+                <Smartphone
+                  size={17}
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+
+                <input
+                  id="business-pro-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phoneNumber}
+                  onChange={(event) =>
+                    setPhoneNumber(
+                      event.target.value
+                    )
+                  }
+                  placeholder="e.g. 0712345678"
+                  className="min-h-12 w-full rounded-xl border border-[#DDD3CF] bg-white py-3 pl-11 pr-4 text-sm font-bold text-[#3D0F18] outline-none transition placeholder:font-medium placeholder:text-gray-300 focus:border-[#8A2638] focus:ring-2 focus:ring-[#8A2638]/10"
+                />
+              </div>
+
+              {paymentError && (
+                <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3">
+                  <AlertCircle
+                    size={16}
+                    className="mt-0.5 shrink-0 text-red-600"
+                  />
+
+                  <p className="text-[11px] leading-5 text-red-700">
+                    {paymentError}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={!plan}
+                className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-black text-white transition hover:bg-[#48101C] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Smartphone size={18} />
+
+                Pay{" "}
+                {plan?.currency ||
+                  "KES"}{" "}
+                {formattedAmount} with
+                M-Pesa
+              </button>
+
+              <div className="mt-4 flex items-start gap-2">
+                <ShieldCheck
+                  size={14}
+                  className="mt-0.5 shrink-0 text-gray-400"
+                />
+
+                <p className="text-[10px] leading-4 text-gray-400">
+                  Your Business Pro access
+                  activates only after the
+                  backend confirms the M-Pesa
+                  payment and activates your
+                  subscription.
+                </p>
+              </div>
+            </form>
+          )}
+
+          {/* PROCESSING */}
+
+          {isProcessing && (
+            <div className="py-8 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#F5E8EB]">
+                <Loader2
+                  size={28}
+                  className="animate-spin text-[#5B1725]"
+                />
+              </div>
+
+              <h3 className="mt-5 text-base font-black text-[#3D0F18]">
+                {isCreating
+                  ? "Preparing Business Pro"
+                  : isInitiating
+                    ? "Sending M-Pesa request"
+                    : "Waiting for payment"}
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
+                {paymentMessage ||
+                  "Please wait while we process your request."}
+              </p>
+
+              {isPolling && (
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left">
+                  <div className="flex items-start gap-3">
+                    <Smartphone
+                      size={18}
+                      className="mt-0.5 shrink-0 text-emerald-700"
+                    />
+
+                    <div>
+                      <p className="text-xs font-black text-emerald-900">
+                        Check your phone
+                      </p>
+
+                      <p className="mt-1 text-[11px] leading-5 text-emerald-700">
+                        Enter your M-Pesa PIN
+                        when the Safaricom
+                        payment prompt appears.
+                        Keep this window open
+                        while we wait for
+                        confirmation.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-5 text-[10px] leading-4 text-gray-400">
+                Do not refresh or submit
+                another payment while this
+                request is being processed.
+              </p>
+            </div>
+          )}
+
+          {/* SUCCESS */}
+
+          {isSuccess && (
+            <div className="py-5">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+                <CheckCircle2
+                  size={30}
+                  className="text-emerald-700"
+                />
+              </div>
+
+              <div className="mt-4 text-center">
+                <h3 className="text-lg font-black text-[#3D0F18]">
+                  Business Pro activated
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
+                  {paymentMessage ||
+                    "Your Business Pro access has been verified by the server."}
+                </p>
+              </div>
+
+              {(receiptNumber ||
+                paymentStatus ||
+                subscriptionStatus) && (
+                <div className="mt-6 divide-y divide-[#EEE6E2] rounded-2xl border border-[#E8DFDB] bg-[#FBF9F8] px-4">
+                  {receiptNumber && (
+                    <PaymentDetailRow
+                      label="M-Pesa receipt"
+                      value={
+                        receiptNumber
+                      }
+                    />
+                  )}
+
+                  {paymentStatus && (
+                    <PaymentDetailRow
+                      label="Payment"
+                      value={
+                        paymentStatus
+                      }
+                    />
+                  )}
+
+                  {subscriptionStatus && (
+                    <PaymentDetailRow
+                      label="Subscription"
+                      value={
+                        subscriptionStatus
+                      }
+                    />
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onFinish}
+                className="mt-6 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-black text-white transition hover:bg-[#48101C]"
+              >
+                <FileBarChart size={18} />
+                Open Business Reports
+              </button>
+            </div>
+          )}
+
+          {/* SERVER VERIFICATION */}
+
+          {isVerifying && (
+            <div className="py-5">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+                <RefreshCw
+                  size={27}
+                  className="text-amber-700"
+                />
+              </div>
+
+              <div className="mt-4 text-center">
+                <h3 className="text-lg font-black text-[#3D0F18]">
+                  Verifying Business Pro
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
+                  {paymentMessage}
+                </p>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck
+                    size={18}
+                    className="mt-0.5 shrink-0 text-amber-700"
+                  />
+
+                  <p className="text-[11px] leading-5 text-amber-800">
+                    A payment confirmation
+                    alone does not unlock
+                    reports. We are checking
+                    your Business Pro
+                    entitlement directly with
+                    the server.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onRecheck}
+                className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-black text-white transition hover:bg-[#48101C]"
+              >
+                <RefreshCw size={17} />
+                Check Access Again
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-xl px-5 py-2 text-xs font-black text-gray-500 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {/* FAILED */}
+
+          {isFailed && (
+            <div className="py-5">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                <AlertCircle
+                  size={29}
+                  className="text-red-700"
+                />
+              </div>
+
+              <div className="mt-4 text-center">
+                <h3 className="text-lg font-black text-[#3D0F18]">
+                  Payment not completed
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
+                  Your Business Pro access
+                  has not been unlocked.
+                </p>
+              </div>
+
+              {paymentError && (
+                <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-xs font-bold leading-5 text-red-700">
+                    {paymentError}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-black text-white transition hover:bg-[#48101C]"
+              >
+                <RefreshCw size={17} />
+                Try Again
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-xl px-5 py-2 text-xs font-black text-gray-500 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          )}
+
+          {/* TIMEOUT */}
+
+          {isTimeout && (
+            <div className="py-5">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-100">
+                <History
+                  size={28}
+                  className="text-amber-700"
+                />
+              </div>
+
+              <div className="mt-4 text-center">
+                <h3 className="text-lg font-black text-[#3D0F18]">
+                  Confirmation is taking longer
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-gray-500">
+                  We have not received a final
+                  payment state yet.
+                </p>
+              </div>
+
+              {paymentError && (
+                <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-xs font-bold leading-5 text-amber-800">
+                    {paymentError}
+                  </p>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={onRecheck}
+                className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-black text-white transition hover:bg-[#48101C]"
+              >
+                <RefreshCw size={17} />
+                Check Business Pro Access
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-xl px-5 py-2 text-xs font-black text-gray-500 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * =========================================================
+ * PAYMENT DETAIL ROW
+ * =========================================================
+ */
+
+const PaymentDetailRow = ({
+  label,
+  value,
+}) => (
+  <div className="flex items-center justify-between gap-4 py-3">
+    <span className="text-[10px] font-bold text-gray-400">
+      {label}
+    </span>
+
+    <span className="break-all text-right text-[11px] font-black text-[#3D0F18]">
+      {value}
+    </span>
+  </div>
+);
+
 /**
  * =========================================================
  * UNLOCKED STATE
  * =========================================================
  */
 
-const BusinessReportsUnlocked = ({ business, reports }) => {
+const BusinessReportsUnlocked = ({ business, reports, hasBusinessProAccess }) => {
   const [selectedReportType, setSelectedReportType] = useState(null);
   const [confirmedReportType, setConfirmedReportType] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -544,16 +2002,22 @@ const BusinessReportsUnlocked = ({ business, reports }) => {
   const [ pdfReadyLoading, setPdfReadyLoading] = useState(false);
   const [ pdfReadyError,setPdfReadyError] = useState("");
   const [ pdfReadyResponse, setPdfReadyResponse,] = useState(null);
+  const [ downloadStatus, setDownloadStatus,] = useState(null);
+  const [ downloadError, setDownloadError,] = useState("");
 
   const maxHistoryDays = reports?.maxHistoryDays ?? "—";
   const customDateRange = reports?.customDateRange === true;
   const reportExport = reports?.reportExport === true;
   const reportGeneration = reports?.reportGeneration === true;
   const reportVersion = reports?.reportVersion || null;
+  const canGenerateReports = hasBusinessProAccess === true && reportGeneration === true;
+  const canExportReports = hasBusinessProAccess === true && reportExport === true;
 
-  const numericMaxHistoryDays = Number.isFinite(Number(maxHistoryDays))
+const numericMaxHistoryDays =
+  Number.isInteger(Number(maxHistoryDays)) &&
+  Number(maxHistoryDays) > 0
     ? Number(maxHistoryDays)
-    : 365;
+    : null;
 
   const todayDate = new Date().toISOString().split("T")[0];
 
@@ -563,7 +2027,11 @@ const BusinessReportsUnlocked = ({ business, reports }) => {
     { label: "90 days", days: 90 },
     { label: "180 days", days: 180 },
     { label: "365 days", days: 365 },
-  ].filter((preset) => preset.days <= numericMaxHistoryDays);
+  ].filter(
+  (preset) =>
+    numericMaxHistoryDays !== null &&
+    preset.days <= numericMaxHistoryDays
+);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
 
@@ -618,6 +2086,47 @@ const generatedExecutiveSummary =
     ? canonicalGeneratedReport.summary
     : null;
 
+    /**
+ * =======================================================
+ * 9.11.20.16 — GENERATED REPORT UI STATE
+ * =======================================================
+ */
+
+const generatedReportMatchesSelection =
+  Boolean(
+    generatedReportType &&
+      generatedReportType ===
+        confirmedReportType
+  );
+
+const hasCanonicalGeneratedReport =
+  Boolean(
+    canonicalGeneratedReport &&
+      generatedReportMatchesSelection
+  );
+
+const showGeneratedReportLoading =
+  Boolean(
+    reportLoading &&
+      confirmedReportType
+  );
+
+const showGeneratedReportError =
+  Boolean(
+    !reportLoading &&
+      reportError &&
+      confirmedReportType
+  );
+
+const showGeneratedReportEmpty =
+  Boolean(
+    !reportLoading &&
+      !reportError &&
+      generatedReport &&
+      generatedReportMatchesSelection &&
+      !canonicalGeneratedReport
+  );
+
   const resetGeneratedReport = () => {
     setGeneratedReport(null);
     setGeneratedReportType(null);
@@ -632,6 +2141,8 @@ const generatedExecutiveSummary =
     setPdfReadyLoading(false);
     setPdfReadyError("");
     setPdfReadyResponse(null);
+    setDownloadStatus(null);
+    setDownloadError("");
   };
 
   const handleSelectReport = (reportType) => {
@@ -729,6 +2240,13 @@ const generatedExecutiveSummary =
       return true;
     }
 
+    if (numericMaxHistoryDays === null) {
+      setDateRangeError(
+        "Your report history entitlement could not be verified. Please refresh and try again."
+      );
+      return false;
+    }
+
     if (!customStartDate || !customEndDate) {
       setDateRangeError(
         "Choose both a start date and an end date."
@@ -793,7 +2311,7 @@ const generatedExecutiveSummary =
       return;
     }
 
-    if (!reportGeneration) {
+    if (!canGenerateReports) {
       setReportError(
         "Report generation is unavailable for your current business entitlement."
       );
@@ -864,13 +2382,10 @@ const generatedExecutiveSummary =
  */
 
 const handleGenerateJsonExport = async () => {
-    if (
-      !reportExport
-    ) {
+    if (!canExportReports) {
       setJsonExportError(
         "Report export is unavailable for your current business entitlement."
       );
-
       return;
     }
 
@@ -1006,11 +2521,10 @@ const handleGenerateJsonExport = async () => {
  */
 
 const handleGenerateCsvExport = async () => {
-    if (!reportExport) {
+    if (!canExportReports) {
       setCsvExportError(
         "Report export is unavailable for your current business entitlement."
       );
-
       return;
     }
 
@@ -1134,13 +2648,11 @@ const handleGenerateCsvExport = async () => {
  * It requests the backend's structured PDF-ready payload.
  */
 
-const handleGeneratePdfReady =
-  async () => {
-    if (!reportExport) {
+const handleGeneratePdfReady = async () => {
+    if (!canExportReports) {
       setPdfReadyError(
         "Report export is unavailable for your current business entitlement."
       );
-
       return;
     }
 
@@ -1241,16 +2753,164 @@ const handleGeneratePdfReady =
     }
   };
 
+  /**
+ * =======================================================
+ * 9.11.20.15 — DOWNLOAD HANDLERS
+ * =======================================================
+ */
+
+const handleDownloadJson = () => {
+  if (!canExportReports) {
+    setDownloadStatus(null);
+    setDownloadError(
+      "Report export is unavailable for your current business entitlement."
+    );
+    return;
+  }
+
+  if (
+    jsonExportResponse?.success !== true ||
+    jsonExportResponse?.export?.format !==
+      BUSINESS_REPORT_FORMATS.JSON ||
+    jsonExportResponse?.data === undefined
+  ) {
+    setDownloadStatus(null);
+    setDownloadError(
+      "Prepare a valid JSON export before downloading."
+    );
+    return;
+  }
+
+  try {
+    setDownloadError("");
+    setDownloadStatus(null);
+
+    downloadJsonExport(jsonExportResponse);
+
+    setDownloadStatus(
+      "JSON export download started."
+    );
+  } catch (err) {
+    console.error(
+      "DOWNLOAD JSON EXPORT ERROR:",
+      err
+    );
+
+    setDownloadStatus(null);
+
+    setDownloadError(
+      err?.message ||
+        "The JSON export could not be downloaded."
+    );
+  }
+};
+
+const handleDownloadCsv = () => {
+  if (!canExportReports) {
+    setDownloadStatus(null);
+    setDownloadError(
+      "Report export is unavailable for your current business entitlement."
+    );
+    return;
+  }
+
+  if (
+    csvExportResponse?.success !== true ||
+    csvExportResponse?.export?.format !==
+      BUSINESS_REPORT_FORMATS.CSV ||
+    csvExportResponse?.data === undefined
+  ) {
+    setDownloadStatus(null);
+    setDownloadError(
+      "Prepare a valid CSV export before downloading."
+    );
+    return;
+  }
+
+  try {
+    setDownloadError("");
+    setDownloadStatus(null);
+
+    const count =
+      downloadCsvExport(csvExportResponse);
+
+    setDownloadStatus(
+      count === 1
+        ? "CSV export download started."
+        : `${count} CSV dataset downloads started.`
+    );
+  } catch (err) {
+    console.error(
+      "DOWNLOAD CSV EXPORT ERROR:",
+      err
+    );
+
+    setDownloadStatus(null);
+
+    setDownloadError(
+      err?.message ||
+        "The CSV export could not be downloaded."
+    );
+  }
+};
+
+const handleDownloadPdfReady =
+  () => {
+    try {
+      if (
+        pdfReadyResponse?.success !== true ||
+        pdfReadyResponse?.export?.format !==
+          BUSINESS_REPORT_FORMATS.PDF_READY ||
+        pdfReadyResponse?.data === undefined
+      ) {
+        setDownloadStatus(null);
+        setDownloadError(
+          "Prepare valid PDF-ready data before downloading."
+        );
+        return;
+      }
+      if (!canExportReports) {
+        setDownloadStatus(null);
+        setDownloadError(
+          "Report export is unavailable for your current business entitlement."
+        );
+        return;
+      }
+      setDownloadError("");
+      setDownloadStatus(null);
+
+      downloadPdfReadyExport(
+        pdfReadyResponse
+      );
+
+      setDownloadStatus(
+        "PDF-ready structured data download started."
+      );
+    } catch (err) {
+      console.error(
+        "DOWNLOAD PDF_READY EXPORT ERROR:",
+        err
+      );
+
+      setDownloadStatus(null);
+
+      setDownloadError(
+        err?.message ||
+          "The PDF-ready data could not be downloaded."
+      );
+    }
+  };
+
   return (
     <ReportsPageShell>
       <ReportsHeader business={business} isBusinessPro />
 
       <section className="mt-7 overflow-hidden rounded-3xl border border-[#E8DFDB] bg-white shadow-sm">
-        <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+        <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-        <div className="flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex max-w-3xl items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#F5E8EB]">
+        <div className="flex flex-col gap-5 p-4 sm:gap-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 max-w-3xl items-start gap-3 sm:gap-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB] sm:h-14 sm:w-14 sm:rounded-2xl">
               <Crown size={25} className="text-[#5B1725]" />
             </div>
 
@@ -1266,11 +2926,11 @@ const handleGeneratePdfReady =
                 </span>
               </div>
 
-              <h2 className="mt-2 text-xl font-black text-[#3D0F18] sm:text-2xl">
+              <h2 className="mt-2 text-lg font-black leading-snug text-[#3D0F18] sm:text-2xl">
                 Your Business Pro reporting is active
               </h2>
 
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-gray-500 sm:text-sm sm:leading-6">
                 You can generate advanced business intelligence
                 reports, analyse longer periods and prepare your data
                 for export.
@@ -1278,7 +2938,7 @@ const handleGeneratePdfReady =
             </div>
           </div>
 
-          <div className="flex w-full items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 lg:w-auto lg:min-w-[210px]">
+         <div className="flex w-full min-w-0 items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 sm:p-4 lg:w-auto lg:min-w-[210px]">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
               <ShieldCheck size={19} className="text-emerald-700" />
             </div>
@@ -1307,15 +2967,15 @@ const handleGeneratePdfReady =
           <StatusCard
             icon={FileBarChart}
             label="Report generation"
-            value={reportGeneration ? "Enabled" : "Unavailable"}
-            active={reportGeneration}
+            value={canGenerateReports ? "Enabled" : "Unavailable"}
+            active={canGenerateReports}
           />
 
           <StatusCard
             icon={FileSpreadsheet}
             label="Report export"
-            value={reportExport ? "Enabled" : "Unavailable"}
-            active={reportExport}
+            value={canExportReports ? "Enabled" : "Unavailable"}
+            active={canExportReports}
           />
 
           <StatusCard
@@ -1366,7 +3026,7 @@ const handleGeneratePdfReady =
         </div>
       </section>
 
-      <section className="mt-8">
+      <section className="mt-6 sm:mt-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <SectionHeading
             eyebrow="Report Library"
@@ -1374,7 +3034,7 @@ const handleGeneratePdfReady =
             description="Explore the reports available with your Business Pro account. Select one to review what it covers."
           />
 
-          <div className="w-full lg:w-[300px]">
+          <div className="w-full sm:max-w-md lg:w-[300px] lg:max-w-none">
             <label htmlFor="report-search" className="sr-only">
               Search reports
             </label>
@@ -1480,8 +3140,8 @@ const handleGeneratePdfReady =
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-emerald-700">
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+              <span className="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-white px-3 py-1.5 text-[9px] font-black uppercase tracking-wide text-emerald-700 sm:w-auto sm:rounded-full">
                 <CheckCircle2 size={11} />
                 Selected
               </span>
@@ -1489,7 +3149,7 @@ const handleGeneratePdfReady =
               <button
                 type="button"
                 onClick={handleClearSelection}
-                className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-[9px] font-black text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100"
+                className="min-h-10 w-full rounded-xl border border-emerald-200 bg-white px-4 py-2 text-[9px] font-black text-emerald-800 transition hover:border-emerald-300 hover:bg-emerald-100 sm:w-auto"
               >
                 Change report
               </button>
@@ -1516,13 +3176,13 @@ const handleGeneratePdfReady =
           customStartDate={customStartDate}
           customEndDate={customEndDate}
           customDateRange={customDateRange}
-          maxHistoryDays={numericMaxHistoryDays}
+          maxHistoryDays={numericMaxHistoryDays ?? "Unavailable"}
           todayDate={todayDate}
           error={dateRangeError}
           selectedPeriod={selectedReportPeriod}
           reportLoading={reportLoading}
           reportError={reportError}
-          reportGeneration={reportGeneration}
+          reportGeneration={canGenerateReports}
           generatedReport={generatedReport}
           generatedReportType={generatedReportType}
           generatedReportPeriod={generatedReportPeriod}
@@ -1536,49 +3196,101 @@ const handleGeneratePdfReady =
       )}
 
       {/* ==================================================
+    9.11.20.16 — REPORT GENERATION STATES
+================================================== */}
+
+{showGeneratedReportLoading && (
+  <GeneratedReportLoadingState
+    reportTitle={
+      confirmedReport?.title
+    }
+  />
+)}
+
+{showGeneratedReportError && (
+  <GeneratedReportErrorState
+    message={reportError}
+    onRetry={
+      handleGenerateReport
+    }
+  />
+)}
+
+{showGeneratedReportEmpty && (
+  <GeneratedReportEmptyState
+    reportTitle={
+      confirmedReport?.title
+    }
+    onRetry={
+      handleGenerateReport
+    }
+  />
+)}
+
+      {/* ==================================================
           9.11.20.7 — EXECUTIVE SUMMARY UI
       ================================================== */}
 
-      {canonicalGeneratedReport &&
-        generatedExecutiveSummary &&
-        generatedReportType === confirmedReportType && (
-          <ReportExecutiveSummary
-            report={canonicalGeneratedReport}
-            summary={generatedExecutiveSummary}
-          />
+     {!reportLoading &&
+      !reportError &&
+      hasCanonicalGeneratedReport && (
+      <>
+        {generatedExecutiveSummary ? (
+          <>
+            <ReportExecutiveSummary
+              report={
+                canonicalGeneratedReport
+              }
+              summary={
+                generatedExecutiveSummary
+              }
+            />
+
+            <ReportKpiPerformanceCards
+              summary={
+                generatedExecutiveSummary
+              }
+            />
+          </>
+        ) : (
+          <section className="mt-6">
+            <ReportSectionEmptyState
+              title="No executive summary available"
+              description="This generated report does not contain an executive summary for the selected reporting period."
+              icon={BarChart3}
+            />
+          </section>
         )}
+      </>
+  )}
 
-      {/* ==================================================
-          9.11.20.8 — KPI / PERFORMANCE CARDS
-      ================================================== */}
+            {/* ==================================================
+                9.11.20.9 — REPORT TABLES
+            ================================================== */}
 
-      {canonicalGeneratedReport &&
-        generatedExecutiveSummary &&
-        generatedReportType === confirmedReportType && (
-          <ReportKpiPerformanceCards
-            summary={generatedExecutiveSummary}
-          />
-        )}
-
-      {/* ==================================================
-          9.11.20.9 — REPORT TABLES
-      ================================================== */}
-
-      {canonicalGeneratedReport &&
-        generatedReportType === confirmedReportType && (
-          <ReportTables
-            sections={canonicalGeneratedReport.sections}
-          />
-        )}
+            {!reportLoading &&
+              !reportError &&
+              hasCanonicalGeneratedReport && (
+                <ReportTables
+                  sections={
+                    canonicalGeneratedReport.sections
+                  }
+                />
+              )}
 
               {/* ==================================================
           9.11.20.10 — TRENDS / CHART VISUALIZATION
       ================================================== */}
 
-      {canonicalGeneratedReport &&
-        generatedReportType === confirmedReportType && (
+   
+
+      {!reportLoading &&
+        !reportError &&
+        hasCanonicalGeneratedReport && (
           <ReportTrendVisualization
-            sections={canonicalGeneratedReport.sections}
+            sections={
+              canonicalGeneratedReport.sections
+            }
           />
         )}
 
@@ -1586,11 +3298,16 @@ const handleGeneratePdfReady =
           9.11.20.11 — DATA COVERAGE & METHODOLOGY
       ================================================== */}
 
-      {canonicalGeneratedReport &&
-        generatedReportType === confirmedReportType && (
+      {!reportLoading &&
+        !reportError &&
+        hasCanonicalGeneratedReport && (
           <ReportCoverageAndMethodology
-            dataCoverage={canonicalGeneratedReport.dataCoverage}
-            methodology={canonicalGeneratedReport.methodology}
+            dataCoverage={
+              canonicalGeneratedReport.dataCoverage
+            }
+            methodology={
+              canonicalGeneratedReport.methodology
+            }
           />
         )}
 
@@ -1598,29 +3315,33 @@ const handleGeneratePdfReady =
           9.11.20.12 — JSON EXPORT EXPERIENCE
       ================================================== */}
 
-      {canonicalGeneratedReport &&
-        generatedReportType === confirmedReportType && (
-          <ReportJsonExportExperience
-            reportExport={reportExport}
-            loading={jsonExportLoading}
-            error={jsonExportError}
-            response={jsonExportResponse}
-            onGenerate={handleGenerateJsonExport}
-          />
+      {!reportLoading &&
+      !reportError &&
+      hasCanonicalGeneratedReport && (
+        <ReportJsonExportExperience
+          reportExport={canExportReports}
+          loading={jsonExportLoading}
+          error={jsonExportError}
+          response={jsonExportResponse}
+          onGenerate={handleGenerateJsonExport}
+          onDownload={handleDownloadJson}
+        />
         )}
 
         {/* ==================================================
     9.11.20.13 — CSV MULTI-DATASET EXPORT
 ================================================== */}
 
-{canonicalGeneratedReport &&
-  generatedReportType === confirmedReportType && (
+{!reportLoading &&
+  !reportError &&
+  hasCanonicalGeneratedReport && (
     <ReportCsvExportExperience
-      reportExport={reportExport}
+      reportExport={canExportReports}
       loading={csvExportLoading}
       error={csvExportError}
       response={csvExportResponse}
       onGenerate={handleGenerateCsvExport}
+      onDownload={handleDownloadCsv}
     />
   )}
 
@@ -1628,19 +3349,56 @@ const handleGeneratePdfReady =
     9.11.20.14 — PDF_READY PREVIEW
 ================================================== */}
 
-{canonicalGeneratedReport &&
-  generatedReportType === confirmedReportType && (
+{!reportLoading &&
+  !reportError &&
+  hasCanonicalGeneratedReport && (
     <ReportPdfReadyExperience
-      reportExport={reportExport}
-      loading={pdfReadyLoading}
-      error={pdfReadyError}
-      response={pdfReadyResponse}
-      onGenerate={handleGeneratePdfReady}
+    reportExport={canExportReports}
+    loading={pdfReadyLoading}
+    error={pdfReadyError}
+    response={pdfReadyResponse}
+    onGenerate={handleGeneratePdfReady}
+    onDownload={handleDownloadPdfReady}
     />
   )}
 
+    {/* ==================================================
+    9.11.20.15 — DOWNLOAD FEEDBACK
+    ================================================== */}
+
+    {downloadStatus && (
+    <div
+        role="status"
+        className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+    >
+        <CheckCircle2
+        size={16}
+        className="mt-0.5 shrink-0 text-emerald-700"
+        />
+
+        <p className="text-[10px] font-semibold leading-5 text-emerald-800">
+        {downloadStatus}
+        </p>
+    </div>
+    )}
+
+    {downloadError && (
+    <div
+        role="alert"
+        className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4"
+    >
+        <p className="text-[10px] font-black text-red-800">
+        Download failed
+        </p>
+
+        <p className="mt-1 text-[10px] leading-5 text-red-700">
+        {downloadError}
+        </p>
+    </div>
+    )}
+
       {reportVersion && (
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-center sm:justify-end">
           <p className="text-[10px] font-semibold text-gray-400">
             Reporting version {reportVersion}
           </p>
@@ -1833,11 +3591,11 @@ const SelectedReportPanel = ({
   return (
     <section
       id="selected-report"
-      className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm"
+      className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl"
     >
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="p-5 sm:p-6">
+      <div lassName="p-4 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex max-w-3xl items-start gap-4">
             <div
@@ -1914,7 +3672,7 @@ const SelectedReportPanel = ({
 
         {!confirmed ? (
           <div className="mt-6 rounded-2xl border border-[#E8DFDB] bg-[#FAF8F7] p-4 sm:p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white">
                   <ListChecks size={17} className="text-[#5B1725]" />
@@ -1939,7 +3697,7 @@ const SelectedReportPanel = ({
               <button
                 type="button"
                 onClick={onConfirm}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-[10px] font-black text-white shadow-sm transition hover:bg-[#46111C]"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-2.5 text-xs font-black text-white transition hover:bg-[#46111C] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 <CheckCircle2 size={14} />
                 Select Report
@@ -2045,8 +3803,8 @@ const ReportDateRangeControls = ({
   );
 
   return (
-    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
@@ -2079,17 +3837,17 @@ const ReportDateRangeControls = ({
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="p-4 sm:p-6">
         <div>
           <p className="text-[9px] font-black uppercase tracking-[0.12em] text-gray-400">
             Range Type
           </p>
 
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => onModeChange("RELATIVE")}
-              className={`rounded-2xl border p-4 text-left transition ${
+              className={`rounded-2xl min-h-11 w-full border p-4 text-left transition ${
                 isRelative
                   ? "border-[#8A2638] bg-[#FBF5F6] ring-2 ring-[#8A2638]/10"
                   : "border-[#E8DFDB] bg-white hover:border-[#D8C7C0]"
@@ -2125,7 +3883,7 @@ const ReportDateRangeControls = ({
                   onModeChange("CUSTOM");
                 }
               }}
-              className={`rounded-2xl border p-4 text-left transition ${
+              className={`rounded-2xl min-h-11 w-ful border p-4 text-left transition ${
                 !customDateRange
                   ? "cursor-not-allowed border-[#ECE7E4] bg-gray-50 opacity-60"
                   : isCustom
@@ -2173,7 +3931,7 @@ const ReportDateRangeControls = ({
               Select one of the available reporting periods.
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
               {presets.map((preset) => {
                 const active = relativeDays === preset.days;
 
@@ -2184,7 +3942,7 @@ const ReportDateRangeControls = ({
                     onClick={() =>
                       onRelativeDaysChange(preset.days)
                     }
-                    className={`rounded-xl border px-4 py-2.5 text-[10px] font-black transition ${
+                    className={`min-h-10 w-full rounded-xl border px-4 py-2.5 text-[10px] font-black transition sm:w-auto ${
                       active
                         ? "border-[#5B1725] bg-[#5B1725] text-white shadow-sm"
                         : "border-[#DED3CE] bg-white text-[#5B1725] hover:border-[#8A2638] hover:bg-[#FBF5F6]"
@@ -2228,7 +3986,7 @@ const ReportDateRangeControls = ({
                   value={customStartDate}
                   max={customEndDate || todayDate}
                   onChange={onStartDateChange}
-                  className="mt-2 w-full rounded-xl border border-[#DED3CE] bg-white px-3 py-3 text-xs font-semibold text-[#3D0F18] outline-none transition focus:border-[#8A2638] focus:ring-2 focus:ring-[#8A2638]/10"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[#DED3CE] bg-white px-3 py-3 text-xs font-semibold text-[#3D0F18] outline-none transition focus:border-[#8A2638] focus:ring-2 focus:ring-[#8A2638]/10"
                 />
               </div>
 
@@ -2248,7 +4006,7 @@ const ReportDateRangeControls = ({
                   max={todayDate}
                   onChange={onEndDateChange}
                   onBlur={onValidateCustomRange}
-                  className="mt-2 w-full rounded-xl border border-[#DED3CE] bg-white px-3 py-3 text-xs font-semibold text-[#3D0F18] outline-none transition focus:border-[#8A2638] focus:ring-2 focus:ring-[#8A2638]/10"
+                  className="mt-2 min-h-11 w-full rounded-xl border border-[#DED3CE] bg-white px-3 py-3 text-xs font-semibold text-[#3D0F18] outline-none transition focus:border-[#8A2638] focus:ring-2 focus:ring-[#8A2638]/10"
                 />
               </div>
             </div>
@@ -2268,7 +4026,7 @@ const ReportDateRangeControls = ({
               <button
                 type="button"
                 onClick={onValidateCustomRange}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#DED3CE] bg-white px-4 py-2.5 text-[10px] font-black text-[#5B1725] transition hover:border-[#8A2638] hover:bg-[#FBF5F6]"
+                className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#DED3CE] bg-white px-4 py-2.5 text-[10px] font-black text-[#5B1725] transition hover:border-[#8A2638] hover:bg-[#FBF5F6] sm:w-auto"
               >
                 <CheckCircle2 size={13} />
                 Validate dates
@@ -2332,7 +4090,7 @@ const ReportDateRangeControls = ({
                   )}
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <p className="text-xs font-black text-[#3D0F18]">
                     {reportLoading
                       ? "Generating report..."
@@ -2355,11 +4113,13 @@ const ReportDateRangeControls = ({
                 type="button"
                 disabled={!canGenerate}
                 onClick={onGenerateReport}
-                className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition ${
+                aria-busy={reportLoading}
+                className={`inline-flex min-h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition sm:w-auto ${
                   canGenerate
                     ? "bg-[#5B1725] text-white shadow-sm hover:bg-[#46111C]"
                     : "cursor-not-allowed bg-gray-200 text-gray-400"
                 }`}
+               
               >
                 {reportLoading ? (
                   <>
@@ -2381,39 +4141,6 @@ const ReportDateRangeControls = ({
             </div>
           </div>
 
-          {reportError && (
-            <div
-              role="alert"
-              className="border-t border-red-200 bg-red-50 px-4 py-4 sm:px-5"
-            >
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white">
-                  <RefreshCw size={14} className="text-red-700" />
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-black text-red-800">
-                    Report generation failed
-                  </p>
-
-                  <p className="mt-1 text-[10px] leading-5 text-red-700">
-                    {reportError}
-                  </p>
-
-                  {periodReady && reportGeneration && (
-                    <button
-                      type="button"
-                      disabled={reportLoading}
-                      onClick={onGenerateReport}
-                      className="mt-2 text-[10px] font-black text-red-800 underline underline-offset-2 transition hover:text-red-950"
-                    >
-                      Try again
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           {generatedSuccessfully &&
             !reportLoading &&
@@ -2439,7 +4166,7 @@ const ReportDateRangeControls = ({
                     </p>
 
                     {generatedReportPeriod && (
-                      <p className="mt-2 text-[9px] font-bold text-emerald-700">
+                      <p className="mt-2 wrap-break- text-[9px] font-bold text-emerald-700">
                         {generatedReportPeriod.mode === "RELATIVE"
                           ? `Period: last ${generatedReportPeriod.days} days`
                           : `Period: ${generatedReportPeriod.startDate} to ${generatedReportPeriod.endDate}`}
@@ -2618,7 +4345,7 @@ const ExecutiveSummaryValue = ({
     typeof value !== "object"
   ) {
     return (
-      <span className="break-words text-[11px] font-black text-[#3D0F18]">
+      <span className="wrap-break- text-[11px] font-black text-[#3D0F18]">
         {formatSummaryPrimitive(value)}
       </span>
     );
@@ -2991,7 +4718,7 @@ const ExecutiveSummaryMetadata = ({
     </p>
 
     <p
-      className={`mt-1.5 break-words text-[10px] font-black text-[#3D0F18] ${
+      className={`mt-1.5 wrap-break- text-[10px] font-black text-[#3D0F18] ${
         monospace
           ? "font-mono"
           : ""
@@ -3213,7 +4940,7 @@ const buildKpiPerformanceGroups = (
 const KpiPerformanceCard = ({
   metric,
 }) => (
-  <article className="rounded-2xl border border-[#E8DFDB] bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
+  <article className="min-w-0 rounded-2xl border border-[#E8DFDB] bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
     <div className="flex items-start justify-between gap-3">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
         <BarChart3
@@ -3227,11 +4954,11 @@ const KpiPerformanceCard = ({
       </span>
     </div>
 
-    <p className="mt-4 text-[9px] font-black uppercase tracking-[0.1em] text-gray-400">
+    <p className="mt-4 wrap-break- text-[9px] font-black uppercase tracking-widest text-gray-400">
       {metric.label}
     </p>
 
-    <p className="mt-1 break-words text-2xl font-black tracking-tight text-[#3D0F18]">
+    <p className="mt-1 wrap-break- text-xl font-black leading-tight tracking-tight text-[#3D0F18] sm:text-2xl">
       {formatSummaryPrimitive(
         metric.value
       )}
@@ -4055,7 +5782,7 @@ const ReportTableCell = ({
   value,
 }) => (
   <td className="max-w-[280px] border-b border-[#EEE6E2] px-4 py-3 align-top text-[10px] font-semibold leading-5 text-gray-600 last:border-r-0">
-    <div className="max-h-24 overflow-hidden break-words">
+    <div className="max-h-24 overflow-hidden wrap-break-">
       {formatReportTableNestedValue(
         value
       )}
@@ -4089,7 +5816,7 @@ const ReportDataTable = ({
   return (
     <div className="overflow-hidden rounded-2xl border border-[#E8DFDB] bg-white">
       <div className="flex flex-col gap-2 border-b border-[#EEE6E2] bg-[#FAF8F7] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <h4 className="text-[10px] font-black uppercase tracking-[0.1em] text-[#3D0F18]">
+        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#3D0F18]">
           {dataset.title}
         </h4>
 
@@ -4101,8 +5828,8 @@ const ReportDataTable = ({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-collapse text-left">
+      <div className="w-full overflow-x-auto overscroll-x-contain">
+        <table className="min-w-maz w-full border-collapse text-left">
           <thead>
             <tr className="bg-white">
               {table.columns.map(
@@ -4110,7 +5837,7 @@ const ReportDataTable = ({
                   <th
                     key={column}
                     scope="col"
-                    className="whitespace-nowrap border-b border-[#E8DFDB] px-4 py-3 text-[8px] font-black uppercase tracking-[0.1em] text-[#9A5D37]"
+                    className="whitespace-nowrap border-b border-[#E8DFDB] px-4 py-3 text-[8px] font-black uppercase tracking-widest text-[#9A5D37]"
                   >
                     {formatSummaryLabel(
                       column
@@ -4236,7 +5963,15 @@ const ReportTables = ({
   if (
     tableSections.length === 0
   ) {
-    return null;
+        return (
+          <section className="mt-6">
+            <ReportSectionEmptyState
+              title="No report tables available"
+              description="This report does not contain tabular datasets for the selected reporting period."
+              icon={FileSpreadsheet}
+            />
+          </section>
+        );
   }
 
   const totalDatasets =
@@ -4248,10 +5983,10 @@ const ReportTables = ({
     );
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
@@ -4305,7 +6040,7 @@ const ReportTables = ({
         </div>
       </div>
 
-      <div className="space-y-5 p-5 sm:p-6">
+      <div className="space-y-5 p-4 sm:p-6">
         {tableSections.map(
           (section, index) => (
             <ReportTableSection
@@ -5259,10 +6994,10 @@ const ReportLineChart = ({
       </div>
 
       <div className="overflow-x-auto p-3 sm:p-5">
-        <div className="min-w-[700px]">
+        <div className="w-full overflow-x-auto overscroll-x-contain">
           <svg
             viewBox={`0 0 ${REPORT_CHART_WIDTH} ${REPORT_CHART_HEIGHT}`}
-            className="h-auto w-full"
+            className="h-auto min-w-[640px] w-full"
             role="img"
             aria-label={`${chart.title} line chart`}
           >
@@ -5420,12 +7155,20 @@ const ReportTrendVisualization = ({
    * We do not manufacture a chart in that situation.
    */
   if (charts.length === 0) {
-    return null;
+    return (
+      <section className="mt-6">
+        <ReportSectionEmptyState
+          title="No trend data available"
+          description="This report does not contain an ordered historical dataset that can be visualized as a trend."
+          icon={TrendingUp}
+        />
+      </section>
+    );
   }
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl sm:rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
       <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -5470,7 +7213,7 @@ const ReportTrendVisualization = ({
         </div>
       </div>
 
-      <div className="space-y-5 p-5 sm:p-6">
+      <div className="space-y-5p-4 sm:p-6">
         {charts.map(
           (chart) => (
             <ReportLineChart
@@ -5642,13 +7385,13 @@ const ReportInformationRow = ({
 
   return (
     <div className="flex flex-col gap-1 border-b border-[#F0EAE7] py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-gray-400 sm:max-w-[42%]">
+      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 sm:max-w-[42%]">
         {formatSummaryLabel(
           label
         )}
       </p>
 
-      <p className="break-words text-[10px] font-semibold leading-5 text-gray-700 sm:max-w-[58%] sm:text-right">
+      <p className="wrap-break- text-[10px] font-semibold leading-5 text-gray-700 sm:max-w-[58%] sm:text-right">
         {formatReportInformationValue(
           value
         )}
@@ -5932,7 +7675,7 @@ const ReportCanonicalInformation = ({
                 : "border-l-2 border-[#E8DFDB] pl-4"
             }
           >
-            <p className="mb-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+            <p className="mb-3 text-[9px] font-black uppercase tracking-widest text-[#9A5D37]">
               {formatSummaryLabel(
                 key
               )}
@@ -6095,18 +7838,26 @@ const ReportCoverageAndMethodology = ({
    *
    * Do not manufacture placeholders.
    */
-  if (
-    !hasDataCoverage &&
-    !hasMethodology
-  ) {
-    return null;
-  }
+if (
+  !hasDataCoverage &&
+  !hasMethodology
+) {
+  return (
+    <section className="mt-6">
+      <ReportSectionEmptyState
+        title="No coverage or methodology details available"
+        description="The generated report did not include data coverage or methodology information."
+        icon={ShieldCheck}
+      />
+    </section>
+  );
+}
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex items-start gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
             <ShieldCheck
@@ -6137,7 +7888,7 @@ const ReportCoverageAndMethodology = ({
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="p-4 sm:p-6">
         <div
           className={`grid gap-5 ${
             hasDataCoverage &&
@@ -6230,7 +7981,7 @@ const JsonExportMetadataValue = ({
 
   return (
     <div className="border-b border-[#EEE6E2] py-3 last:border-b-0">
-      <p className="text-[8px] font-black uppercase tracking-[0.1em] text-gray-400">
+      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">
         {label}
       </p>
 
@@ -6339,7 +8090,7 @@ const ReportJsonPreview = ({
             className="text-emerald-400"
           />
 
-          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-white">
+          <p className="text-[9px] font-black uppercase tracking-widest text-white">
             JSON Payload
           </p>
         </div>
@@ -6349,8 +8100,8 @@ const ReportJsonPreview = ({
         </span>
       </div>
 
-      <div className="max-h-[520px] overflow-auto">
-        <pre className="min-w-max p-4 font-mono text-[10px] leading-5 text-emerald-100">
+      <div className="max-h-[420px] w-full overflow-auto overscroll-contain sm:max-h-[520px]">
+        <pre className="min-w-max p-3 font-mono text-[9px] leading-5 text-emerald-100 sm:p-4 sm:text-[10px]">
           {formattedJson}
         </pre>
       </div>
@@ -6392,7 +8143,7 @@ const ReportJsonExportMetadata = ({
         </div>
 
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#9A5D37]">
             Export Metadata
           </p>
 
@@ -6489,6 +8240,7 @@ const ReportJsonExportExperience = ({
   error,
   response,
   onGenerate,
+  onDownload,
 }) => {
   const exportMetadata =
     response?.success === true &&
@@ -6513,10 +8265,10 @@ const ReportJsonExportExperience = ({
     );
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
@@ -6634,6 +8386,12 @@ const ReportJsonExportExperience = ({
           </div>
         </div>
 
+        {loading && (
+          <ReportExportLoadingState
+            label="JSON export"
+          />
+        )}
+
         {error && (
           <div
             role="alert"
@@ -6647,6 +8405,48 @@ const ReportJsonExportExperience = ({
               {error}
             </p>
           </div>
+        )}
+
+        {!loading &&
+          !error &&
+          response?.success === true &&
+          !exportReady && (
+            <ReportExportEmptyState
+              title="JSON export contains no previewable payload"
+              description="The export request completed, but no JSON payload is available to preview or download."
+            />
+          )}
+
+        {exportReady && (
+        <div className="mt-4 flex justify-end">
+            <button
+            type="button"
+            onClick={onDownload}
+            className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-[#5B1725] bg-white px-4 py-2.5 text-[10px] font-black text-[#5B1725] transition hover:bg-[#F5E8EB]"
+            >
+            <Download size={14} />
+            Download JSON
+            </button>
+        </div>
+        )}
+
+        {exportReady && (
+        <div className="mt-4 flex justify-end">
+            <button
+            type="button"
+            onClick={onDownload}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#5B1725] bg-white px-4 py-2.5 text-[10px] font-black text-[#5B1725] transition hover:bg-[#F5E8EB]"
+            >
+            <Download size={14} />
+
+            Download{" "}
+            {normalizeCsvExportDatasets(
+                exportPayload
+            ).length > 1
+                ? "CSV Datasets"
+                : "CSV"}
+            </button>
+        </div>
         )}
 
         {exportReady && (
@@ -6748,7 +8548,7 @@ const ReportCsvExportMetadata = ({
         </div>
 
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#9A5D37]">
             Export Metadata
           </p>
 
@@ -7065,7 +8865,7 @@ const CsvDatasetTablePreview = ({
                   key={index}
                   className="border-b border-[#F0E9E6] last:border-b-0"
                 >
-                  <td className="max-w-[500px] break-words px-4 py-3 text-[10px] text-gray-600">
+                  <td className="max-w-[500px] wrap-break- px-4 py-3 text-[10px] text-gray-600">
                     {formatCsvPreviewValue(
                       row
                     )}
@@ -7132,7 +8932,7 @@ const CsvDatasetTablePreview = ({
                   (column) => (
                     <td
                       key={`${rowIndex}-${column}`}
-                      className="max-w-[320px] break-words px-4 py-3 align-top text-[10px] leading-5 text-gray-600"
+                      className="max-w-[320px] wrap-break- px-4 py-3 align-top text-[10px] leading-5 text-gray-600"
                     >
                       {row &&
                       typeof row ===
@@ -7187,7 +8987,7 @@ const CsvDatasetRawPreview = ({
   }
 
   return (
-    <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap break-words bg-[#171214] p-4 font-mono text-[10px] leading-5 text-emerald-100">
+    <pre className="max-h-[360px] overflow-auto whitespace-pre-wrap wrap-break- bg-[#171214] p-4 font-mono text-[10px] leading-5 text-emerald-100">
       {content}
     </pre>
   );
@@ -7227,7 +9027,7 @@ const CsvDatasetPreview = ({
           </div>
 
           <div>
-            <p className="text-[8px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+            <p className="text-[8px] font-black uppercase tracking-widest text-[#9A5D37]">
               Dataset{" "}
               {index + 1}
             </p>
@@ -7321,7 +9121,7 @@ const ReportCsvDatasetCollection = ({
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#9A5D37]">
             CSV Datasets
           </p>
 
@@ -7373,6 +9173,7 @@ const ReportCsvExportExperience = ({
   error,
   response,
   onGenerate,
+  onDownload,
 }) => {
   const exportMetadata =
     response?.success === true &&
@@ -7397,10 +9198,10 @@ const ReportCsvExportExperience = ({
     );
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl border border-[#D8C7C0] bg-white shadow-sm sm:rounded-3xl">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
@@ -7454,7 +9255,7 @@ const ReportCsvExportExperience = ({
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="p-4 sm:p-6">
         <div className="rounded-2xl border border-[#E8DFDB] bg-[#FAF8F7] p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -7484,7 +9285,7 @@ const ReportCsvExportExperience = ({
               onClick={
                 onGenerate
               }
-              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition ${
+              className={`inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition sm:w-auto ${
                 reportExport &&
                 !loading
                   ? "bg-[#5B1725] text-white shadow-sm hover:bg-[#46111C]"
@@ -7521,6 +9322,13 @@ const ReportCsvExportExperience = ({
           </div>
         </div>
 
+        {loading && (
+            <ReportExportLoadingState
+              label="CSV datasets"
+            />
+          )
+        }
+
         {error && (
           <div
             role="alert"
@@ -7534,6 +9342,19 @@ const ReportCsvExportExperience = ({
               {error}
             </p>
           </div>
+        )}
+
+        {!loading &&
+        !error &&
+        response?.success === true &&
+        exportReady &&
+        normalizeCsvExportDatasets(
+          exportPayload
+        ).length === 0 && (
+          <ReportExportEmptyState
+            title="No CSV datasets available"
+            description="The CSV export completed successfully, but the backend returned no datasets for this report."
+          />
         )}
 
         {exportReady && (
@@ -7638,7 +9459,7 @@ const ReportPdfReadyMetadata = ({
         </div>
 
         <div>
-          <p className="text-[9px] font-black uppercase tracking-[0.1em] text-[#9A5D37]">
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#9A5D37]">
             Preview Metadata
           </p>
 
@@ -7829,13 +9650,13 @@ const PdfReadyField = ({
 
   return (
     <div className="border-b border-gray-100 py-3 last:border-b-0">
-      <p className="text-[8px] font-black uppercase tracking-[0.1em] text-gray-400">
+      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">
         {formatSummaryLabel(
           label
         )}
       </p>
 
-      <p className="mt-1 break-words text-[10px] font-semibold leading-5 text-gray-700">
+      <p className="mt-1 wrap-break- text-[10px] font-semibold leading-5 text-gray-700">
         {formatPdfReadyValue(
           value
         )}
@@ -7907,8 +9728,8 @@ const PdfReadyTable = ({
     objectRows.slice(0, 20);
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
-      <table className="min-w-full border-collapse text-left">
+    <div className="w-full overflow-x-auto overscroll-x-contain">
+      <table className="min-w-max w-full">
         <thead>
           <tr className="border-b border-gray-200 bg-gray-50">
             {columns.map(
@@ -7940,7 +9761,7 @@ const PdfReadyTable = ({
                   (column) => (
                     <td
                       key={`${rowIndex}-${column}`}
-                      className="max-w-[260px] break-words px-3 py-2.5 align-top text-[9px] leading-4 text-gray-600"
+                      className="max-w-[260px] wrap-break- px-3 py-2.5 align-top text-[9px] leading-4 text-gray-600"
                     >
                       {formatCsvPreviewValue(
                         row?.[
@@ -8007,7 +9828,7 @@ const PdfReadyContent = ({
     typeof value !== "object"
   ) {
     return (
-      <p className="break-words text-[10px] leading-5 text-gray-700">
+      <p className="wrap-break- text-[10px] leading-5 text-gray-700">
         {formatPdfReadyValue(
           value
         )}
@@ -8151,7 +9972,7 @@ const PdfReadyContent = ({
                 : "border-l-2 border-gray-200 pl-4"
             }
           >
-            <h4 className="mb-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#5B1725]">
+            <h4 className="mb-3 text-[9px] font-black uppercase tracking-widest text-[#5B1725]">
               {formatSummaryLabel(
                 key
               )}
@@ -8247,6 +10068,7 @@ const ReportPdfReadyExperience = ({
   error,
   response,
   onGenerate,
+  onDownload,
 }) => {
   const exportMetadata =
     response?.success === true &&
@@ -8271,10 +10093,10 @@ const ReportPdfReadyExperience = ({
     );
 
   return (
-    <section className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
-      <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+    <section className="mt-6 overflow-hidden rounded-2xl sm:rounded-3xl border border-[#D8C7C0] bg-white shadow-sm">
+      <div className="h-1 bg-linear-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
 
-      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-5 sm:p-6">
+      <div className="border-b border-[#EEE6E2] bg-[#FAF8F7] p-4 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
@@ -8324,7 +10146,7 @@ const ReportPdfReadyExperience = ({
         </div>
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className="p-4 sm:p-6">
         <div className="rounded-2xl border border-[#E8DFDB] bg-[#FAF8F7] p-4 sm:p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -8354,7 +10176,7 @@ const ReportPdfReadyExperience = ({
               onClick={
                 onGenerate
               }
-              className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition ${
+              className={`inline-flex min-h-11 w-full sm:w-auto shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-3 text-[10px] font-black transition ${
                 reportExport &&
                 !loading
                   ? "bg-[#5B1725] text-white shadow-sm hover:bg-[#46111C]"
@@ -8391,6 +10213,12 @@ const ReportPdfReadyExperience = ({
           </div>
         </div>
 
+        {loading && (
+          <ReportExportLoadingState
+            label="PDF-ready preview"
+          />
+        )}
+
         {error && (
           <div
             role="alert"
@@ -8405,6 +10233,29 @@ const ReportPdfReadyExperience = ({
               {error}
             </p>
           </div>
+        )}
+
+        {!loading &&
+        !error &&
+        response?.success === true &&
+        !previewReady && (
+          <ReportExportEmptyState
+            title="No PDF-ready preview available"
+            description="The request completed, but no structured PDF-ready payload is available to preview."
+          />
+        )}
+
+        {previewReady && (
+        <div className="mt-4 flex justify-end">
+            <button
+            type="button"
+            onClick={onDownload}
+            className="inline-flex min-h-11 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-[#5B1725] bg-white px-4 py-2.5 text-[10px] font-black text-[#5B1725] transition hover:bg-[#F5E8EB]"
+            >
+            <Download size={14} />
+            Download PDF-ready Data
+            </button>
+        </div>
         )}
 
         {previewReady && (
@@ -8447,6 +10298,943 @@ const ReportPdfReadyExperience = ({
     </section>
   );
 };
+
+/**
+ * =========================================================
+ * 9.11.20.15 — EXPORT DOWNLOAD UX
+ * =========================================================
+ *
+ * PURPOSE
+ *
+ * Download export payloads that have already been returned
+ * by the protected backend reporting service.
+ *
+ * IMPORTANT
+ *
+ * The frontend does NOT:
+ *
+ * - calculate report analytics
+ * - reconstruct the canonical report
+ * - create missing report sections
+ * - pretend PDF_READY is a binary PDF
+ *
+ * The browser only serializes already-returned export data
+ * into downloadable local files.
+ */
+
+
+/**
+ * ---------------------------------------------------------
+ * SAFE CLIENT FILE NAME
+ * ---------------------------------------------------------
+ *
+ * Backend remains responsible for its own safe filename.
+ *
+ * This frontend sanitization is an additional browser-side
+ * safeguard before assigning a value to anchor.download.
+ */
+
+const sanitizeDownloadFileName = (
+  value,
+  fallback = "business-report"
+) => {
+  const source =
+    typeof value === "string" &&
+    value.trim()
+      ? value.trim()
+      : fallback;
+
+  const cleaned = source
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^\.+/, "")
+    .slice(0, 180);
+
+  return (
+    cleaned ||
+    fallback
+  );
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * FILE EXTENSION HELPERS
+ * ---------------------------------------------------------
+ */
+
+const stripDownloadExtension = (
+  fileName
+) =>
+  String(
+    fileName || ""
+  ).replace(
+    /\.[^.]+$/,
+    ""
+  );
+
+const ensureDownloadExtension = (
+  fileName,
+  extension
+) => {
+  const safeExtension =
+    String(
+      extension || ""
+    )
+      .replace(/^\./, "")
+      .toLowerCase();
+
+  const safeName =
+    sanitizeDownloadFileName(
+      fileName
+    );
+
+  if (!safeExtension) {
+    return safeName;
+  }
+
+  if (
+    safeName
+      .toLowerCase()
+      .endsWith(
+        `.${safeExtension}`
+      )
+  ) {
+    return safeName;
+  }
+
+  return `${stripDownloadExtension(
+    safeName
+  )}.${safeExtension}`;
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * GENERIC BROWSER DOWNLOAD
+ * ---------------------------------------------------------
+ */
+
+const downloadReportBlob = ({
+  content,
+  fileName,
+  mimeType,
+}) => {
+  const blob =
+    content instanceof Blob
+      ? content
+      : new Blob(
+          [content],
+          {
+            type:
+              mimeType ||
+              "application/octet-stream",
+          }
+        );
+
+  const objectUrl =
+    URL.createObjectURL(
+      blob
+    );
+
+  const anchor =
+    document.createElement(
+      "a"
+    );
+
+  anchor.href =
+    objectUrl;
+
+  anchor.download =
+    sanitizeDownloadFileName(
+      fileName
+    );
+
+  anchor.style.display =
+    "none";
+
+  document.body.appendChild(
+    anchor
+  );
+
+  anchor.click();
+
+  anchor.remove();
+
+  /**
+   * Delay revocation until the browser has had an
+   * opportunity to begin consuming the object URL.
+   */
+  window.setTimeout(
+    () => {
+      URL.revokeObjectURL(
+        objectUrl
+      );
+    },
+    1000
+  );
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * JSON SERIALIZATION
+ * ---------------------------------------------------------
+ */
+
+const serializeJsonDownload = (
+  payload
+) => {
+  try {
+    return JSON.stringify(
+      payload,
+      null,
+      2
+    );
+  } catch (err) {
+    console.error(
+      "SERIALIZE REPORT JSON DOWNLOAD ERROR:",
+      err
+    );
+
+    throw new Error(
+      "The report JSON could not be prepared for download."
+    );
+  }
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * CSV DOWNLOAD SERIALIZATION
+ * ---------------------------------------------------------
+ *
+ * IMPORTANT:
+ *
+ * CSV security belongs to the backend serializer.
+ *
+ * We do NOT apply formula-injection rules here because doing
+ * so could mutate backend-owned CSV values.
+ *
+ * If the backend has already returned a CSV string, we use
+ * that string unchanged.
+ *
+ * Structured row datasets are serialized only so the browser
+ * can materialize the backend-returned dataset as a file.
+ */
+
+const escapeCsvDownloadValue = (
+  value
+) => {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+  let stringValue;
+
+  if (
+    typeof value === "object"
+  ) {
+    try {
+      stringValue =
+        JSON.stringify(
+          value
+        );
+    } catch {
+      stringValue =
+        String(value);
+    }
+  } else {
+    stringValue =
+      String(value);
+  }
+
+  /**
+   * Standard CSV quoting only.
+   *
+   * No analytics or security transformation is performed
+   * here.
+   */
+  if (
+    /[",\r\n]/.test(
+      stringValue
+    )
+  ) {
+    return `"${stringValue.replace(
+      /"/g,
+      '""'
+    )}"`;
+  }
+
+  return stringValue;
+};
+
+const serializeCsvRowsForDownload = (
+  rows
+) => {
+  if (
+    !Array.isArray(rows)
+  ) {
+    return "";
+  }
+
+  if (
+    rows.length === 0
+  ) {
+    return "";
+  }
+
+  /**
+   * Primitive rows.
+   */
+  const objectRows =
+    rows.filter(
+      (row) =>
+        row &&
+        typeof row ===
+          "object" &&
+        !Array.isArray(row)
+    );
+
+  if (
+    objectRows.length !==
+    rows.length
+  ) {
+    return [
+      "value",
+      ...rows.map(
+        (row) =>
+          escapeCsvDownloadValue(
+            row
+          )
+      ),
+    ].join("\r\n");
+  }
+
+  /**
+   * Object rows.
+   *
+   * Column names are discovered only from fields already
+   * returned by the backend dataset.
+   */
+  const columns =
+    Array.from(
+      new Set(
+        objectRows.flatMap(
+          (row) =>
+            Object.keys(row)
+        )
+      )
+    );
+
+  if (
+    columns.length === 0
+  ) {
+    return "";
+  }
+
+  const header =
+    columns
+      .map(
+        escapeCsvDownloadValue
+      )
+      .join(",");
+
+  const body =
+    objectRows.map(
+      (row) =>
+        columns
+          .map(
+            (column) =>
+              escapeCsvDownloadValue(
+                row?.[
+                  column
+                ]
+              )
+          )
+          .join(",")
+    );
+
+  return [
+    header,
+    ...body,
+  ].join("\r\n");
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * RESOLVE CSV DATASET DOWNLOAD CONTENT
+ * ---------------------------------------------------------
+ */
+
+const getCsvDatasetDownloadContent = (
+  value
+) => {
+  /**
+   * If backend returned serialized CSV text, preserve it
+   * exactly.
+   */
+  if (
+    typeof value === "string"
+  ) {
+    return value;
+  }
+
+  if (
+    Array.isArray(value)
+  ) {
+    return serializeCsvRowsForDownload(
+      value
+    );
+  }
+
+  if (
+    value &&
+    typeof value ===
+      "object"
+  ) {
+    /**
+     * Prefer explicit backend CSV content when available.
+     */
+    const explicitCsv =
+      [
+        value.csv,
+        value.content,
+        value.text,
+      ].find(
+        (candidate) =>
+          typeof candidate ===
+          "string"
+      );
+
+    if (
+      explicitCsv !==
+      undefined
+    ) {
+      return explicitCsv;
+    }
+
+    const rows =
+      getCsvDatasetRows(
+        value
+      );
+
+    if (
+      rows.length > 0
+    ) {
+      return serializeCsvRowsForDownload(
+        rows
+      );
+    }
+  }
+
+  return "";
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * JSON DOWNLOAD
+ * ---------------------------------------------------------
+ */
+
+const downloadJsonExport = (
+  response
+) => {
+  if (
+    response?.success !==
+      true ||
+    response?.export?.format !==
+      BUSINESS_REPORT_FORMATS.JSON ||
+    response?.data ===
+      undefined
+  ) {
+    throw new Error(
+      "A prepared JSON export is required before downloading."
+    );
+  }
+
+  const metadata =
+    response.export;
+
+  const fileName =
+    ensureDownloadExtension(
+      metadata.fileName ||
+        "business-report",
+      metadata.extension ||
+        "json"
+    );
+
+  const content =
+    serializeJsonDownload(
+      response.data
+    );
+
+  downloadReportBlob({
+    content,
+    fileName,
+    mimeType:
+      metadata.mimeType ||
+      "application/json;charset=utf-8",
+  });
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * CSV MULTI-DATASET DOWNLOAD
+ * ---------------------------------------------------------
+ */
+
+const downloadCsvExport = (
+  response
+) => {
+  if (
+    response?.success !==
+      true ||
+    response?.export?.format !==
+      BUSINESS_REPORT_FORMATS.CSV ||
+    response?.data ===
+      undefined
+  ) {
+    throw new Error(
+      "A prepared CSV export is required before downloading."
+    );
+  }
+
+  const metadata =
+    response.export;
+
+  const datasets =
+    normalizeCsvExportDatasets(
+      response.data
+    );
+
+  if (
+    datasets.length === 0
+  ) {
+    throw new Error(
+      "The CSV export does not contain any downloadable datasets."
+    );
+  }
+
+  const baseFileName =
+    stripDownloadExtension(
+      sanitizeDownloadFileName(
+        metadata.fileName ||
+          "business-report"
+      )
+    );
+
+  let downloadedCount = 0;
+
+  datasets.forEach(
+    (dataset, index) => {
+      const content =
+        getCsvDatasetDownloadContent(
+          dataset.value
+        );
+
+      if (
+        typeof content !==
+          "string"
+      ) {
+        return;
+      }
+
+      /**
+       * Empty CSV is still valid if the backend explicitly
+       * returned an empty string.
+       */
+      const datasetName =
+        sanitizeDownloadFileName(
+          dataset.name ||
+            `dataset-${
+              index + 1
+            }`,
+          `dataset-${
+            index + 1
+          }`
+        );
+
+      const fileName =
+        datasets.length === 1
+          ? ensureDownloadExtension(
+              baseFileName,
+              "csv"
+            )
+          : ensureDownloadExtension(
+              `${baseFileName}-${datasetName}`,
+              "csv"
+            );
+
+      downloadReportBlob({
+        content,
+        fileName,
+        mimeType:
+          "text/csv;charset=utf-8",
+      });
+
+      downloadedCount += 1;
+    }
+  );
+
+  if (
+    downloadedCount === 0
+  ) {
+    throw new Error(
+      "The CSV datasets could not be prepared for download."
+    );
+  }
+
+  return downloadedCount;
+};
+
+
+/**
+ * ---------------------------------------------------------
+ * PDF_READY DOWNLOAD
+ * ---------------------------------------------------------
+ *
+ * IMPORTANT:
+ *
+ * We download PDF_READY as structured JSON.
+ *
+ * We MUST NOT give it a .pdf extension because the backend
+ * has not returned binary PDF bytes.
+ */
+
+const downloadPdfReadyExport = (
+  response
+) => {
+  if (
+    response?.success !==
+      true ||
+    response?.export?.format !==
+      BUSINESS_REPORT_FORMATS.PDF_READY ||
+    response?.data ===
+      undefined
+  ) {
+    throw new Error(
+      "A prepared PDF-ready export is required before downloading."
+    );
+  }
+
+  const metadata =
+    response.export;
+
+  const backendName =
+    metadata.fileName ||
+    "business-report-pdf-ready";
+
+  const baseName =
+    stripDownloadExtension(
+      backendName
+    );
+
+  const fileName =
+    ensureDownloadExtension(
+      `${baseName}-pdf-ready`,
+      "json"
+    );
+
+  const content =
+    serializeJsonDownload(
+      response.data
+    );
+
+  downloadReportBlob({
+    content,
+    fileName,
+    mimeType:
+      "application/json;charset=utf-8",
+  });
+};
+
+/**
+ * =========================================================
+ * 9.11.20.16 — LOADING / ERROR / EMPTY STATES
+ * =========================================================
+ */
+
+
+/**
+ * ---------------------------------------------------------
+ * SKELETON BLOCK
+ * ---------------------------------------------------------
+ */
+
+const ReportSkeletonBlock = ({
+  className = "",
+}) => (
+  <div
+    aria-hidden="true"
+    className={`animate-pulse rounded-lg bg-gray-200 ${className}`}
+  />
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * GENERATED REPORT LOADING
+ * ---------------------------------------------------------
+ */
+
+const GeneratedReportLoadingState = ({
+  reportTitle,
+}) => (
+  <section
+    role="status"
+    aria-live="polite"
+    aria-busy="true"
+    className="mt-6 overflow-hidden rounded-3xl border border-[#D8C7C0] bg-white shadow-sm"
+  >
+    <div className="h-1 bg-gradient-to-r from-[#5B1725] via-[#8A2638] to-[#D6B15E]" />
+
+    <div className="p-5 sm:p-6">
+      <div className="flex items-start gap-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
+          <RefreshCw
+            size={18}
+            className="animate-spin text-[#5B1725]"
+          />
+        </div>
+
+        <div className="flex-1">
+          <p className="text-[9px] font-black uppercase tracking-[0.14em] text-[#9A5D37]">
+            Generating Report
+          </p>
+
+          <h2 className="mt-1 text-lg font-black text-[#3D0F18]">
+            Preparing your report
+          </h2>
+
+          <p className="mt-1 text-[10px] leading-5 text-gray-500">
+            {reportTitle
+              ? `Preparing ${reportTitle} using the selected reporting period.`
+              : "Preparing the selected business report."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((item) => (
+          <div
+            key={item}
+            className="rounded-2xl border border-[#EEE6E2] p-4"
+          >
+            <ReportSkeletonBlock className="h-2 w-20" />
+            <ReportSkeletonBlock className="mt-4 h-7 w-24" />
+            <ReportSkeletonBlock className="mt-3 h-2 w-full" />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-[#EEE6E2] p-4">
+        <ReportSkeletonBlock className="h-3 w-40" />
+
+        <div className="mt-5 space-y-3">
+          <ReportSkeletonBlock className="h-2 w-full" />
+          <ReportSkeletonBlock className="h-2 w-[92%]" />
+          <ReportSkeletonBlock className="h-2 w-[76%]" />
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * GENERATED REPORT ERROR
+ * ---------------------------------------------------------
+ */
+
+const GeneratedReportErrorState = ({
+  message,
+  onRetry,
+}) => (
+  <section
+    role="alert"
+    className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 sm:p-6"
+  >
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-red-700">
+          Report Generation Failed
+        </p>
+
+        <h3 className="mt-1 text-sm font-black text-red-950">
+          We couldn't generate this report
+        </h3>
+
+        <p className="mt-2 max-w-2xl text-[10px] leading-5 text-red-700">
+          {message ||
+            "The report could not be generated. Please try again."}
+        </p>
+      </div>
+
+      {typeof onRetry === "function" && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-[10px] font-black text-red-800 transition hover:bg-red-100"
+        >
+          <RefreshCw size={13} />
+          Try Again
+        </button>
+      )}
+    </div>
+  </section>
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * GENERATED REPORT EMPTY
+ * ---------------------------------------------------------
+ */
+
+const GeneratedReportEmptyState = ({
+  reportTitle,
+  onRetry,
+}) => (
+  <section className="mt-6 rounded-2xl border border-dashed border-[#D8C7C0] bg-[#FAF8F7] p-6 text-center sm:p-8">
+    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm">
+      <FileBarChart
+        size={20}
+        className="text-[#9A5D37]"
+      />
+    </div>
+
+    <p className="mt-4 text-[9px] font-black uppercase tracking-[0.12em] text-[#9A5D37]">
+      No Report Data
+    </p>
+
+    <h3 className="mt-1 text-sm font-black text-[#3D0F18]">
+      Nothing is available to display
+    </h3>
+
+    <p className="mx-auto mt-2 max-w-xl text-[10px] leading-5 text-gray-500">
+      {reportTitle
+        ? `${reportTitle} was requested successfully, but no canonical report payload is available for this period.`
+        : "The report request completed, but no canonical report payload is available."}
+    </p>
+
+    {typeof onRetry === "function" && (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-4 py-2.5 text-[10px] font-black text-white transition hover:bg-[#46111C]"
+      >
+        <RefreshCw size={13} />
+        Generate Again
+      </button>
+    )}
+  </section>
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * GENERIC SECTION EMPTY
+ * ---------------------------------------------------------
+ */
+
+const ReportSectionEmptyState = ({
+  title,
+  description,
+  icon: Icon = FileBarChart,
+}) => (
+  <div className="rounded-2xl border border-dashed border-[#D8C7C0] bg-[#FAF8F7] p-5">
+    <div className="flex items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white">
+        <Icon
+          size={17}
+          className="text-[#9A5D37]"
+        />
+      </div>
+
+      <div>
+        <p className="text-xs font-black text-[#3D0F18]">
+          {title}
+        </p>
+
+        <p className="mt-1 text-[10px] leading-5 text-gray-500">
+          {description}
+        </p>
+      </div>
+    </div>
+  </div>
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * EXPORT LOADING
+ * ---------------------------------------------------------
+ */
+
+const ReportExportLoadingState = ({
+  label = "export",
+}) => (
+  <div
+    role="status"
+    aria-live="polite"
+    aria-busy="true"
+    className="mt-4 rounded-2xl border border-[#E8DFDB] bg-[#FAF8F7] p-4"
+  >
+    <div className="flex items-center gap-3">
+      <RefreshCw
+        size={15}
+        className="animate-spin text-[#5B1725]"
+      />
+
+      <div>
+        <p className="text-[10px] font-black text-[#3D0F18]">
+          Preparing {label}
+        </p>
+
+        <p className="mt-0.5 text-[9px] text-gray-500">
+          Waiting for the protected report service.
+        </p>
+      </div>
+    </div>
+
+    <div className="mt-4 space-y-2">
+      <ReportSkeletonBlock className="h-2 w-full" />
+      <ReportSkeletonBlock className="h-2 w-[85%]" />
+      <ReportSkeletonBlock className="h-2 w-[65%]" />
+    </div>
+  </div>
+);
+
+
+/**
+ * ---------------------------------------------------------
+ * EXPORT EMPTY
+ * ---------------------------------------------------------
+ */
+
+const ReportExportEmptyState = ({
+  title,
+  description,
+}) => (
+  <div className="mt-4 rounded-2xl border border-dashed border-[#D8C7C0] bg-[#FAF8F7] p-4">
+    <p className="text-[10px] font-black text-[#3D0F18]">
+      {title}
+    </p>
+
+    <p className="mt-1 text-[9px] leading-5 text-gray-500">
+      {description}
+    </p>
+  </div>
+);
 
 const LockedCapability = ({ icon: Icon, title, description }) => (
   <div className="relative overflow-hidden rounded-2xl border border-[#E8DFDB] bg-white p-5 shadow-sm">

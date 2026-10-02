@@ -2,7 +2,7 @@ import prisma from "../config/prisma.js";
 import {SUBSCRIPTION_PLANS,getSubscriptionPlan} from "../config/subscriptionPlans.js";
 import { expireSubscriptions,expireSubscriptionIfNeeded} from "../services/subscriptionExpiryService.js";
 import {initiateStkPush} from "../services/mpesaService.js";
-import { getActiveSubscription,} from "../services/subscriptionService.js";
+import { getActiveSubscriptionByPlan, canCreateSubscriptionByPlan} from "../services/subscriptionService.js";
 
 /*
  * ============================================================
@@ -11,7 +11,7 @@ import { getActiveSubscription,} from "../services/subscriptionService.js";
  */
 
 const MPESA_STK_RETRY_AFTER_MS =
-  40 * 1000;
+  50 * 1000;
 
 /*
  * ============================================================
@@ -166,6 +166,51 @@ export const createSubscription = async (req, res) => {
       }
 
       /*
+ * ======================================================
+ * VALIDATE SUBSCRIPTION ELIGIBILITY
+ * ======================================================
+ *
+ * Eligibility is resolved by the backend.
+ *
+ * PREMIUM:
+ * - available to authenticated users.
+ *
+ * BUSINESS_PRO:
+ * - requires an existing BusinessProfile.
+ *
+ * The frontend must never decide Business Pro eligibility.
+ */
+
+const eligibility =
+  await canCreateSubscriptionByPlan(
+    userId,
+    plan.type
+  );
+
+if (
+  !eligibility.allowed &&
+  eligibility.code !==
+    "SUBSCRIPTION_ALREADY_PENDING"
+) {
+  return res
+    .status(eligibility.status || 409)
+    .json({
+      success: false,
+
+      code:
+        eligibility.code ||
+        "SUBSCRIPTION_NOT_ALLOWED",
+
+      message:
+        eligibility.reason ||
+        "This subscription cannot be created.",
+
+      subscription:
+        eligibility.subscription || null,
+    });
+}
+
+      /*
        * ======================================================
        * BLOCK EARLY RENEWAL
        * ======================================================
@@ -176,27 +221,27 @@ export const createSubscription = async (req, res) => {
        * This prevents subscription stacking.
        */
 
-      const activeSubscription =
-        await getActiveSubscription(
-          userId
-        );
+    const activeSubscription = await getActiveSubscriptionByPlan(
+        userId,
+        plan.type
+      );
 
-      if (activeSubscription) {
-        return res
-          .status(409)
-          .json({
-            success: false,
+    if (activeSubscription) {
+      return res
+        .status(409)
+        .json({
+          success: false,
 
-            code:
-              "SUBSCRIPTION_ALREADY_ACTIVE",
+          code:
+            "SUBSCRIPTION_ALREADY_ACTIVE",
 
-            message:
-              "Your Premium membership is already active. You can renew after it expires.",
+          message:
+            `Your ${plan.name} subscription is already active. You can renew after it expires.`,
 
-            subscription:
-              activeSubscription,
-          });
-      }
+          subscription:
+            activeSubscription,
+        });
+    }
 
       /*
        * ======================================================
@@ -276,7 +321,7 @@ export const createSubscription = async (req, res) => {
                 "SUBSCRIPTION_PAYMENT_COMPLETED",
 
               message:
-                "Payment for this Premium subscription has already been completed. Activation is being finalized.",
+                `Payment for this ${plan.name} subscription has already been completed. Activation is being finalized.`,
 
               subscription:
                 pendingSubscription,
@@ -371,7 +416,7 @@ export const createSubscription = async (req, res) => {
             paymentPending: false,
 
             message:
-              "Existing pending subscription returned. Continue payment to activate Premium.",
+               `Existing pending ${plan.name} subscription returned. Continue payment to activate it.`,
 
             subscription:
               pendingSubscription,
@@ -423,7 +468,7 @@ export const createSubscription = async (req, res) => {
           paymentPending: false,
 
           message:
-            "Subscription created. Complete payment to activate Premium.",
+            `${plan.name} subscription created. Complete payment to activate it.`,
 
           subscription,
         });
@@ -651,29 +696,6 @@ export const payForSubscription = async (req, res) => {
  * ======================================================
  */
 
-const currentActiveSubscription = await getActiveSubscription( userId);
-
-        if (
-        currentActiveSubscription &&
-        currentActiveSubscription.id !==
-            subscriptionId
-        ) {
-        return res
-            .status(409)
-            .json({
-            success: false,
-
-            code:
-                "SUBSCRIPTION_ALREADY_ACTIVE",
-
-            message:
-                "Your Premium membership is already active. Another subscription cannot be purchased until it expires.",
-
-            subscription:
-                currentActiveSubscription,
-            });
-        }
-
       const {
         phoneNumber,
       } = req.body;
@@ -750,6 +772,47 @@ const currentActiveSubscription = await getActiveSubscription( userId);
       }
 
       /*
+ * ======================================================
+ * BLOCK DUPLICATE ACTIVE SUBSCRIPTION FOR SAME PLAN
+ * ======================================================
+ *
+ * Personal Premium and Business Pro are independent.
+ *
+ * Therefore:
+ *
+ * PREMIUM must only block another PREMIUM.
+ * BUSINESS_PRO must only block another BUSINESS_PRO.
+ *
+ * Never allow one plan to block the other.
+ */
+
+const currentActiveSubscription = await getActiveSubscriptionByPlan(
+    userId,
+    subscription.plan
+  );
+
+if (
+  currentActiveSubscription &&
+  currentActiveSubscription.id !==
+    subscription.id
+) {
+  return res
+    .status(409)
+    .json({
+      success: false,
+
+      code:
+        "SUBSCRIPTION_ALREADY_ACTIVE",
+
+      message:
+        `Your ${subscription.plan} subscription is already active. Another ${subscription.plan} subscription cannot be purchased until it expires.`,
+
+      subscription:
+        currentActiveSubscription,
+    });
+}
+
+      /*
        * ======================================================
        * ALREADY ACTIVE
        * ======================================================
@@ -768,7 +831,7 @@ const currentActiveSubscription = await getActiveSubscription( userId);
               "SUBSCRIPTION_ALREADY_ACTIVE",
 
             message:
-              "This Premium subscription is already active.",
+                `This ${subscription.plan} subscription is already active.`,
 
             subscription,
           });
@@ -982,7 +1045,9 @@ const currentActiveSubscription = await getActiveSubscription( userId);
                 )}`,
 
             transactionDescription:
-              "BarterTrade Premium",
+              subscription.plan === "BUSINESS_PRO"
+                ? "BarterTrade Business Pro"
+                : "BarterTrade Premium",
           });
 
         /*
@@ -1062,14 +1127,14 @@ const currentActiveSubscription = await getActiveSubscription( userId);
           });
 
         /*
-         * IMPORTANT:
-         *
-         * Subscription remains PENDING here.
-         *
-         * Never activate Premium from this response.
-         *
-         * Only the M-Pesa callback can activate it.
-         */
+        * IMPORTANT:
+        *
+        * Subscription remains PENDING here.
+        *
+        * Never activate the subscription from this response.
+        *
+        * Only the verified M-Pesa callback can activate it.
+        */
 
         return res
           .status(200)
