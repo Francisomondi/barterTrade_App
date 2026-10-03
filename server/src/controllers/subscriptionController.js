@@ -497,8 +497,7 @@ if (
  * GET /api/subscriptions/me
  */
 
-export const getMySubscription =
-  async (req, res) => {
+export const getMySubscription = async (req, res) => {
     try {
       await expireSubscriptions();
 
@@ -542,23 +541,19 @@ export const getMySubscription =
       const activeSubscription =
         subscriptions.find(
           (subscription) =>
-            subscription.status ===
-              "ACTIVE" &&
+            subscription.plan === "PREMIUM" &&
+            subscription.status === "ACTIVE" &&
             subscription.startsAt &&
             subscription.endsAt &&
-            new Date(
-              subscription.startsAt
-            ) <= now &&
-            new Date(
-              subscription.endsAt
-            ) > now
+            new Date(subscription.startsAt) <= now &&
+            new Date(subscription.endsAt) > now
         ) || null;
 
       const pendingSubscription =
         subscriptions.find(
           (subscription) =>
-            subscription.status ===
-            "PENDING"
+            subscription.plan === "PREMIUM" &&
+            subscription.status === "PENDING"
         ) || null;
 
       return res
@@ -650,6 +645,7 @@ export const getSubscription =
 
           subscription,
         });
+
     } catch (error) {
       console.error(
         "GET SUBSCRIPTION ERROR:",

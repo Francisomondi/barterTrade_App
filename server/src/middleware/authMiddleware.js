@@ -59,21 +59,28 @@ export const protect = async (req, res, next) => {
     }
 
     // Find user
-    const user =
-      await prisma.user.findUnique({
-        where: {
-          id: decoded.id,
-        },
+    const user = await prisma.user.findUnique({
+      where: {
+        id: decoded.id,
+      },
 
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          role: true,
-          status: true,
-        },
-      });
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        bio: true,
+        location: true,
+        role: true,
+        status: true,
+        barterScore: true,
+        completedTrades: true,
+        authProvider: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     if (!user) {
       return res.status(401).json({

@@ -508,8 +508,7 @@ const BusinessReports = () => {
    * =======================================================
    */
 
-  const pollBusinessProPayment =
-    async (paymentId) => {
+  const pollBusinessProPayment = async (paymentId) => {
       if (!paymentId) {
         return;
       }
@@ -622,29 +621,78 @@ const BusinessReports = () => {
            * ===============================================
            */
 
-          if (
-            payment?.status ===
-              "FAILED" ||
-            payment?.status ===
-              "CANCELLED"
-          ) {
-            pollingRef.current = false;
+         /*
+ * ===============================================
+ * PAYMENT CANCELLED
+ * ===============================================
+ *
+ * Close the modal immediately and inform the user.
+ *
+ * IMPORTANT:
+ * Cancellation never grants Business Pro access.
+ * We refresh the canonical backend entitlement
+ * before returning to the locked reports page.
+ */
 
-            setPaymentState(
-              "FAILED"
-            );
+if (
+  payment?.status ===
+  "CANCELLED"
+) {
+  pollingRef.current = false;
 
-            setPaymentError(
-              payment
-                ?.resultDescription ||
-                (payment.status ===
-                "CANCELLED"
-                  ? "The M-Pesa request was cancelled."
-                  : "The M-Pesa payment failed.")
-            );
+  const cancellationMessage =
+    payment?.resultDescription ||
+    "M-Pesa payment was cancelled. Business Pro was not activated.";
 
-            return;
-          }
+  // Refresh canonical entitlement from backend.
+  await loadReportAccess({
+    showLoader: false,
+  });
+
+  if (!mountedRef.current) {
+    return;
+  }
+
+  // Close and reset the payment modal.
+  setShowPaymentModal(false);
+  setPaymentState("IDLE");
+  setPaymentMessage("");
+  setPaymentError("");
+  setCurrentPayment(null);
+  setCurrentSubscription(null);
+
+  // Inform the user after the modal closes.
+  window.alert(
+    cancellationMessage
+  );
+
+  return;
+}
+
+/*
+ * ===============================================
+ * PAYMENT FAILED
+ * ===============================================
+ *
+ * Genuine payment failures remain inside the
+ * modal so the user can see the failure and retry.
+ */
+
+if (
+  payment?.status ===
+  "FAILED"
+) {
+  pollingRef.current = false;
+
+  setPaymentState("FAILED");
+
+  setPaymentError(
+    payment?.resultDescription ||
+    "The M-Pesa payment failed."
+  );
+
+  return;
+}
         } catch (err) {
           console.error(
             "BUSINESS PRO PAYMENT POLLING ERROR:",

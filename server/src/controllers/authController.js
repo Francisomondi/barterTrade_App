@@ -3,6 +3,9 @@ import bcrypt from "bcryptjs";
 import prisma from "../config/prisma.js";
 import { generateToken } from "../utils/auth.js";
 
+import cloudinary from "../config/cloudinary.js";
+import uploadToCloudinary from "../utils/uploadToCloudinary.js";
+
 
 import crypto from "crypto";
 import { sendEmail } from "../utils/sendEmail.js";
@@ -277,7 +280,651 @@ export const getMe = async (req, res) => {
   }
 };
 
+/**
+ * =========================================================
+ * UPDATE MY PROFILE
+ * PATCH /api/auth/me
+ * =========================================================
+ */
+export const updateMe = async (req, res) => {
+  try {
+    const userId = req.user.id;
 
+    const {
+      name,
+      phone,
+      bio,
+      location,
+    } = req.body;
+
+    /*
+     * =====================================================
+     * LOAD CURRENT USER
+     * =====================================================
+     */
+
+    const existingUser =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          bio: true,
+          location: true,
+        },
+      });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User account could not be found.",
+      });
+    }
+
+    /*
+     * =====================================================
+     * BUILD SAFE UPDATE DATA
+     * =====================================================
+     */
+
+    const updateData = {};
+
+    /*
+     * NAME
+     */
+
+    if (name !== undefined) {
+      const normalizedName =
+        String(name).trim();
+
+      if (!normalizedName) {
+        return res.status(400).json({
+          success: false,
+          message: "Name cannot be empty.",
+        });
+      }
+
+      if (normalizedName.length > 100) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Name cannot exceed 100 characters.",
+        });
+      }
+
+      updateData.name =
+        normalizedName;
+    }
+
+    /*
+     * PHONE
+     */
+
+    if (phone !== undefined) {
+      const normalizedPhone =
+        String(phone).trim();
+
+      /*
+       * Allow the user to remove an optional phone number.
+       */
+
+      if (!normalizedPhone) {
+        updateData.phone = null;
+      } else {
+        /*
+         * Kenyan mobile formats accepted:
+         *
+         * 0712345678
+         * 0112345678
+         * 254712345678
+         * +254712345678
+         */
+
+        const kenyaPhoneRegex =
+          /^(?:\+254|254|0)(?:7\d{8}|1\d{8})$/;
+
+        if (
+          !kenyaPhoneRegex.test(
+            normalizedPhone
+          )
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Enter a valid Kenyan phone number.",
+          });
+        }
+
+        let canonicalPhone =
+          normalizedPhone.replace(
+            /\s+/g,
+            ""
+          );
+
+        if (
+          canonicalPhone.startsWith(
+            "+254"
+          )
+        ) {
+          canonicalPhone =
+            canonicalPhone.slice(1);
+        } else if (
+          canonicalPhone.startsWith("0")
+        ) {
+          canonicalPhone =
+            `254${canonicalPhone.slice(1)}`;
+        }
+
+        /*
+         * Because User.phone is @unique, check for another
+         * account using this number before updating.
+         */
+
+        const phoneOwner =
+          await prisma.user.findUnique({
+            where: {
+              phone: canonicalPhone,
+            },
+
+            select: {
+              id: true,
+            },
+          });
+
+        if (
+          phoneOwner &&
+          phoneOwner.id !== userId
+        ) {
+          return res.status(409).json({
+            success: false,
+            message:
+              "This phone number is already associated with another account.",
+          });
+        }
+
+        updateData.phone =
+          canonicalPhone;
+      }
+    }
+
+    /*
+     * BIO
+     */
+
+    if (bio !== undefined) {
+      const normalizedBio =
+        String(bio).trim();
+
+      if (
+        normalizedBio.length > 500
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Bio cannot exceed 500 characters.",
+        });
+      }
+
+      updateData.bio =
+        normalizedBio || null;
+    }
+
+    /*
+     * LOCATION
+     */
+
+    if (location !== undefined) {
+      const normalizedLocation =
+        String(location).trim();
+
+      if (
+        normalizedLocation.length >
+        150
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Location cannot exceed 150 characters.",
+        });
+      }
+
+      updateData.location =
+        normalizedLocation || null;
+    }
+
+    /*
+     * =====================================================
+     * NOTHING TO UPDATE
+     * =====================================================
+     */
+
+    if (
+      Object.keys(updateData)
+        .length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No profile changes were provided.",
+      });
+    }
+
+    /*
+     * =====================================================
+     * UPDATE USER
+     * =====================================================
+     */
+
+    const updatedUser =
+      await prisma.user.update({
+        where: {
+          id: userId,
+        },
+
+        data: updateData,
+
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          avatar: true,
+          bio: true,
+          location: true,
+          role: true,
+          authProvider: true,
+          barterScore: true,
+          completedTrades: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile updated successfully.",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(
+      "UPDATE PROFILE ERROR:",
+      error
+    );
+
+
+    if (
+      error?.code === "P2002"
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This phone number is already associated with another account.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Unable to update your profile.",
+    });
+  }
+};
+/* =========================================================
+   UPDATE PERSONAL PROFILE AVATAR
+   PATCH /api/auth/me/avatar
+========================================================= */
+
+export const uploadMyAvatar = async (req, res) => {
+  let uploadedImage = null;
+
+  try {
+    const userId = req.user.id;
+
+    /* =====================================================
+       VALIDATE FILE
+    ====================================================== */
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        code: "AVATAR_REQUIRED",
+        message:
+          "Please select a profile photo.",
+      });
+    }
+
+    /*
+     * The global upload middleware already checks
+     * that the uploaded file is an image.
+     *
+     * We still keep this controller defensive.
+     */
+    if (
+      !req.file.mimetype?.startsWith(
+        "image/"
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "INVALID_AVATAR_TYPE",
+        message:
+          "Profile photo must be an image.",
+      });
+    }
+
+    /* =====================================================
+       FIND CURRENT USER
+    ====================================================== */
+
+    const existingUser =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+
+        select: {
+          id: true,
+          avatar: true,
+          avatarPublicId: true,
+        },
+      });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        code: "USER_NOT_FOUND",
+        message:
+          "User account could not be found.",
+      });
+    }
+
+    /* =====================================================
+       UPLOAD NEW AVATAR FIRST
+    ====================================================== */
+
+    uploadedImage =
+      await uploadToCloudinary(
+        req.file.buffer,
+        "barter-trade/users/avatars"
+      );
+
+    if (
+      !uploadedImage?.secure_url ||
+      !uploadedImage?.public_id
+    ) {
+      throw new Error(
+        "Cloudinary did not return the expected avatar information."
+      );
+    }
+
+    /* =====================================================
+       UPDATE DATABASE
+    ====================================================== */
+
+    let updatedUser;
+
+    try {
+      updatedUser =
+        await prisma.user.update({
+          where: {
+            id: userId,
+          },
+
+          data: {
+            avatar:
+              uploadedImage.secure_url,
+
+            avatarPublicId:
+              uploadedImage.public_id,
+          },
+
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            avatar: true,
+            avatarPublicId: true,
+            bio: true,
+            location: true,
+            role: true,
+            authProvider: true,
+            barterScore: true,
+            completedTrades: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+    } catch (databaseError) {
+      /*
+       * Cloudinary succeeded but Prisma failed.
+       *
+       * Remove the newly uploaded image so we
+       * don't leave an orphaned Cloudinary asset.
+       */
+
+      try {
+        await cloudinary.uploader.destroy(
+          uploadedImage.public_id
+        );
+      } catch (cleanupError) {
+        console.error(
+          "NEW AVATAR CLEANUP ERROR:",
+          cleanupError
+        );
+      }
+
+      throw databaseError;
+    }
+
+    /* =====================================================
+       DELETE PREVIOUS CLOUDINARY AVATAR
+    ====================================================== */
+
+    /*
+     * Database has already been updated successfully.
+     *
+     * Now remove the previous avatar.
+     *
+     * Failure here should NOT undo the successful
+     * profile update.
+     */
+
+    if (
+      existingUser.avatarPublicId &&
+      existingUser.avatarPublicId !==
+        uploadedImage.public_id
+    ) {
+      try {
+        await cloudinary.uploader.destroy(
+          existingUser.avatarPublicId
+        );
+      } catch (cleanupError) {
+        console.error(
+          "OLD AVATAR CLEANUP ERROR:",
+          cleanupError
+        );
+      }
+    }
+
+    /* =====================================================
+       RESPONSE
+    ====================================================== */
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile photo updated successfully.",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(
+      "UPLOAD PROFILE AVATAR ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      code: "AVATAR_UPLOAD_FAILED",
+      message:
+        "Unable to update your profile photo.",
+    });
+  }
+};
+
+/* =========================================================
+   REMOVE PERSONAL PROFILE AVATAR
+   DELETE /api/auth/me/avatar
+========================================================= */
+
+export const deleteMyAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    /* =====================================================
+       FIND CURRENT USER
+    ====================================================== */
+
+    const existingUser =
+      await prisma.user.findUnique({
+        where: {
+          id: userId,
+        },
+
+        select: {
+          id: true,
+          avatar: true,
+          avatarPublicId: true,
+        },
+      });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        code: "USER_NOT_FOUND",
+        message:
+          "User account could not be found.",
+      });
+    }
+
+    /* =====================================================
+       NOTHING TO REMOVE
+    ====================================================== */
+
+    if (
+      !existingUser.avatar &&
+      !existingUser.avatarPublicId
+    ) {
+      return res.status(400).json({
+        success: false,
+        code: "AVATAR_NOT_FOUND",
+        message:
+          "You do not currently have a profile photo.",
+      });
+    }
+
+    /* =====================================================
+       CLEAR DATABASE FIRST
+    ====================================================== */
+
+    /*
+     * The database is the source of truth.
+     *
+     * We remove the avatar from the User record first.
+     * This ensures the old image immediately stops being
+     * associated with the user's account.
+     */
+
+    const updatedUser =
+      await prisma.user.update({
+        where: {
+          id: userId,
+        },
+
+        data: {
+          avatar: null,
+          avatarPublicId: null,
+        },
+
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          avatar: true,
+          bio: true,
+          location: true,
+          role: true,
+          authProvider: true,
+          barterScore: true,
+          completedTrades: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+    /* =====================================================
+       DELETE CLOUDINARY IMAGE
+    ====================================================== */
+
+    /*
+     * Only attempt Cloudinary deletion when we have a
+     * Cloudinary public ID.
+     *
+     * This is important because some users may have an
+     * avatar URL from another provider, such as Google.
+     */
+
+    if (existingUser.avatarPublicId) {
+      try {
+        await cloudinary.uploader.destroy(
+          existingUser.avatarPublicId
+        );
+      } catch (cloudinaryError) {
+        /*
+         * Do not restore the avatar in the database.
+         *
+         * The user's profile has already been successfully
+         * cleared. Cloudinary cleanup failure should not
+         * make the user-facing operation fail.
+         */
+
+        console.error(
+          "DELETE OLD PROFILE AVATAR FROM CLOUDINARY ERROR:",
+          cloudinaryError
+        );
+      }
+    }
+
+    /* =====================================================
+       RESPONSE
+    ====================================================== */
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Profile photo removed successfully.",
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error(
+      "DELETE PROFILE AVATAR ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      code: "AVATAR_DELETE_FAILED",
+      message:
+        "Unable to remove your profile photo.",
+    });
+  }
+};
 
 export const forgotPassword = async (req, res) => {
   try {

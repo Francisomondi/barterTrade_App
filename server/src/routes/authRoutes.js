@@ -1,8 +1,9 @@
 import express from "express";
 import passport from "../config/passport.js";
-import { register, login, getMe, forgotPassword, resetPassword,} from "../controllers/authController.js";
+import { register, login, getMe, updateMe, forgotPassword, resetPassword, uploadMyAvatar,deleteMyAvatar} from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { generateToken } from "../utils/auth.js";
+import upload from "../middleware/upload.js";
 
 const router = express.Router();
 
@@ -11,7 +12,9 @@ router.post("/login", login);
 router.post("/forgot-password",forgotPassword);
 router.post( "/reset-password/:token",resetPassword);
 router.get("/me", protect, getMe);
-
+router.patch( "/me", protect, updateMe);
+router.patch("/me/avatar", protect, upload.single("avatar"), uploadMyAvatar);
+router.delete( "/me/avatar", protect, deleteMyAvatar);
 router.get( "/google", passport.authenticate("google",
    {  scope: ["profile", "email"],
     session: false,

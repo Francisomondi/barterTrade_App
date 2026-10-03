@@ -15,3 +15,49 @@ export const resetPassword = async (token, password) => {
 
   return response.data;
 };
+
+/**
+ * ============================================================
+ * UPDATE MY PROFILE
+ * PATCH /api/auth/me
+ * ============================================================
+ */
+export const updateMyProfile = async ({
+  name,
+  phone,
+  location,
+  bio,
+}) => {
+  const response = await api.patch(
+    "/auth/me",
+    {
+      name,
+      phone,
+      location,
+      bio,
+    }
+  );
+
+  return response.data;
+};
+
+export const uploadMyAvatar = async (file) => {
+  const formData = new FormData();
+
+  formData.append("avatar", file);
+
+  const response = await api.patch(
+    "/auth/me/avatar",
+    formData
+  );
+
+  return response.data;
+};
+
+export const deleteMyAvatar = async () => {
+  const response = await api.delete(
+    "/auth/me/avatar"
+  );
+
+  return response.data;
+};
