@@ -39,9 +39,13 @@ const [ profileForm, setProfileForm] = useState({
 const [profileSaving, setProfileSaving] = useState(false);
 const [profileError, setProfileError] = useState("");
 const [profileSuccess, setProfileSuccess] = useState("");
-const [ avatarUploading, setAvatarUploading,] = useState(false);
-const [ avatarDeleting, setAvatarDeleting,] = useState(false);
-const [ avatarError, setAvatarError,] = useState("");
+const [ avatarUploading, setAvatarUploading] = useState(false);
+const [ avatarDeleting, setAvatarDeleting] = useState(false);
+const [ avatarError, setAvatarError] = useState("");
+const profileBusy =
+  profileSaving ||
+  avatarUploading ||
+  avatarDeleting;
 
 
 /* =====================================================
@@ -68,11 +72,7 @@ const handleOpenEditProfile = () => {
 ====================================================== */
 
 const handleCloseEditProfile = () => {
-  if (
-    profileSaving ||
-    avatarUploading ||
-    avatarDeleting
-  ) {
+  if (profileBusy) {
     return;
   }
 
@@ -99,14 +99,20 @@ const handleProfileChange = (event) => {
   }));
 
   /*
-   * Clear old messages when the user starts editing again.
+   * Clear old messages when the user
+   * starts editing again.
    */
+
   if (profileError) {
     setProfileError("");
   }
 
   if (profileSuccess) {
     setProfileSuccess("");
+  }
+
+  if (avatarError) {
+    setAvatarError("");
   }
 };
 
@@ -119,16 +125,17 @@ const handleAvatarUpload = async (event) => {
     event.target.files?.[0];
 
   /*
-   * Reset the input so selecting the same
-   * image again still triggers onChange.
+   * Reset input so selecting the same file
+   * again still triggers onChange.
    */
   event.target.value = "";
 
-  if (!file) {
+  if (!file || profileBusy) {
     return;
   }
 
   setAvatarError("");
+  setProfileError("");
   setProfileSuccess("");
 
   /* -----------------------------
@@ -139,8 +146,9 @@ const handleAvatarUpload = async (event) => {
     !file.type.startsWith("image/")
   ) {
     setAvatarError(
-      "Please select an image file."
+      "Please select a valid image file."
     );
+
     return;
   }
 
@@ -155,6 +163,7 @@ const handleAvatarUpload = async (event) => {
     setAvatarError(
       "Profile photo cannot exceed 5 MB."
     );
+
     return;
   }
 
@@ -164,10 +173,12 @@ const handleAvatarUpload = async (event) => {
     await uploadMyAvatar(file);
 
     /*
-     * Reload the canonical authenticated
-     * user from GET /auth/me.
+     * AuthContext remains the canonical
+     * authenticated user source.
      */
     await refreshUser();
+
+    setAvatarError("");
 
     setProfileSuccess(
       "Profile photo updated successfully."
@@ -178,9 +189,19 @@ const handleAvatarUpload = async (event) => {
       error
     );
 
+    if (
+      error?.response?.status === 413
+    ) {
+      setAvatarError(
+        "Profile photo is too large. Maximum size is 5 MB."
+      );
+
+      return;
+    }
+
     setAvatarError(
       error?.response?.data?.message ||
-        "Unable to update your profile photo."
+        "Unable to update your profile photo. Please try again."
     );
   } finally {
     setAvatarUploading(false);
@@ -193,8 +214,7 @@ const handleAvatarUpload = async (event) => {
 
 const handleAvatarDelete = async () => {
   if (
-    avatarDeleting ||
-    avatarUploading ||
+    profileBusy ||
     !user?.avatar
   ) {
     return;
@@ -210,6 +230,7 @@ const handleAvatarDelete = async () => {
   }
 
   setAvatarError("");
+  setProfileError("");
   setProfileSuccess("");
 
   try {
@@ -218,6 +239,8 @@ const handleAvatarDelete = async () => {
     await deleteMyAvatar();
 
     await refreshUser();
+
+    setAvatarError("");
 
     setProfileSuccess(
       "Profile photo removed successfully."
@@ -230,13 +253,12 @@ const handleAvatarDelete = async () => {
 
     setAvatarError(
       error?.response?.data?.message ||
-        "Unable to remove your profile photo."
+        "Unable to remove your profile photo. Please try again."
     );
   } finally {
     setAvatarDeleting(false);
   }
 };
-
 /* =====================================================
    SAVE PROFILE CHANGES
 ====================================================== */
@@ -244,12 +266,13 @@ const handleAvatarDelete = async () => {
 const handleSaveProfile = async (event) => {
   event.preventDefault();
 
-  if (profileSaving) {
+  if (profileBusy) {
     return;
   }
 
   setProfileError("");
   setProfileSuccess("");
+  setAvatarError("");
 
   const name = profileForm.name.trim();
   const phone = profileForm.phone.trim();
@@ -1704,594 +1727,560 @@ const handleSaveProfile = async (event) => {
             }
           }}
         >
-          {/* =====================================================
-              EDIT PROFILE MODAL
-          ====================================================== */}
+          <div
+            className="
+              w-full max-w-xl
+              overflow-hidden
+              rounded-3xl
+              border border-[#E7DDDF]
+              bg-white
+              shadow-2xl
+            "
+          >
+            {/* Header */}
 
-          {showEditProfile && (
             <div
               className="
-                fixed inset-0 z-50
-                flex items-center justify-center
-                bg-black/50
-                px-4 py-6
-                backdrop-blur-sm
+                flex items-start justify-between
+                border-b border-[#E7DDDF]
+                px-5 py-5
+                sm:px-6
               "
-              onMouseDown={(event) => {
-                if (event.target === event.currentTarget) {
-                  handleCloseEditProfile();
-                }
-              }}
             >
-              <div
+              <div>
+                <p
+                  className="
+                    text-xs font-bold uppercase
+                    tracking-[0.16em]
+                    text-[#8A2638]
+                  "
+                >
+                  Personal profile
+                </p>
+
+                <h2
+                  className="
+                    mt-1 text-2xl
+                    font-black tracking-tight
+                    text-[#21191B]
+                  "
+                >
+                  Edit Profile
+                </h2>
+
+                <p
+                  className="
+                    mt-1 text-sm
+                    leading-6 text-gray-500
+                  "
+                >
+                  Keep your information up to date so
+                  other traders know who they're
+                  dealing with.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCloseEditProfile}
+                disabled={profileBusy}
                 className="
-                  w-full max-w-xl
-                  overflow-hidden
-                  rounded-3xl
+                  ml-4 flex h-10 w-10
+                  shrink-0 items-center justify-center
+                  rounded-full
                   border border-[#E7DDDF]
                   bg-white
-                  shadow-2xl
+                  text-xl text-gray-500
+                  transition
+                  hover:bg-[#F8F5F3]
+                  hover:text-[#5B1725]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-50
+                "
+                aria-label="Close edit profile"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Form */}
+
+            <form
+              className="
+                max-h-[75vh]
+                overflow-y-auto
+                px-5 py-6
+                sm:px-6
+              "
+              onSubmit={handleSaveProfile}
+            >
+              {/* =====================================================
+                  PROFILE PHOTO
+              ====================================================== */}
+
+              <div
+                className="
+                  rounded-2xl
+                  border border-[#E7DDDF]
+                  bg-[#FAF7F7]
+                  p-4
                 "
               >
-                {/* Header */}
-
                 <div
                   className="
-                    flex items-start justify-between
-                    border-b border-[#E7DDDF]
-                    px-5 py-5
-                    sm:px-6
+                    flex flex-col gap-4
+                    sm:flex-row
+                    sm:items-center
+                    sm:justify-between
                   "
                 >
-                  <div>
-                    <p
-                      className="
-                        text-xs font-bold uppercase
-                        tracking-[0.16em]
-                        text-[#8A2638]
-                      "
-                    >
-                      Personal profile
-                    </p>
+                  {/* Avatar preview */}
 
-                    <h2
-                      className="
-                        mt-1 text-2xl
-                        font-black tracking-tight
-                        text-[#21191B]
-                      "
-                    >
-                      Edit Profile
-                    </h2>
-
-                    <p
-                      className="
-                        mt-1 text-sm
-                        leading-6 text-gray-500
-                      "
-                    >
-                      Keep your information up to date so
-                      other traders know who they're
-                      dealing with.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleCloseEditProfile}
-                    disabled={profileSaving}
-                    className="
-                      ml-4 flex h-10 w-10
-                      shrink-0 items-center justify-center
-                      rounded-full
-                      border border-[#E7DDDF]
-                      bg-white
-                      text-xl text-gray-500
-                      transition
-                      hover:bg-[#F8F5F3]
-                      hover:text-[#5B1725]
-                      disabled:cursor-not-allowed
-                      disabled:opacity-50
-                    "
-                    aria-label="Close edit profile"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                {/* Form */}
-
-                <form
-                  className="
-                    max-h-[75vh]
-                    overflow-y-auto
-                    px-5 py-6
-                    sm:px-6
-                  "
-                  onSubmit={handleSaveProfile}
-                >
-                  {/* =====================================================
-                      PROFILE PHOTO
-                  ====================================================== */}
-
-                  <div
-                    className="
-                      rounded-2xl
-                      border border-[#E7DDDF]
-                      bg-[#FAF7F7]
-                      p-4
-                    "
-                  >
+                  <div className="flex items-center gap-4">
                     <div
                       className="
-                        flex flex-col gap-4
-                        sm:flex-row
-                        sm:items-center
-                        sm:justify-between
+                        flex h-20 w-20
+                        shrink-0
+                        items-center justify-center
+                        overflow-hidden
+                        rounded-full
+                        bg-[#5B1725]
+                        text-2xl font-black
+                        uppercase
+                        text-white
+                        shadow-sm
                       "
                     >
-                      {/* Avatar preview */}
-
-                      <div className="flex items-center gap-4">
-                        <div
-                          className="
-                            flex h-20 w-20
-                            shrink-0
-                            items-center justify-center
-                            overflow-hidden
-                            rounded-full
-                            bg-[#5B1725]
-                            text-2xl font-black
-                            uppercase
-                            text-white
-                            shadow-sm
-                          "
-                        >
-                          {user?.avatar ? (
-                            <img
-                              src={user.avatar}
-                              alt={
-                                user?.name
-                                  ? `${user.name} profile`
-                                  : "Profile"
-                              }
-                              className="
-                                h-full w-full
-                                object-cover
-                              "
-                            />
-                          ) : (
+                      {user?.avatar ? (
+                        <img
+                          src={user.avatar}
+                          alt={
                             user?.name
-                              ?.trim()
-                              ?.charAt(0)
-                              ?.toUpperCase() || "U"
-                          )}
-                        </div>
-
-                        <div className="min-w-0">
-                          <p
-                            className="
-                              text-sm font-black
-                              text-[#21191B]
-                            "
-                          >
-                            Profile photo
-                          </p>
-
-                          <p
-                            className="
-                              mt-1
-                              text-xs leading-5
-                              text-gray-500
-                            "
-                          >
-                            JPG, PNG or another image
-                            format up to 5 MB.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-
-                      <div
-                        className="
-                          flex flex-wrap
-                          items-center gap-2
-                        "
-                      >
-                        <label
-                          className={`
-                            inline-flex
-                            cursor-pointer
-                            items-center justify-center
-                            rounded-xl
-                            border border-[#5B1725]
-                            bg-white
-                            px-4 py-2.5
-                            text-xs font-bold
-                            text-[#5B1725]
-                            transition
-                            hover:bg-[#F9F1F3]
-                            ${
-                              avatarUploading ||
-                              avatarDeleting
-                                ? "pointer-events-none opacity-60"
-                                : ""
-                            }
-                          `}
-                        >
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={
-                              avatarUploading ||
-                              avatarDeleting
-                            }
-                            onChange={
-                              handleAvatarUpload
-                            }
-                          />
-
-                          {avatarUploading
-                            ? "Uploading..."
-                            : user?.avatar
-                              ? "Change Photo"
-                              : "Upload Photo"}
-                        </label>
-
-                        {user?.avatar && (
-                          <button
-                            type="button"
-                            disabled={
-                              avatarDeleting ||
-                              avatarUploading
-                            }
-                            onClick={
-                              handleAvatarDelete
-                            }
-                            className="
-                              inline-flex
-                              items-center justify-center
-                              rounded-xl
-                              border border-red-200
-                              bg-white
-                              px-4 py-2.5
-                              text-xs font-bold
-                              text-red-600
-                              transition
-                              hover:bg-red-50
-                              disabled:cursor-not-allowed
-                              disabled:opacity-60
-                            "
-                          >
-                            {avatarDeleting
-                              ? "Removing..."
-                              : "Remove"}
-                          </button>
-                        )}
-                      </div>
+                              ? `${user.name} profile`
+                              : "Profile"
+                          }
+                          className="
+                            h-full w-full
+                            object-cover
+                          "
+                        />
+                      ) : (
+                        user?.name
+                          ?.trim()
+                          ?.charAt(0)
+                          ?.toUpperCase() || "U"
+                      )}
                     </div>
 
-                    {avatarError && (
-                      <div
+                    <div className="min-w-0">
+                      <p
                         className="
-                          mt-3
-                          rounded-xl
-                          border border-red-200
-                          bg-red-50
-                          px-3 py-2
-                          text-xs font-medium
-                          text-red-700
-                        "
-                      >
-                        {avatarError}
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-5">
-                    {/* Full Name */}
-
-                    <div>
-                      <label
-                        htmlFor="profile-name"
-                        className="
-                          mb-2 block
-                          text-sm font-bold
+                          text-sm font-black
                           text-[#21191B]
                         "
                       >
-                        Full Name
-                      </label>
-
-                      <input
-                        id="profile-name"
-                        type="text"
-                        name="name"
-                        value={profileForm.name}
-                        onChange={handleProfileChange}
-                        maxLength={100}
-                        autoComplete="name"
-                        placeholder="Enter your full name"
-                        className="
-                          w-full rounded-xl
-                          border border-[#DDD2D4]
-                          bg-white
-                          px-4 py-3
-                          text-sm text-[#21191B]
-                          outline-none
-                          transition
-                          placeholder:text-gray-400
-                          focus:border-[#8A2638]
-                          focus:ring-4
-                          focus:ring-[#8A2638]/10
-                        "
-                      />
-
-                      <div className="mt-1.5 flex justify-end">
-                        <span className="text-xs text-gray-400">
-                          {profileForm.name.length}/100
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Phone */}
-
-                    <div>
-                      <label
-                        htmlFor="profile-phone"
-                        className="
-                          mb-2 block
-                          text-sm font-bold
-                          text-[#21191B]
-                        "
-                      >
-                        Phone Number
-                      </label>
-
-                      <input
-                        id="profile-phone"
-                        type="tel"
-                        name="phone"
-                        value={profileForm.phone}
-                        onChange={handleProfileChange}
-                        autoComplete="tel"
-                        inputMode="tel"
-                        placeholder="e.g. 0712345678"
-                        className="
-                          w-full rounded-xl
-                          border border-[#DDD2D4]
-                          bg-white
-                          px-4 py-3
-                          text-sm text-[#21191B]
-                          outline-none
-                          transition
-                          placeholder:text-gray-400
-                          focus:border-[#8A2638]
-                          focus:ring-4
-                          focus:ring-[#8A2638]/10
-                        "
-                      />
+                        Profile photo
+                      </p>
 
                       <p
                         className="
-                          mt-1.5
+                          mt-1
                           text-xs leading-5
-                          text-gray-400
+                          text-gray-500
                         "
                       >
-                        Kenyan numbers such as 0712345678,
-                        0112345678 or +254712345678 are
-                        supported.
+                        JPG, PNG or another image
+                        format up to 5 MB.
                       </p>
                     </div>
-
-                    {/* Location */}
-
-                    <div>
-                      <label
-                        htmlFor="profile-location"
-                        className="
-                          mb-2 block
-                          text-sm font-bold
-                          text-[#21191B]
-                        "
-                      >
-                        Location
-                      </label>
-
-                      <input
-                        id="profile-location"
-                        type="text"
-                        name="location"
-                        value={profileForm.location}
-                        onChange={handleProfileChange}
-                        maxLength={150}
-                        autoComplete="address-level1"
-                        placeholder="e.g. Nairobi, Kenya"
-                        className="
-                          w-full rounded-xl
-                          border border-[#DDD2D4]
-                          bg-white
-                          px-4 py-3
-                          text-sm text-[#21191B]
-                          outline-none
-                          transition
-                          placeholder:text-gray-400
-                          focus:border-[#8A2638]
-                          focus:ring-4
-                          focus:ring-[#8A2638]/10
-                        "
-                      />
-
-                      <div className="mt-1.5 flex justify-end">
-                        <span className="text-xs text-gray-400">
-                          {profileForm.location.length}/150
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bio */}
-
-                    <div>
-                      <div
-                        className="
-                          mb-2 flex
-                          items-center justify-between
-                          gap-3
-                        "
-                      >
-                        <label
-                          htmlFor="profile-bio"
-                          className="
-                            text-sm font-bold
-                            text-[#21191B]
-                          "
-                        >
-                          Bio
-                        </label>
-
-                        <span className="text-xs text-gray-400">
-                          {profileForm.bio.length}/500
-                        </span>
-                      </div>
-
-                      <textarea
-                        id="profile-bio"
-                        name="bio"
-                        value={profileForm.bio}
-                        onChange={handleProfileChange}
-                        maxLength={500}
-                        rows={5}
-                        placeholder="Tell other traders a little about yourself..."
-                        className="
-                          w-full resize-none
-                          rounded-xl
-                          border border-[#DDD2D4]
-                          bg-white
-                          px-4 py-3
-                          text-sm leading-6
-                          text-[#21191B]
-                          outline-none
-                          transition
-                          placeholder:text-gray-400
-                          focus:border-[#8A2638]
-                          focus:ring-4
-                          focus:ring-[#8A2638]/10
-                        "
-                      />
-                    </div>
-
-                    {/* Error */}
-
-                    {profileError && (
-                      <div
-                        role="alert"
-                        className="
-                          rounded-xl
-                          border border-red-200
-                          bg-red-50
-                          px-4 py-3
-                          text-sm font-medium
-                          text-red-700
-                        "
-                      >
-                        {profileError}
-                      </div>
-                    )}
-
-                    {/* Success */}
-
-                    {profileSuccess && (
-                      <div
-                        className="
-                          rounded-xl
-                          border border-green-200
-                          bg-green-50
-                          px-4 py-3
-                          text-sm font-medium
-                          text-green-700
-                        "
-                      >
-                        {profileSuccess}
-                      </div>
-                    )}
                   </div>
 
-                  {/* Actions */}
+                  {/* Photo Actions */}
 
-                  <div
-                    className="
-                      mt-7 flex
-                      flex-col-reverse gap-3
-                      border-t border-[#EEE5E7]
-                      pt-5
-                      sm:flex-row
-                      sm:justify-end
-                    "
-                  >
-                    <button
-                      type="button"
-                      onClick={handleCloseEditProfile}
-                      disabled={profileSaving}
-                      className="
-                        rounded-xl
-                        border border-[#DDD2D4]
-                        bg-white
-                        px-5 py-3
-                        text-sm font-bold
-                        text-gray-600
-                        transition
-                        hover:bg-[#F8F5F3]
-                        disabled:cursor-not-allowed
-                        disabled:opacity-50
-                      "
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={profileSaving || avatarUploading || avatarDeleting}
-                      className="
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      className={`
                         inline-flex
+                        cursor-pointer
                         items-center justify-center
                         rounded-xl
-                        bg-[#5B1725]
-                        px-5 py-3
-                        text-sm font-bold
-                        text-white
-                        shadow-sm
+                        border border-[#5B1725]
+                        bg-white
+                        px-4 py-2.5
+                        text-xs font-bold
+                        text-[#5B1725]
                         transition
-                        hover:bg-[#3D0F18]
-                        disabled:cursor-not-allowed
-                        disabled:opacity-60
+                        hover:bg-[#F9F1F3]
+                        ${
+                          profileBusy
+                            ? "pointer-events-none opacity-60"
+                            : ""
+                        }
+                      `}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={profileBusy}
+                        onChange={handleAvatarUpload}
+                      />
+
+                      {avatarUploading
+                        ? "Uploading..."
+                        : user?.avatar
+                          ? "Change Photo"
+                          : "Upload Photo"}
+                    </label>
+
+                    {user?.avatar && (
+                      <button
+                        type="button"
+                        disabled={profileBusy}
+                        onClick={handleAvatarDelete}
+                        className="
+                          inline-flex
+                          items-center justify-center
+                          rounded-xl
+                          border border-red-200
+                          bg-white
+                          px-4 py-2.5
+                          text-xs font-bold
+                          text-red-600
+                          transition
+                          hover:bg-red-50
+                          disabled:cursor-not-allowed
+                          disabled:opacity-60
+                        "
+                      >
+                        {avatarDeleting
+                          ? "Removing..."
+                          : "Remove"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Avatar Error */}
+
+                {avatarError && (
+                  <div
+                    role="alert"
+                    className="
+                      mt-3
+                      rounded-xl
+                      border border-red-200
+                      bg-red-50
+                      px-3 py-2
+                      text-xs font-medium
+                      text-red-700
+                    "
+                  >
+                    {avatarError}
+                  </div>
+                )}
+              </div>
+
+              {/* =====================================================
+                  PROFILE FIELDS
+              ====================================================== */}
+
+              <div className="mt-5 space-y-5">
+                {/* Full Name */}
+
+                <div>
+                  <label
+                    htmlFor="profile-name"
+                    className="
+                      mb-2 block
+                      text-sm font-bold
+                      text-[#21191B]
+                    "
+                  >
+                    Full Name
+                  </label>
+
+                  <input
+                    id="profile-name"
+                    type="text"
+                    name="name"
+                    value={profileForm.name}
+                    onChange={handleProfileChange}
+                    maxLength={100}
+                    autoComplete="name"
+                    placeholder="Enter your full name"
+                    className="
+                      w-full rounded-xl
+                      border border-[#DDD2D4]
+                      bg-white
+                      px-4 py-3
+                      text-sm text-[#21191B]
+                      outline-none
+                      transition
+                      placeholder:text-gray-400
+                      focus:border-[#8A2638]
+                      focus:ring-4
+                      focus:ring-[#8A2638]/10
+                    "
+                  />
+
+                  <div className="mt-1.5 flex justify-end">
+                    <span className="text-xs text-gray-400">
+                      {profileForm.name.length}/100
+                    </span>
+                  </div>
+                </div>
+
+                {/* Phone */}
+
+                <div>
+                  <label
+                    htmlFor="profile-phone"
+                    className="
+                      mb-2 block
+                      text-sm font-bold
+                      text-[#21191B]
+                    "
+                  >
+                    Phone Number
+                  </label>
+
+                  <input
+                    id="profile-phone"
+                    type="tel"
+                    name="phone"
+                    value={profileForm.phone}
+                    onChange={handleProfileChange}
+                    autoComplete="tel"
+                    inputMode="tel"
+                    placeholder="e.g. 0712345678"
+                    className="
+                      w-full rounded-xl
+                      border border-[#DDD2D4]
+                      bg-white
+                      px-4 py-3
+                      text-sm text-[#21191B]
+                      outline-none
+                      transition
+                      placeholder:text-gray-400
+                      focus:border-[#8A2638]
+                      focus:ring-4
+                      focus:ring-[#8A2638]/10
+                    "
+                  />
+
+                  <p className="mt-1.5 text-xs leading-5 text-gray-400">
+                    Kenyan numbers such as 0712345678,
+                    0112345678 or +254712345678 are
+                    supported.
+                  </p>
+                </div>
+
+                {/* Location */}
+
+                <div>
+                  <label
+                    htmlFor="profile-location"
+                    className="
+                      mb-2 block
+                      text-sm font-bold
+                      text-[#21191B]
+                    "
+                  >
+                    Location
+                  </label>
+
+                  <input
+                    id="profile-location"
+                    type="text"
+                    name="location"
+                    value={profileForm.location}
+                    onChange={handleProfileChange}
+                    maxLength={150}
+                    autoComplete="address-level1"
+                    placeholder="e.g. Nairobi, Kenya"
+                    className="
+                      w-full rounded-xl
+                      border border-[#DDD2D4]
+                      bg-white
+                      px-4 py-3
+                      text-sm text-[#21191B]
+                      outline-none
+                      transition
+                      placeholder:text-gray-400
+                      focus:border-[#8A2638]
+                      focus:ring-4
+                      focus:ring-[#8A2638]/10
+                    "
+                  />
+
+                  <div className="mt-1.5 flex justify-end">
+                    <span className="text-xs text-gray-400">
+                      {profileForm.location.length}/150
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bio */}
+
+                <div>
+                  <div
+                    className="
+                      mb-2 flex
+                      items-center justify-between
+                      gap-3
+                    "
+                  >
+                    <label
+                      htmlFor="profile-bio"
+                      className="
+                        text-sm font-bold
+                        text-[#21191B]
                       "
                     >
-                      {profileSaving ? (
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="
-                              h-4 w-4
-                              animate-spin
-                              rounded-full
-                              border-2
-                              border-white/40
-                              border-t-white
-                            "
-                          />
+                      Bio
+                    </label>
 
-                          Saving...
-                        </span>
-                      ) : (
-                        "Save Changes"
-                      )}
-                    </button>
+                    <span className="text-xs text-gray-400">
+                      {profileForm.bio.length}/500
+                    </span>
                   </div>
-                </form>
+
+                  <textarea
+                    id="profile-bio"
+                    name="bio"
+                    value={profileForm.bio}
+                    onChange={handleProfileChange}
+                    maxLength={500}
+                    rows={5}
+                    placeholder="Tell other traders a little about yourself..."
+                    className="
+                      w-full resize-none
+                      rounded-xl
+                      border border-[#DDD2D4]
+                      bg-white
+                      px-4 py-3
+                      text-sm leading-6
+                      text-[#21191B]
+                      outline-none
+                      transition
+                      placeholder:text-gray-400
+                      focus:border-[#8A2638]
+                      focus:ring-4
+                      focus:ring-[#8A2638]/10
+                    "
+                  />
+                </div>
+
+                {/* Profile Error */}
+
+                {profileError && (
+                  <div
+                    role="alert"
+                    className="
+                      rounded-xl
+                      border border-red-200
+                      bg-red-50
+                      px-4 py-3
+                      text-sm font-medium
+                      text-red-700
+                    "
+                  >
+                    {profileError}
+                  </div>
+                )}
+
+                {/* Success */}
+
+                {profileSuccess && (
+                  <div
+                    role="status"
+                    className="
+                      rounded-xl
+                      border border-green-200
+                      bg-green-50
+                      px-4 py-3
+                      text-sm font-medium
+                      text-green-700
+                    "
+                  >
+                    {profileSuccess}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+
+              {/* Actions */}
+
+              <div
+                className="
+                  mt-7 flex
+                  flex-col-reverse gap-3
+                  border-t border-[#EEE5E7]
+                  pt-5
+                  sm:flex-row
+                  sm:justify-end
+                "
+              >
+                <button
+                  type="button"
+                  onClick={handleCloseEditProfile}
+                  disabled={profileBusy}
+                  className="
+                    rounded-xl
+                    border border-[#DDD2D4]
+                    bg-white
+                    px-5 py-3
+                    text-sm font-bold
+                    text-gray-600
+                    transition
+                    hover:bg-[#F8F5F3]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                  "
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={profileBusy}
+                  className="
+                    inline-flex
+                    items-center justify-center
+                    rounded-xl
+                    bg-[#5B1725]
+                    px-5 py-3
+                    text-sm font-bold
+                    text-white
+                    shadow-sm
+                    transition
+                    hover:bg-[#3D0F18]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-60
+                  "
+                >
+                  {profileSaving ? (
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="
+                          h-4 w-4
+                          animate-spin
+                          rounded-full
+                          border-2
+                          border-white/40
+                          border-t-white
+                        "
+                      />
+
+                      Saving...
+                    </span>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

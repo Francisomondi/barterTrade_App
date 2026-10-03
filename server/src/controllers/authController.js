@@ -4,6 +4,7 @@ import prisma from "../config/prisma.js";
 import { generateToken } from "../utils/auth.js";
 
 import cloudinary from "../config/cloudinary.js";
+import { invalidateUserListingsCache } from "../utils/listingCache.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 
 
@@ -280,12 +281,6 @@ export const getMe = async (req, res) => {
   }
 };
 
-/**
- * =========================================================
- * UPDATE MY PROFILE
- * PATCH /api/auth/me
- * =========================================================
- */
 export const updateMe = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -297,26 +292,23 @@ export const updateMe = async (req, res) => {
       location,
     } = req.body;
 
-    /*
-     * =====================================================
-     * LOAD CURRENT USER
-     * =====================================================
-     */
+    /* =====================================================
+       LOAD CURRENT USER
+    ====================================================== */
 
-    const existingUser =
-      await prisma.user.findUnique({
-        where: {
-          id: userId,
-        },
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
 
-        select: {
-          id: true,
-          name: true,
-          phone: true,
-          bio: true,
-          location: true,
-        },
-      });
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        bio: true,
+        location: true,
+      },
+    });
 
     if (!existingUser) {
       return res.status(404).json({
@@ -325,21 +317,18 @@ export const updateMe = async (req, res) => {
       });
     }
 
-    /*
-     * =====================================================
-     * BUILD SAFE UPDATE DATA
-     * =====================================================
-     */
+    /* =====================================================
+       BUILD SAFE UPDATE DATA
+    ====================================================== */
 
     const updateData = {};
 
-    /*
-     * NAME
-     */
+    /* =====================================================
+       NAME
+    ====================================================== */
 
     if (name !== undefined) {
-      const normalizedName =
-        String(name).trim();
+      const normalizedName = String(name).trim();
 
       if (!normalizedName) {
         return res.status(400).json({
@@ -351,89 +340,69 @@ export const updateMe = async (req, res) => {
       if (normalizedName.length > 100) {
         return res.status(400).json({
           success: false,
-          message:
-            "Name cannot exceed 100 characters.",
+          message: "Name cannot exceed 100 characters.",
         });
       }
 
-      updateData.name =
-        normalizedName;
+      updateData.name = normalizedName;
     }
 
-    /*
-     * PHONE
-     */
+    /* =====================================================
+       PHONE
+    ====================================================== */
 
     if (phone !== undefined) {
-      const normalizedPhone =
-        String(phone).trim();
+      const normalizedPhone = String(phone)
+        .trim()
+        .replace(/\s+/g, "");
 
-      /*
-       * Allow the user to remove an optional phone number.
-       */
-
+      // Allow user to remove optional phone number.
       if (!normalizedPhone) {
         updateData.phone = null;
       } else {
         /*
-         * Kenyan mobile formats accepted:
+         * Accepted Kenyan formats:
          *
          * 0712345678
          * 0112345678
          * 254712345678
+         * 254112345678
          * +254712345678
+         * +254112345678
          */
 
         const kenyaPhoneRegex =
           /^(?:\+254|254|0)(?:7\d{8}|1\d{8})$/;
 
-        if (
-          !kenyaPhoneRegex.test(
-            normalizedPhone
-          )
-        ) {
+        if (!kenyaPhoneRegex.test(normalizedPhone)) {
           return res.status(400).json({
             success: false,
-            message:
-              "Enter a valid Kenyan phone number.",
+            message: "Enter a valid Kenyan phone number.",
           });
         }
 
-        let canonicalPhone =
-          normalizedPhone.replace(
-            /\s+/g,
-            ""
-          );
+        let canonicalPhone = normalizedPhone;
 
-        if (
-          canonicalPhone.startsWith(
-            "+254"
-          )
-        ) {
-          canonicalPhone =
-            canonicalPhone.slice(1);
-        } else if (
-          canonicalPhone.startsWith("0")
-        ) {
-          canonicalPhone =
-            `254${canonicalPhone.slice(1)}`;
+        if (canonicalPhone.startsWith("+254")) {
+          canonicalPhone = canonicalPhone.slice(1);
+        } else if (canonicalPhone.startsWith("0")) {
+          canonicalPhone = `254${canonicalPhone.slice(1)}`;
         }
 
         /*
-         * Because User.phone is @unique, check for another
-         * account using this number before updating.
+         * User.phone is unique.
+         * Make sure another account doesn't already own it.
          */
 
-        const phoneOwner =
-          await prisma.user.findUnique({
-            where: {
-              phone: canonicalPhone,
-            },
+        const phoneOwner = await prisma.user.findUnique({
+          where: {
+            phone: canonicalPhone,
+          },
 
-            select: {
-              id: true,
-            },
-          });
+          select: {
+            id: true,
+          },
+        });
 
         if (
           phoneOwner &&
@@ -446,45 +415,36 @@ export const updateMe = async (req, res) => {
           });
         }
 
-        updateData.phone =
-          canonicalPhone;
+        updateData.phone = canonicalPhone;
       }
     }
 
-    /*
-     * BIO
-     */
+    /* =====================================================
+       BIO
+    ====================================================== */
 
     if (bio !== undefined) {
-      const normalizedBio =
-        String(bio).trim();
+      const normalizedBio = String(bio).trim();
 
-      if (
-        normalizedBio.length > 500
-      ) {
+      if (normalizedBio.length > 500) {
         return res.status(400).json({
           success: false,
-          message:
-            "Bio cannot exceed 500 characters.",
+          message: "Bio cannot exceed 500 characters.",
         });
       }
 
-      updateData.bio =
-        normalizedBio || null;
+      updateData.bio = normalizedBio || null;
     }
 
-    /*
-     * LOCATION
-     */
+    /* =====================================================
+       LOCATION
+    ====================================================== */
 
     if (location !== undefined) {
       const normalizedLocation =
         String(location).trim();
 
-      if (
-        normalizedLocation.length >
-        150
-      ) {
+      if (normalizedLocation.length > 150) {
         return res.status(400).json({
           success: false,
           message:
@@ -496,16 +456,11 @@ export const updateMe = async (req, res) => {
         normalizedLocation || null;
     }
 
-    /*
-     * =====================================================
-     * NOTHING TO UPDATE
-     * =====================================================
-     */
+    /* =====================================================
+       NOTHING TO UPDATE
+    ====================================================== */
 
-    if (
-      Object.keys(updateData)
-        .length === 0
-    ) {
+    if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         success: false,
         message:
@@ -513,41 +468,64 @@ export const updateMe = async (req, res) => {
       });
     }
 
+    /* =====================================================
+       UPDATE USER
+    ====================================================== */
+
+    const updatedUser = await prisma.user.update({
+      where: {
+        id: userId,
+      },
+
+      data: updateData,
+
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        bio: true,
+        location: true,
+        role: true,
+        authProvider: true,
+        barterScore: true,
+        completedTrades: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    /* =====================================================
+       INVALIDATE USER LISTING CACHE
+    ====================================================== */
+
     /*
-     * =====================================================
-     * UPDATE USER
-     * =====================================================
+     * Seller information is embedded inside listing
+     * responses.
+     *
+     * Cache invalidation is deliberately best-effort.
+     *
+     * If Redis/cache invalidation fails, the database
+     * update has still succeeded and we should NOT return
+     * a false 500 response to the frontend.
      */
 
-    const updatedUser =
-      await prisma.user.update({
-        where: {
-          id: userId,
-        },
+    const cacheInvalidated =
+      await invalidateUserListingsCache(userId);
 
-        data: updateData,
-
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          avatar: true,
-          bio: true,
-          location: true,
-          role: true,
-          authProvider: true,
-          barterScore: true,
-          completedTrades: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    if (!cacheInvalidated) {
+      console.warn(
+        `AVATAR UPDATED BUT LISTING CACHE INVALIDATION FAILED: ${userId}`
+      );
+    }
+    /* =====================================================
+       RESPONSE
+    ====================================================== */
 
     return res.status(200).json({
       success: true,
-      message:
-        "Profile updated successfully.",
+      message: "Profile updated successfully.",
       user: updatedUser,
     });
   } catch (error) {
@@ -556,10 +534,7 @@ export const updateMe = async (req, res) => {
       error
     );
 
-
-    if (
-      error?.code === "P2002"
-    ) {
+    if (error?.code === "P2002") {
       return res.status(409).json({
         success: false,
         message:
@@ -574,10 +549,6 @@ export const updateMe = async (req, res) => {
     });
   }
 };
-/* =========================================================
-   UPDATE PERSONAL PROFILE AVATAR
-   PATCH /api/auth/me/avatar
-========================================================= */
 
 export const uploadMyAvatar = async (req, res) => {
   let uploadedImage = null;
@@ -599,15 +570,12 @@ export const uploadMyAvatar = async (req, res) => {
     }
 
     /*
-     * The global upload middleware already checks
-     * that the uploaded file is an image.
-     *
-     * We still keep this controller defensive.
+     * Upload middleware should already validate image
+     * types, but keep the controller defensive.
      */
+
     if (
-      !req.file.mimetype?.startsWith(
-        "image/"
-      )
+      !req.file.mimetype?.startsWith("image/")
     ) {
       return res.status(400).json({
         success: false,
@@ -647,11 +615,10 @@ export const uploadMyAvatar = async (req, res) => {
        UPLOAD NEW AVATAR FIRST
     ====================================================== */
 
-    uploadedImage =
-      await uploadToCloudinary(
-        req.file.buffer,
-        "barter-trade/users/avatars"
-      );
+    uploadedImage = await uploadToCloudinary(
+      req.file.buffer,
+      "barter-trade/users/avatars"
+    );
 
     if (
       !uploadedImage?.secure_url ||
@@ -669,54 +636,55 @@ export const uploadMyAvatar = async (req, res) => {
     let updatedUser;
 
     try {
-      updatedUser =
-        await prisma.user.update({
-          where: {
-            id: userId,
-          },
+      updatedUser = await prisma.user.update({
+        where: {
+          id: userId,
+        },
 
-          data: {
-            avatar:
-              uploadedImage.secure_url,
+        data: {
+          avatar:
+            uploadedImage.secure_url,
 
-            avatarPublicId:
-              uploadedImage.public_id,
-          },
+          avatarPublicId:
+            uploadedImage.public_id,
+        },
 
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            avatar: true,
-            avatarPublicId: true,
-            bio: true,
-            location: true,
-            role: true,
-            authProvider: true,
-            barterScore: true,
-            completedTrades: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        });
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          avatar: true,
+          avatarPublicId: true,
+          bio: true,
+          location: true,
+          role: true,
+          authProvider: true,
+          barterScore: true,
+          completedTrades: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
     } catch (databaseError) {
       /*
        * Cloudinary succeeded but Prisma failed.
        *
-       * Remove the newly uploaded image so we
-       * don't leave an orphaned Cloudinary asset.
+       * Delete the newly uploaded image so an orphaned
+       * Cloudinary asset isn't left behind.
        */
 
-      try {
-        await cloudinary.uploader.destroy(
-          uploadedImage.public_id
-        );
-      } catch (cleanupError) {
-        console.error(
-          "NEW AVATAR CLEANUP ERROR:",
-          cleanupError
-        );
+      if (uploadedImage?.public_id) {
+        try {
+          await cloudinary.uploader.destroy(
+            uploadedImage.public_id
+          );
+        } catch (cleanupError) {
+          console.error(
+            "NEW AVATAR CLEANUP ERROR:",
+            cleanupError
+          );
+        }
       }
 
       throw databaseError;
@@ -727,12 +695,10 @@ export const uploadMyAvatar = async (req, res) => {
     ====================================================== */
 
     /*
-     * Database has already been updated successfully.
+     * The database now points at the new avatar.
      *
-     * Now remove the previous avatar.
-     *
-     * Failure here should NOT undo the successful
-     * profile update.
+     * Delete the previous Cloudinary asset afterwards.
+     * Failure here must not undo the successful update.
      */
 
     if (
@@ -750,6 +716,26 @@ export const uploadMyAvatar = async (req, res) => {
           cleanupError
         );
       }
+    }
+
+    /* =====================================================
+       INVALIDATE USER LISTING CACHE
+    ====================================================== */
+
+    /*
+     * Cached listing responses can contain seller.avatar.
+     *
+     * Therefore any cached listings associated with this
+     * seller may still contain the old Cloudinary URL.
+     */
+
+    const cacheInvalidated =
+      await invalidateUserListingsCache(userId);
+
+    if (!cacheInvalidated) {
+      console.warn(
+        `AVATAR DELETED BUT LISTING CACHE INVALIDATION FAILED: ${userId}`
+      );
     }
 
     /* =====================================================
@@ -776,11 +762,6 @@ export const uploadMyAvatar = async (req, res) => {
     });
   }
 };
-
-/* =========================================================
-   REMOVE PERSONAL PROFILE AVATAR
-   DELETE /api/auth/me/avatar
-========================================================= */
 
 export const deleteMyAvatar = async (req, res) => {
   try {
@@ -833,11 +814,10 @@ export const deleteMyAvatar = async (req, res) => {
     ====================================================== */
 
     /*
-     * The database is the source of truth.
+     * The database is our source of truth.
      *
-     * We remove the avatar from the User record first.
-     * This ensures the old image immediately stops being
-     * associated with the user's account.
+     * Clear the association first so the account no
+     * longer references the old avatar.
      */
 
     const updatedUser =
@@ -873,11 +853,11 @@ export const deleteMyAvatar = async (req, res) => {
     ====================================================== */
 
     /*
-     * Only attempt Cloudinary deletion when we have a
-     * Cloudinary public ID.
+     * Only delete from Cloudinary when we actually have
+     * a Cloudinary public ID.
      *
-     * This is important because some users may have an
-     * avatar URL from another provider, such as Google.
+     * This protects external avatars such as Google
+     * profile pictures.
      */
 
     if (existingUser.avatarPublicId) {
@@ -887,11 +867,10 @@ export const deleteMyAvatar = async (req, res) => {
         );
       } catch (cloudinaryError) {
         /*
-         * Do not restore the avatar in the database.
+         * The database update already succeeded.
          *
-         * The user's profile has already been successfully
-         * cleared. Cloudinary cleanup failure should not
-         * make the user-facing operation fail.
+         * Do not make the user-facing operation fail
+         * because Cloudinary cleanup failed.
          */
 
         console.error(
@@ -899,6 +878,27 @@ export const deleteMyAvatar = async (req, res) => {
           cloudinaryError
         );
       }
+    }
+
+    /* =====================================================
+       INVALIDATE USER LISTING CACHE
+    ====================================================== */
+
+    /*
+     * Cached listing responses can still contain the old
+     * seller avatar.
+     *
+     * Remove the relevant caches so future listing reads
+     * obtain the updated seller information.
+     */
+
+    const cacheInvalidated =
+      await invalidateUserListingsCache(userId);
+
+    if (!cacheInvalidated) {
+      console.warn(
+        `PROFILE UPDATED BUT LISTING CACHE INVALIDATION FAILED: ${userId}`
+      );
     }
 
     /* =====================================================
@@ -1254,9 +1254,6 @@ export const forgotPassword = async (req, res) => {
     });
   }
 };
-
-
-
 
 export const resetPassword = async (req, res) => {
   try {
