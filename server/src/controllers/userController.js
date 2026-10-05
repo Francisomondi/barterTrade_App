@@ -11,15 +11,29 @@ import { getPremiumStatus } from "../services/subscriptionService.js";
  *
  * Public marketplace profile for PERSONAL sellers.
  *
- * IMPORTANT:
- * - Does NOT expose email
- * - Does NOT expose phone
- * - Does NOT expose authProvider
- * - Does NOT expose role
- * - Does NOT expose subscription/payment information
+ * PUBLIC:
+ * - Name
+ * - Avatar
+ * - Bio
+ * - Phone
+ * - Location
+ * - Barter score
+ * - Reputation
+ * - Completed trades
+ * - Membership date
+ * - Premium presentation status
+ * - Active listings
  *
- * If the user has an ACTIVE business profile, the frontend
- * should send visitors to the Business Storefront instead.
+ * PRIVATE:
+ * - Email
+ * - Password
+ * - authProvider
+ * - role
+ * - subscription/payment details
+ * - internal account information
+ *
+ * If the user has an ACTIVE business profile, visitors are
+ * redirected to the Business Storefront instead.
  * ============================================================
  */
 
@@ -44,13 +58,6 @@ export const getPublicUserProfile = async (req, res) => {
      * ========================================================
      * LOAD USER
      * ========================================================
-     *
-     * Select only fields that are safe/necessary for the
-     * marketplace public profile.
-     *
-     * BusinessProfile is checked so the frontend knows whether
-     * this seller should use the Business Storefront instead.
-     * ========================================================
      */
 
     const user = await prisma.user.findUnique({
@@ -63,6 +70,10 @@ export const getPublicUserProfile = async (req, res) => {
         name: true,
         avatar: true,
         bio: true,
+
+        // Public seller contact information
+        phone: true,
+
         location: true,
         barterScore: true,
         createdAt: true,
@@ -84,7 +95,7 @@ export const getPublicUserProfile = async (req, res) => {
 
     /*
      * ========================================================
-     * USER NOT FOUND
+     * USER NOT FOUND / INACTIVE
      * ========================================================
      */
 
@@ -100,11 +111,8 @@ export const getPublicUserProfile = async (req, res) => {
      * ACTIVE BUSINESS PROFILE
      * ========================================================
      *
-     * A user with an ACTIVE business account should be viewed
-     * through their Business Storefront.
-     *
-     * We return redirect information instead of returning the
-     * personal public profile.
+     * Business users use the dedicated storefront instead of
+     * their personal marketplace profile.
      * ========================================================
      */
 
@@ -170,36 +178,29 @@ export const getPublicUserProfile = async (req, res) => {
      * ========================================================
      * RATINGS
      * ========================================================
-     *
-     * Calculate public reputation directly from Rating records.
-     *
-     * This prevents the public profile from depending entirely
-     * on cached/denormalized reputation values.
-     * ========================================================
      */
 
-
-
-    const ratingStats = await prisma.rating.aggregate({
+    const ratingStats =
+      await prisma.rating.aggregate({
         where: {
-        reviewedId: user.id,
+          reviewedId: user.id,
         },
 
         _avg: {
-        rating: true,
+          rating: true,
         },
 
         _count: {
-        rating: true,
+          rating: true,
         },
-    });
+      });
 
     const averageRating = Number(
-    ratingStats?._avg?.rating || 0
+      ratingStats?._avg?.rating || 0
     );
 
     const totalRatings = Number(
-    ratingStats?._count?.rating || 0
+      ratingStats?._count?.rating || 0
     );
 
     /*
@@ -207,9 +208,8 @@ export const getPublicUserProfile = async (req, res) => {
      * PREMIUM STATUS
      * ========================================================
      *
-     * Premium is presentation information only here.
-     *
      * Subscription remains the source of truth.
+     * Only the presentation status is exposed publicly.
      * ========================================================
      */
 
@@ -219,12 +219,6 @@ export const getPublicUserProfile = async (req, res) => {
     /*
      * ========================================================
      * ACTIVE PUBLIC LISTINGS
-     * ========================================================
-     *
-     * Return a small preview.
-     *
-     * This gives the public profile useful marketplace content
-     * without returning every listing.
      * ========================================================
      */
 
@@ -299,13 +293,20 @@ export const getPublicUserProfile = async (req, res) => {
 
         name:
           user.name ||
-          "BarterConnect User",
+          "BarterConnekt User",
 
         avatar:
           user.avatar || null,
 
         bio:
           user.bio || null,
+
+        /*
+         * Phone is intentionally public because this is the
+         * seller's marketplace contact information.
+         */
+        phone:
+          user.phone || null,
 
         location:
           user.location || null,
