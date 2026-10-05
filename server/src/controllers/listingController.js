@@ -6,6 +6,7 @@ import {invalidateListingCache, invalidateAllListingsCache,} from "../utils/list
 import { trackListingView} from "../services/businessAnalyticsTrackingService.js";
 import { expirePromotions } from "../services/promotionExpiryService.js";
 import { getListingLimit } from "../services/premiumEntitlementService.js";
+import processListingImage from "../utils/processListingImage.js";
 
 const getActivePremiumSubscriptionSelect = (now) => ({
   where: {
@@ -353,26 +354,49 @@ export const createListing = async (
       req.files.length > 0
     ) {
       try {
-        uploadedImages =
-          await Promise.all(
-            req.files.map(
-              async (file) => {
-                const result =
-                  await uploadToCloudinary(
-                    file.buffer,
-                    "barter-trade/listings"
-                  );
+    uploadedImages =
+      await Promise.all(
+        req.files.map(
+          async (file, index) => {
+            console.log(
+              `[CREATE LISTING] Processing image ${
+                index + 1
+              }/${req.files.length}`
+            );
 
-                return {
-                  url:
-                    result.secure_url,
+            /**
+             * Compress locally BEFORE Cloudinary.
+             */
+            const processedBuffer =
+              await processListingImage(
+                file.buffer
+              );
 
-                  publicId:
-                    result.public_id,
-                };
-              }
-            )
-          );
+            /**
+             * Upload compressed buffer.
+             */
+            const result =
+              await uploadToCloudinary(
+                processedBuffer,
+                "barter-trade/listings"
+              );
+
+            return {
+              url:
+                result.secure_url,
+
+              publicId:
+                result.public_id,
+
+              isPrimary:
+                index === 0,
+
+              sortOrder:
+                index,
+            };
+          }
+        )
+      );
       } catch (uploadError) {
         console.error(
           "CLOUDINARY UPLOAD ERROR:",

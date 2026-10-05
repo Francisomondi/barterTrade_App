@@ -6,6 +6,7 @@ import { generateToken } from "../utils/auth.js";
 import cloudinary from "../config/cloudinary.js";
 import { invalidateUserListingsCache } from "../utils/listingCache.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
+import processAvatarImage from "../utils/processAvatarImage.js";
 
 
 import crypto from "crypto";
@@ -551,10 +552,20 @@ export const updateMe = async (req, res) => {
 };
 
 export const uploadMyAvatar = async (req, res) => {
+  const startedAt = Date.now();
+
   let uploadedImage = null;
+
+  const elapsed = () =>
+    `${Date.now() - startedAt}ms`;
 
   try {
     const userId = req.user.id;
+
+    console.log(
+      "[AVATAR] 1. Request received:",
+      elapsed()
+    );
 
     /* =====================================================
        VALIDATE FILE
@@ -569,13 +580,21 @@ export const uploadMyAvatar = async (req, res) => {
       });
     }
 
-    /*
-     * Upload middleware should already validate image
-     * types, but keep the controller defensive.
-     */
+    console.log(
+      "[AVATAR] File:",
+      req.file.originalname,
+      req.file.mimetype,
+      `${(
+        req.file.size /
+        1024 /
+        1024
+      ).toFixed(2)} MB`
+    );
 
     if (
-      !req.file.mimetype?.startsWith("image/")
+      !req.file.mimetype?.startsWith(
+        "image/"
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -584,6 +603,11 @@ export const uploadMyAvatar = async (req, res) => {
           "Profile photo must be an image.",
       });
     }
+
+    console.log(
+      "[AVATAR] 2. Validation finished:",
+      elapsed()
+    );
 
     /* =====================================================
        FIND CURRENT USER
@@ -602,6 +626,11 @@ export const uploadMyAvatar = async (req, res) => {
         },
       });
 
+    console.log(
+      "[AVATAR] 3. User query finished:",
+      elapsed()
+    );
+
     if (!existingUser) {
       return res.status(404).json({
         success: false,
@@ -612,12 +641,42 @@ export const uploadMyAvatar = async (req, res) => {
     }
 
     /* =====================================================
-       UPLOAD NEW AVATAR FIRST
+       PROCESS AVATAR LOCALLY
     ====================================================== */
 
-    uploadedImage = await uploadToCloudinary(
-      req.file.buffer,
-      "barter-trade/users/avatars"
+    console.log(
+      "[AVATAR] 4. Starting local image processing:",
+      elapsed()
+    );
+
+    const processedAvatarBuffer =
+      await processAvatarImage(
+        req.file.buffer
+      );
+
+    console.log(
+      "[AVATAR] 5. Local image processing finished:",
+      elapsed()
+    );
+
+    /* =====================================================
+       UPLOAD PROCESSED IMAGE TO CLOUDINARY
+    ====================================================== */
+
+    console.log(
+      "[AVATAR] 6. Starting Cloudinary:",
+      elapsed()
+    );
+
+    uploadedImage =
+      await uploadToCloudinary(
+        processedAvatarBuffer,
+        "barter-trade/users/avatars"
+      );
+
+    console.log(
+      "[AVATAR] 7. Cloudinary finished:",
+      elapsed()
     );
 
     if (
@@ -635,45 +694,60 @@ export const uploadMyAvatar = async (req, res) => {
 
     let updatedUser;
 
+    console.log(
+      "[AVATAR] 8. Starting Prisma update:",
+      elapsed()
+    );
+
     try {
-      updatedUser = await prisma.user.update({
-        where: {
-          id: userId,
-        },
+      updatedUser =
+        await prisma.user.update({
+          where: {
+            id: userId,
+          },
 
-        data: {
-          avatar:
-            uploadedImage.secure_url,
+          data: {
+            avatar:
+              uploadedImage.secure_url,
 
-          avatarPublicId:
-            uploadedImage.public_id,
-        },
+            avatarPublicId:
+              uploadedImage.public_id,
+          },
 
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          avatar: true,
-          avatarPublicId: true,
-          bio: true,
-          location: true,
-          role: true,
-          authProvider: true,
-          barterScore: true,
-          completedTrades: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            avatar: true,
+            avatarPublicId: true,
+            bio: true,
+            location: true,
+            role: true,
+            authProvider: true,
+            barterScore: true,
+            completedTrades: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+      console.log(
+        "[AVATAR] 9. Prisma update finished:",
+        elapsed()
+      );
     } catch (databaseError) {
+      console.error(
+        "[AVATAR] Prisma failed:",
+        elapsed()
+      );
+
       /*
        * Cloudinary succeeded but Prisma failed.
        *
-       * Delete the newly uploaded image so an orphaned
-       * Cloudinary asset isn't left behind.
+       * Remove the newly uploaded image so we don't
+       * leave an orphaned Cloudinary asset.
        */
-
       if (uploadedImage?.public_id) {
         try {
           await cloudinary.uploader.destroy(
@@ -694,13 +768,17 @@ export const uploadMyAvatar = async (req, res) => {
        DELETE PREVIOUS CLOUDINARY AVATAR
     ====================================================== */
 
-    /*
-     * The database now points at the new avatar.
-     *
-     * Delete the previous Cloudinary asset afterwards.
-     * Failure here must not undo the successful update.
-     */
+    console.log(
+      "[AVATAR] 10. Starting old avatar cleanup:",
+      elapsed()
+    );
 
+    /*
+     * The database already points to the new avatar.
+     *
+     * Failure to remove the old Cloudinary image should
+     * therefore NOT make the avatar update fail.
+     */
     if (
       existingUser.avatarPublicId &&
       existingUser.avatarPublicId !==
@@ -718,29 +796,46 @@ export const uploadMyAvatar = async (req, res) => {
       }
     }
 
+    console.log(
+      "[AVATAR] 11. Old avatar cleanup finished:",
+      elapsed()
+    );
+
     /* =====================================================
        INVALIDATE USER LISTING CACHE
     ====================================================== */
 
-    /*
-     * Cached listing responses can contain seller.avatar.
-     *
-     * Therefore any cached listings associated with this
-     * seller may still contain the old Cloudinary URL.
-     */
+    console.log(
+      "[AVATAR] 12. Starting Redis invalidation:",
+      elapsed()
+    );
 
     const cacheInvalidated =
-      await invalidateUserListingsCache(userId);
+      await invalidateUserListingsCache(
+        userId
+      );
+
+    console.log(
+      "[AVATAR] 13. Redis invalidation finished:",
+      elapsed(),
+      "success:",
+      cacheInvalidated
+    );
 
     if (!cacheInvalidated) {
       console.warn(
-        `AVATAR DELETED BUT LISTING CACHE INVALIDATION FAILED: ${userId}`
+        `AVATAR UPDATED BUT LISTING CACHE INVALIDATION FAILED: ${userId}`
       );
     }
 
     /* =====================================================
        RESPONSE
     ====================================================== */
+
+    console.log(
+      "[AVATAR] SUCCESS - TOTAL:",
+      elapsed()
+    );
 
     return res.status(200).json({
       success: true,
@@ -749,6 +844,11 @@ export const uploadMyAvatar = async (req, res) => {
       user: updatedUser,
     });
   } catch (error) {
+    console.error(
+      "[AVATAR] FAILED AFTER:",
+      elapsed()
+    );
+
     console.error(
       "UPLOAD PROFILE AVATAR ERROR:",
       error
@@ -762,6 +862,8 @@ export const uploadMyAvatar = async (req, res) => {
     });
   }
 };
+
+
 
 export const deleteMyAvatar = async (req, res) => {
   try {

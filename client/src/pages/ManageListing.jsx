@@ -850,499 +850,175 @@ const ManageListing = () => {
   // UI
   // ======================================================
 
+  const primaryImage =
+    images.find((image) => image.isPrimary) || images[0] || null;
+
   return (
-    <div className="min-h-screen bg-[#F8F5F3] px-6 py-10">
+    <div className="min-h-screen bg-[#F8F5F3] px-4 py-5 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
-
-        {/* ================================================= */}
-        {/* HEADER */}
-        {/* ================================================= */}
-
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-[#8A2638]">
-              Manage Listing
-            </p>
-
-            <h1 className="mt-1 text-3xl font-bold text-[#3D0F18]">
-              {listing.title}
-            </h1>
-
-            <p className="mt-2 text-gray-600">
-              Manage your listing,
-              images and promotions.
-            </p>
-          </div>
-
-          <Link
-            to="/my-listings"
-            className="rounded-xl border border-[#DCAEB7] bg-white px-5 py-3 text-center font-semibold text-[#3D0F18]"
-          >
-            ← Back to My Listings
+        <div className="flex items-center justify-between gap-3">
+          <Link to="/my-listings" className="text-sm font-semibold text-[#5B1725] hover:text-[#3D0F18]">
+            ← My Listings
+          </Link>
+          <Link to={`/listings/${listing.id}`} className="rounded-lg border border-[#DCCFD2] bg-white px-4 py-2 text-sm font-semibold text-[#5B1725] transition hover:bg-[#F5E8EB]">
+            Preview Listing
           </Link>
         </div>
 
-        {/* ================================================= */}
-        {/* ERROR */}
-        {/* ================================================= */}
+        <header className="mt-6 flex flex-col gap-3 border-b border-[#E7DDDF] pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">Manage Listing</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight text-[#21191B] sm:text-3xl">{listing.title}</h1>
+            <p className="mt-1 text-sm text-gray-500">Manage your photos, listing visibility and promotions.</p>
+          </div>
+          <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${listing.status === "ACTIVE" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-600"}`}>
+            <span className={`h-2 w-2 rounded-full ${listing.status === "ACTIVE" ? "bg-green-500" : "bg-gray-400"}`} />
+            {listing.status}
+          </span>
+        </header>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
+          <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{error}</div>
         )}
 
-        {/* ================================================= */}
-        {/* LISTING SUMMARY */}
-        {/* ================================================= */}
-
-        <div className="mb-8 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <p className="text-sm text-gray-500">
-                Status
-              </p>
-
-              <p className="mt-1 font-semibold text-[#3D0F18]">
-                {listing.status}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm text-gray-500">
-                Estimated Value
-              </p>
-
-              <p className="mt-1 font-semibold text-[#3D0F18]">
-                KES{" "}
-                {Number(
-                  listing.estimatedValue ||
-                    0
-                ).toLocaleString()}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-sm text-gray-500">
-                Images
-              </p>
-
-              <p className="mt-1 font-semibold text-[#3D0F18]">
-                {images.length} / 8
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* ================================================= */}
-        {/* PROMOTION SECTION */}
-        {/* ================================================= */}
-
-        {listing.status ===
-          "ACTIVE" && (
-          <section className="mb-8 overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
-            <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] px-6 py-6 sm:px-8">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(290px,0.75fr)] lg:items-start">
+          <main className="min-w-0">
+            <section className="rounded-2xl border border-[#E7DDDF] bg-white p-4 shadow-[0_6px_24px_rgba(61,15,24,0.05)] sm:p-5">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#8A2638]">
-                    Promote Listing
-                  </p>
-
-                  <h2 className="mt-2 text-2xl font-extrabold text-[#3D0F18]">
-                    Reach more traders
-                  </h2>
-
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-600">
-                    Put your listing in front of more traders with
-                    simple, fixed-price promotion plans.
-                  </p>
+                  <h2 className="text-lg font-black text-[#21191B]">Listing Photos</h2>
+                  <p className="mt-1 text-sm text-gray-500">Your main image appears first across BarterConnekt.</p>
                 </div>
-
-                <Link
-                  to="/promotions"
-                  className="inline-flex items-center justify-center rounded-xl border border-[#DCAEB7] bg-white px-5 py-3 text-sm font-bold text-[#3D0F18] transition hover:bg-[#F5E8EB]"
-                >
-                  My Promotions
-                </Link>
-              </div>
-            </div>
-
-            <div className="p-6 sm:p-8">
-              <div className="mb-6 grid gap-3 sm:grid-cols-3">
-                {[
-                  ["1", "Choose a plan", "Pick Boost, Featured or Homepage."],
-                  ["2", "Pay with M-PESA", "We'll send a secure STK prompt."],
-                  ["3", "Go live", "Promotion activates after payment confirmation."],
-                ].map(([number, title, description]) => (
-                  <div
-                    key={number}
-                    className="rounded-2xl border border-[#EFE4E6] bg-[#FCF8F9] p-4"
-                  >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5B1725] text-xs font-extrabold text-white">
-                      {number}
-                    </div>
-                    <p className="mt-3 text-sm font-bold text-[#3D0F18]">
-                      {title}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-gray-500">
-                      {description}
-                    </p>
-                  </div>
-                ))}
+                <span className="shrink-0 rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">{images.length} / 8</span>
               </div>
 
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h3 className="font-bold text-[#3D0F18]">
-                    Increase your
-                    listing visibility
-                  </h3>
-
-                  <p className="mt-1 text-sm text-gray-500">
-                    Choose Boost,
-                    Featured or Homepage
-                    placement and pay
-                    securely with M-PESA.
-                  </p>
+              {primaryImage ? (
+                <div className="relative mt-4 overflow-hidden rounded-xl bg-[#F1ECEE]">
+                  <img src={primaryImage.url} alt={`${listing.title} main`} className="aspect-[16/9] w-full object-cover" />
+                  <span className="absolute left-3 top-3 rounded-lg bg-[#3D0F18]/95 px-3 py-1.5 text-xs font-bold text-white shadow">Main Image</span>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={
-                    openPromotionModal
-                  }
-                  className="rounded-xl bg-[#5B1725] px-6 py-3 font-bold text-white shadow-sm transition hover:bg-[#3D0F18]"
-                >
-                  Promote Listing
-                </button>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ================================================= */}
-        {/* IMAGE MANAGEMENT */}
-        {/* ================================================= */}
-
-        <div className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
-
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-[#3D0F18]">
-              Listing Images
-            </h2>
-
-            <p className="mt-1 text-sm text-gray-500">
-              Manage the photos
-              attached to this listing.
-            </p>
-          </div>
-
-          {/* ADD IMAGES */}
-
-          <div className="mb-8 rounded-2xl border border-dashed border-[#DCAEB7] bg-[#FBF5F6] p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h3 className="font-semibold text-[#3D0F18]">
-                  Add More Images
-                </h3>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  You can upload up to{" "}
-                  {remainingSlots} more
-                  image
-                  {remainingSlots === 1
-                    ? ""
-                    : "s"}
-                  . Maximum 10MB per
-                  image.
-                </p>
-              </div>
-
-              <label
-                htmlFor="listing-images"
-                className={`cursor-pointer rounded-xl border border-[#DCAEB7] bg-white px-5 py-3 text-center text-sm font-semibold text-[#3D0F18] transition hover:bg-[#F5E8EB] ${
-                  images.length >= 8 ||
-                  uploadingImages
-                    ? "pointer-events-none opacity-50"
-                    : ""
-                }`}
-              >
-                Choose Images
-              </label>
-
-              <input
-                id="listing-images"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={
-                  handleImageChange
-                }
-                disabled={
-                  uploadingImages ||
-                  images.length >= 8
-                }
-                className="hidden"
-              />
-            </div>
-
-            {selectedImages.length >
-              0 && (
-              <div className="mt-5">
-                <p className="text-sm font-medium text-[#3D0F18]">
-                  Selected:{" "}
-                  {
-                    selectedImages.length
-                  }{" "}
-                  image
-                  {selectedImages.length ===
-                  1
-                    ? ""
-                    : "s"}
-                </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {selectedImages.map(
-                    (image) => (
-                      <span
-                        key={`${image.name}-${image.size}`}
-                        className="rounded-lg bg-white px-3 py-2 text-xs text-gray-600 shadow-sm"
-                      >
-                        {image.name}
-                      </span>
-                    )
-                  )}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={
-                      handleUploadImages
-                    }
-                    disabled={
-                      uploadingImages
-                    }
-                    className="rounded-xl bg-[#3D0F18] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#5B1725] disabled:opacity-50"
-                  >
-                    {uploadingImages
-                      ? "Uploading..."
-                      : "Upload Images"}
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={
-                      uploadingImages
-                    }
-                    onClick={() => {
-                      setSelectedImages(
-                        []
-                      );
-
-                      const fileInput =
-                        document.getElementById(
-                          "listing-images"
-                        );
-
-                      if (fileInput) {
-                        fileInput.value =
-                          "";
-                      }
-                    }}
-                    className="rounded-xl border border-[#DCAEB7] bg-white px-5 py-3 text-sm font-semibold text-[#3D0F18]"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* EXISTING IMAGES */}
-
-          {images.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[#DCAEB7] bg-[#FBF5F6] px-6 py-12 text-center">
-              <p className="font-medium text-[#3D0F18]">
-                No images available.
-              </p>
-
-              <p className="mt-1 text-sm text-gray-500">
-                Choose images above
-                to add photos to this
-                listing.
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {images.map(
-                (image, index) => (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white"
-                  >
-                    <div className="relative">
-                      <img
-                        src={image.url}
-                        alt={`${
-                          listing.title
-                        } ${index + 1}`}
-                        className="h-52 w-full object-cover"
-                      />
-
-                      {image.isPrimary && (
-                        <span className="absolute left-3 top-3 rounded-full bg-[#3D0F18] px-3 py-1 text-xs font-semibold text-white">
-                          Main Image
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="p-4">
-                      <p className="mb-3 text-sm text-gray-500">
-                        Image{" "}
-                        {index + 1}
-                      </p>
-
-                      <div className="flex flex-col gap-2">
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleMoveImage(
-                                image.id,
-                                "left"
-                              )
-                            }
-                            disabled={
-                              index ===
-                                0 ||
-                              reorderingImages ||
-                              deletingImageId ===
-                                image.id ||
-                              settingPrimaryId ===
-                                image.id
-                            }
-                            className="rounded-lg border border-[#DCAEB7] bg-white px-3 py-2.5 text-sm font-semibold text-[#3D0F18] disabled:opacity-40"
-                          >
-                            ← Move Left
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleMoveImage(
-                                image.id,
-                                "right"
-                              )
-                            }
-                            disabled={
-                              index ===
-                                images.length -
-                                  1 ||
-                              reorderingImages ||
-                              deletingImageId ===
-                                image.id ||
-                              settingPrimaryId ===
-                                image.id
-                            }
-                            className="rounded-lg border border-[#DCAEB7] bg-white px-3 py-2.5 text-sm font-semibold text-[#3D0F18] disabled:opacity-40"
-                          >
-                            Move Right →
-                          </button>
-                        </div>
-
-                        {reorderingImages && (
-                          <div className="rounded-lg bg-[#F5E8EB] px-3 py-2 text-center text-xs font-medium text-[#8A2638]">
-                            Saving image
-                            order...
-                          </div>
-                        )}
-
-                        {!image.isPrimary && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSetPrimary(
-                                image.id
-                              )
-                            }
-                            disabled={
-                              settingPrimaryId ===
-                                image.id ||
-                              deletingImageId ===
-                                image.id ||
-                              reorderingImages
-                            }
-                            className="w-full rounded-lg border border-[#DCAEB7] bg-white px-4 py-2.5 text-sm font-semibold text-[#8A2638] disabled:opacity-50"
-                          >
-                            {settingPrimaryId ===
-                            image.id
-                              ? "Setting as Main..."
-                              : "Set as Main Image"}
-                          </button>
-                        )}
-
-                        {image.isPrimary && (
-                          <div className="w-full rounded-lg bg-[#F5E8EB] px-4 py-2.5 text-center text-sm font-semibold text-[#8A2638]">
-                            ✓ Current Main
-                            Image
-                          </div>
-                        )}
-
-                        <button
-                          type="button"
-                          disabled={
-                            deletingImageId ===
-                              image.id ||
-                            settingPrimaryId ===
-                              image.id ||
-                            reorderingImages
-                          }
-                          onClick={() =>
-                            handleDeleteImage(
-                              image.id
-                            )
-                          }
-                          className="w-full rounded-lg bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                        >
-                          {deletingImageId ===
-                          image.id
-                            ? "Deleting..."
-                            : "Delete Image"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
+              ) : (
+                <div className="mt-4 flex aspect-[16/9] items-center justify-center rounded-xl border border-dashed border-[#DCAEB7] bg-[#FBF5F6] text-sm text-gray-500">No listing image yet</div>
               )}
-            </div>
-          )}
+
+              {images.length > 1 && (
+                <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
+                  {images.map((image, index) => (
+                    <div key={image.id} className={`relative overflow-hidden rounded-lg ${image.isPrimary ? "ring-2 ring-[#5B1725] ring-offset-1" : "border border-[#E7DDDF]"}`}>
+                      <img src={image.url} alt={`${listing.title} ${index + 1}`} className="aspect-square w-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-5 rounded-xl border border-dashed border-[#DCAEB7] bg-[#FBF5F6] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#3D0F18]">Add more photos</h3>
+                    <p className="mt-1 text-xs leading-5 text-gray-500">{remainingSlots > 0 ? `${remainingSlots} slot${remainingSlots === 1 ? "" : "s"} remaining · JPG, PNG or WEBP · Maximum 10MB each` : "Maximum of 8 images reached"}</p>
+                  </div>
+                  <label htmlFor="listing-images" className={`inline-flex cursor-pointer items-center justify-center rounded-lg bg-[#5B1725] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#3D0F18] ${images.length >= 8 || uploadingImages ? "pointer-events-none opacity-50" : ""}`}>
+                    + Choose Photos
+                  </label>
+                  <input id="listing-images" type="file" accept="image/*" multiple onChange={handleImageChange} disabled={uploadingImages || images.length >= 8} className="hidden" />
+                </div>
+
+                {selectedImages.length > 0 && (
+                  <div className="mt-4 border-t border-[#E7DDDF] pt-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-[#3D0F18]">{selectedImages.length} image{selectedImages.length === 1 ? "" : "s"} selected</p>
+                      <button type="button" disabled={uploadingImages} onClick={() => { setSelectedImages([]); const fileInput = document.getElementById("listing-images"); if (fileInput) fileInput.value = ""; }} className="text-sm font-semibold text-gray-500 hover:text-[#5B1725] disabled:opacity-50">Clear</button>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {selectedImages.map((image) => (
+                        <span key={`${image.name}-${image.size}`} className="max-w-56 truncate rounded-lg bg-white px-3 py-1.5 text-xs text-gray-600 ring-1 ring-[#E7DDDF]">{image.name}</span>
+                      ))}
+                    </div>
+                    <button type="button" onClick={handleUploadImages} disabled={uploadingImages} className="mt-4 rounded-lg bg-[#3D0F18] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#5B1725] disabled:opacity-50">
+                      {uploadingImages ? "Uploading..." : `Upload ${selectedImages.length} Photo${selectedImages.length === 1 ? "" : "s"}`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className="mt-6">
+              <div className="mb-3 flex items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-black text-[#21191B]">Manage Images</h2>
+                  <p className="mt-1 text-sm text-gray-500">Reorder photos, change the main image or remove images.</p>
+                </div>
+                {reorderingImages && <span className="text-xs font-semibold text-[#8A2638]">Saving order...</span>}
+              </div>
+
+              {images.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-[#DCAEB7] bg-white px-6 py-10 text-center text-sm text-gray-500">Add your first photo using the uploader above.</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {images.map((image, index) => (
+                    <article key={image.id} className={`overflow-hidden rounded-xl bg-white shadow-[0_3px_14px_rgba(61,15,24,0.04)] ${image.isPrimary ? "ring-2 ring-[#5B1725]" : "border border-[#E7DDDF]"}`}>
+                      <div className="relative overflow-hidden bg-[#F1ECEE]">
+                        <img src={image.url} alt={`${listing.title} ${index + 1}`} className="aspect-[4/3] w-full object-cover" />
+                        <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-1 text-xs font-semibold text-white">{index + 1}</span>
+                        {image.isPrimary && <span className="absolute left-2 top-2 rounded-md bg-[#3D0F18] px-2.5 py-1 text-xs font-bold text-white">Main</span>}
+                      </div>
+                      <div className="p-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => handleMoveImage(image.id, "left")} disabled={index === 0 || reorderingImages || deletingImageId === image.id || settingPrimaryId === image.id} className="rounded-lg border border-[#E3D6D8] px-3 py-2 text-sm font-semibold text-[#5B1725] transition hover:bg-[#F9F3F4] disabled:cursor-not-allowed disabled:opacity-30">←</button>
+                          <button type="button" onClick={() => handleMoveImage(image.id, "right")} disabled={index === images.length - 1 || reorderingImages || deletingImageId === image.id || settingPrimaryId === image.id} className="rounded-lg border border-[#E3D6D8] px-3 py-2 text-sm font-semibold text-[#5B1725] transition hover:bg-[#F9F3F4] disabled:cursor-not-allowed disabled:opacity-30">→</button>
+                        </div>
+                        {!image.isPrimary ? (
+                          <button type="button" onClick={() => handleSetPrimary(image.id)} disabled={settingPrimaryId === image.id || deletingImageId === image.id || reorderingImages} className="mt-2 w-full rounded-lg bg-[#F5E8EB] px-3 py-2 text-sm font-bold text-[#5B1725] transition hover:bg-[#EEDDE1] disabled:opacity-40">{settingPrimaryId === image.id ? "Setting..." : "Set as main"}</button>
+                        ) : (
+                          <div className="mt-2 rounded-lg bg-[#F5E8EB] px-3 py-2 text-center text-sm font-bold text-[#5B1725]">✓ Current main</div>
+                        )}
+                        <button type="button" disabled={deletingImageId === image.id || settingPrimaryId === image.id || reorderingImages} onClick={() => handleDeleteImage(image.id)} className="mt-1.5 w-full rounded-lg px-3 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40">{deletingImageId === image.id ? "Deleting..." : "Delete"}</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          </main>
+
+          <aside className="space-y-4 lg:sticky lg:top-5">
+            <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-[0_6px_24px_rgba(61,15,24,0.05)]">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">Listing Overview</p>
+              <div className="mt-4">
+                <p className="text-sm text-gray-500">Estimated value</p>
+                <p className="mt-1 text-2xl font-black text-[#5B1725]">KES {Number(listing.estimatedValue || 0).toLocaleString("en-KE")}</p>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3 border-y border-[#EEE4E6] py-4">
+                <div>
+                  <p className="text-xs text-gray-500">Status</p>
+                  <p className="mt-1 text-sm font-bold text-[#21191B]">{listing.status}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Photos</p>
+                  <p className="mt-1 text-sm font-bold text-[#21191B]">{images.length} / 8</p>
+                </div>
+              </div>
+              <Link to={`/listings/${listing.id}`} className="mt-4 flex w-full items-center justify-center rounded-lg border border-[#DCCFD2] px-4 py-2.5 text-sm font-bold text-[#5B1725] transition hover:bg-[#F9F3F4]">View public listing</Link>
+            </section>
+
+            {listing.status === "ACTIVE" && (
+              <section className="overflow-hidden rounded-2xl bg-[#3D0F18] text-white shadow-[0_8px_28px_rgba(61,15,24,0.16)]">
+                <div className="p-5">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-xl font-black">↑</div>
+                  <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-[#D6B15E]">Promote Listing</p>
+                  <h2 className="mt-1 text-xl font-black">Reach more traders</h2>
+                  <p className="mt-2 text-sm leading-6 text-white/70">Give this listing extra visibility with Boost, Featured or Homepage placement.</p>
+                  <button type="button" onClick={openPromotionModal} className="mt-5 w-full rounded-lg bg-white px-4 py-3 text-sm font-black text-[#3D0F18] transition hover:bg-[#F8F5F3]">Promote Listing</button>
+                  <Link to="/promotions" className="mt-3 block text-center text-sm font-semibold text-white/75 hover:text-white">My Promotions →</Link>
+                </div>
+              </section>
+            )}
+          </aside>
         </div>
 
-        {/* ================================================= */}
-        {/* BOTTOM ACTIONS */}
-        {/* ================================================= */}
-
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Link
-            to={`/listings/${listing.id}`}
-            className="rounded-xl bg-[#3D0F18] px-5 py-3 text-center font-semibold text-white transition hover:bg-[#5B1725]"
-          >
-            View Listing
-          </Link>
-
-          <button
-            type="button"
-            onClick={() =>
-              navigate(
-                "/my-listings"
-              )
-            }
-            className="rounded-xl border border-[#DCAEB7] bg-white px-5 py-3 font-semibold text-[#3D0F18]"
-          >
-            Done
-          </button>
+        <div className="mt-7 flex items-center justify-between border-t border-[#E7DDDF] pt-5">
+          <button type="button" onClick={() => navigate("/my-listings")} className="text-sm font-semibold text-gray-500 transition hover:text-[#5B1725]">← Back to My Listings</button>
+          <Link to={`/listings/${listing.id}`} className="rounded-lg bg-[#5B1725] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#3D0F18]">Preview Listing →</Link>
         </div>
       </div>
 
@@ -1352,7 +1028,7 @@ const ManageListing = () => {
 
       {promotionModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px] sm:p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-3 backdrop-blur-[2px] sm:p-2.5"
           role="dialog"
           aria-modal="true"
         >
@@ -1360,7 +1036,7 @@ const ManageListing = () => {
 
             {/* HEADER */}
 
-            <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#E7DDDF] bg-[#3D0F18] px-6 py-5 text-white">
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-2.5 border-b border-[#E7DDDF] bg-[#3D0F18] px-6 py-5 text-white">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#DCAEB7]">
                   Promote Listing
@@ -1388,7 +1064,7 @@ const ManageListing = () => {
               )}
             </div>
 
-            <div className="p-6 sm:p-8">
+            <div className="p-2.5 sm:p-5">
 
               {/* =========================================== */}
               {/* SELECT PLAN */}
@@ -1401,7 +1077,7 @@ const ManageListing = () => {
                     Choose a promotion
                   </h3>
 
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-[8px] font-black uppercase tracking-wide text-gray-400">
                     Select how you
                     want to promote
                     this listing.
@@ -1415,7 +1091,7 @@ const ManageListing = () => {
                     </div>
                   ) : promotionPlans.length ===
                     0 ? (
-                    <div className="mt-5 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                    <div className="mt-5 rounded-xl border border-yellow-200 bg-yellow-50 p-2.5 text-sm text-yellow-800">
                       No promotion
                       plans are
                       currently
@@ -1435,9 +1111,9 @@ const ManageListing = () => {
                                 plan
                               )
                             }
-                            className="w-full rounded-2xl border border-[#E7DDDF] p-4 text-left transition hover:border-[#8A2638] hover:bg-[#FBF5F6]"
+                            className="w-full rounded-2xl border border-[#E7DDDF] p-2.5 text-left transition hover:border-[#8A2638] hover:bg-[#FBF5F6]"
                           >
-                            <div className="flex items-start justify-between gap-4">
+                            <div className="flex items-start justify-between gap-2.5">
                               <div>
                                 <h4 className="font-extrabold text-[#3D0F18]">
                                   {
@@ -1545,7 +1221,7 @@ const ManageListing = () => {
                     </button>
 
                     {continuePaymentHandled && (
-                      <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5">
                         <div className="flex items-start gap-3">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-lg shadow-sm">
                             ↻
@@ -1563,7 +1239,7 @@ const ManageListing = () => {
                     )}
 
                     <div className="rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-5">
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-2.5">
                         <div>
                           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                             Selected
@@ -1576,7 +1252,7 @@ const ManageListing = () => {
                             }
                           </h3>
 
-                          <p className="mt-1 text-sm text-gray-500">
+                          <p className="mt-1 text-[8px] font-black uppercase tracking-wide text-gray-400">
                             {
                               selectedPlan.durationDays
                             }{" "}
@@ -1730,7 +1406,7 @@ const ManageListing = () => {
                     your PIN to complete the payment.
                   </p>
 
-                  <div className="mt-6 rounded-xl border border-yellow-200 bg-yellow-50 p-4 text-sm leading-6 text-yellow-800">
+                  <div className="mt-6 rounded-xl border border-yellow-200 bg-yellow-50 p-2.5 text-sm leading-6 text-yellow-800">
                     Keep this window open while we check the payment.
                     If M-PESA takes longer than expected, you'll get an
                     option to safely send the prompt again.
@@ -1748,19 +1424,19 @@ const ManageListing = () => {
                     ✓
                   </div>
 
-                  <h3 className="mt-5 text-2xl font-extrabold text-[#3D0F18]">
+                  <h3 className="mt-5 text-lg font-black text-[#21191B]">
                     Promotion
                     Activated!
                   </h3>
 
-                  <p className="mt-2 text-sm text-gray-500">
+                  <p className="mt-2 text-[8px] font-black uppercase tracking-wide text-gray-400">
                     Your listing is
                     now being
                     promoted.
                   </p>
 
                   {promotionPricing && (
-                    <div className="mt-6 rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-4">
+                    <div className="mt-6 rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-2.5">
                       <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                         Amount Paid
                       </p>
@@ -1788,7 +1464,7 @@ const ManageListing = () => {
                   {promotionResult
                     ?.payment
                     ?.receiptNumber && (
-                    <div className="mt-6 rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-4">
+                    <div className="mt-6 rounded-xl border border-[#E7DDDF] bg-[#FBF5F6] p-2.5">
                       <p className="text-xs font-bold uppercase tracking-wide text-gray-500">
                         M-PESA
                         Receipt
@@ -1807,7 +1483,7 @@ const ManageListing = () => {
                   {promotionResult
                     ?.promotion
                     ?.endsAt && (
-                    <div className="mt-4 rounded-xl bg-green-50 p-4">
+                    <div className="mt-4 rounded-xl bg-green-50 p-2.5">
                       <p className="text-xs font-semibold text-green-800">
                         Active until
                       </p>
@@ -1857,8 +1533,8 @@ const ManageListing = () => {
                   </div>
 
                   {retryAfterSeconds > 0 && (
-                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                      <div className="flex items-center justify-between gap-4">
+                    <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5">
+                      <div className="flex items-center justify-between gap-2.5">
                         <div>
                           <p className="text-sm font-bold text-amber-900">
                             Previous prompt still active
@@ -1938,7 +1614,7 @@ const ManageListing = () => {
                     </p>
                   </div>
 
-                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-2.5">
                     <p className="text-sm font-bold text-amber-900">
                       Before sending another prompt
                     </p>

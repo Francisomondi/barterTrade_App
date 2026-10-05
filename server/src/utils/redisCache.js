@@ -22,7 +22,8 @@ export const getCache = async (key) => {
   }
 
   try {
-    const cachedData = await redisClient.get(key);
+    const cachedData =
+      await redisClient.get(key);
 
     if (!cachedData) {
       return null;
@@ -107,11 +108,16 @@ export const setCache = async (
  * DELETE ONE CACHE ENTRY
  * ============================================================
  *
+ * Delete one Redis cache key.
+ *
  * @param {string} key
  * @returns {Promise<boolean>}
  */
 export const deleteCache = async (key) => {
-  if (!key) {
+  if (
+    !key ||
+    typeof key !== "string"
+  ) {
     return false;
   }
 
@@ -138,10 +144,17 @@ export const deleteCache = async (key) => {
  * DELETE MULTIPLE CACHE ENTRIES
  * ============================================================
  *
+ * Delete multiple Redis keys.
+ *
+ * Invalid and duplicate keys are removed before
+ * the DEL command is sent.
+ *
  * @param {string[]} keys
  * @returns {Promise<boolean>}
  */
-export const deleteCaches = async (keys = []) => {
+export const deleteCaches = async (
+  keys = []
+) => {
   if (!Array.isArray(keys)) {
     return false;
   }
@@ -155,8 +168,7 @@ export const deleteCaches = async (keys = []) => {
   }
 
   /*
-   * Remove invalid/duplicate keys before sending them
-   * to Redis.
+   * Remove invalid and duplicate keys.
    */
   const validKeys = [
     ...new Set(
@@ -173,10 +185,12 @@ export const deleteCaches = async (keys = []) => {
   }
 
   try {
-    /*
-     * node-redis accepts an array of keys for DEL.
-     */
-    await redisClient.del(validKeys);
+    const deletedCount =
+      await redisClient.del(validKeys);
+
+    console.log(
+      `REDIS CACHE KEYS DELETED: ${deletedCount}`
+    );
 
     return true;
   } catch (error) {
@@ -196,23 +210,26 @@ export const deleteCaches = async (keys = []) => {
  *
  * Safely delete Redis keys matching a pattern.
  *
- * Example:
+ * Examples:
  *
- * deleteCacheByPattern("listings:all:*")
  * deleteCacheByPattern("listing:*")
+ * deleteCacheByPattern("listings:all:*")
  *
  * IMPORTANT:
  *
- * We intentionally use SCAN instead of KEYS.
+ * SCAN is used instead of KEYS.
  *
- * KEYS can block Redis when the database contains a large
- * number of keys.
- *
- * SCAN iterates incrementally and is therefore much safer
+ * KEYS can block Redis while inspecting the entire
+ * keyspace. SCAN iterates incrementally and is safer
  * for production workloads.
  *
- * Matching keys are deleted in batches so we don't build
- * one huge in-memory array or send one enormous DEL command.
+ * Different node-redis versions may yield either:
+ *
+ * - one key per scan iteration
+ * - an array of keys per scan iteration
+ *
+ * Therefore every result is normalized before it is
+ * added to the deletion batch.
  *
  * @param {string} pattern
  * @returns {Promise<boolean>}
@@ -233,53 +250,138 @@ export const deleteCacheByPattern = async (
 
   try {
     /*
-     * Number of keys we'll collect before issuing DEL.
+     * Prevent sending a very large DEL command
+     * when many matching keys exist.
      */
     const DELETE_BATCH_SIZE = 100;
 
     let batch = [];
-
     let deletedCount = 0;
 
-    /*
-     * scanIterator uses Redis SCAN internally.
-     *
-     * COUNT is a hint to Redis about how many keys should
-     * be inspected/returned during each iteration.
+    /**
+     * --------------------------------------------------------
+     * FLUSH CURRENT DELETE BATCH
+     * --------------------------------------------------------
      */
-    for await (
-      const key of redisClient.scanIterator({
-        MATCH: pattern,
-        COUNT: 100,
-      })
-    ) {
-      batch.push(key);
+    const flushBatch = async () => {
+      if (batch.length === 0) {
+        return;
+      }
 
       /*
-       * Delete incrementally instead of storing every
-       * matching key in memory.
+       * Defensive normalization.
+       *
+       * Redis DEL must only receive valid keys.
        */
-      if (
-        batch.length >= DELETE_BATCH_SIZE
-      ) {
-        const deleted =
-          await redisClient.del(batch);
+      const validKeys = [
+        ...new Set(
+          batch.filter(
+            (key) =>
+              (
+                typeof key === "string" &&
+                key.length > 0
+              ) ||
+              Buffer.isBuffer(key)
+          )
+        ),
+      ];
 
-        deletedCount += deleted;
+      /*
+       * Clear the current batch before performing
+       * the network request.
+       */
+      batch = [];
 
-        batch = [];
+      if (validKeys.length === 0) {
+        return;
+      }
+
+      const deleted =
+        await redisClient.del(validKeys);
+
+      deletedCount +=
+        Number(deleted) || 0;
+    };
+
+    /**
+     * --------------------------------------------------------
+     * SCAN REDIS
+     * --------------------------------------------------------
+     */
+    for await (
+      const result of
+        redisClient.scanIterator({
+          MATCH: pattern,
+          COUNT: 100,
+        })
+    ) {
+      /*
+       * node-redis versions can differ in what
+       * scanIterator yields.
+       *
+       * Normalize both forms:
+       *
+       * "listing:123"
+       *
+       * or
+       *
+       * [
+       *   "listing:123",
+       *   "listing:456"
+       * ]
+       */
+      const scannedKeys =
+        Array.isArray(result)
+          ? result
+          : [result];
+
+      for (const key of scannedKeys) {
+        /*
+         * Redis keys should only be strings
+         * or Buffers.
+         */
+        if (
+          typeof key !== "string" &&
+          !Buffer.isBuffer(key)
+        ) {
+          console.warn(
+            `REDIS SCAN SKIPPED INVALID KEY [${pattern}]:`,
+            key
+          );
+
+          continue;
+        }
+
+        /*
+         * Ignore empty string keys.
+         */
+        if (
+          typeof key === "string" &&
+          key.length === 0
+        ) {
+          continue;
+        }
+
+        batch.push(key);
+
+        /*
+         * Delete incrementally.
+         */
+        if (
+          batch.length >=
+          DELETE_BATCH_SIZE
+        ) {
+          await flushBatch();
+        }
       }
     }
 
-    /*
-     * Delete the final partial batch.
+    /**
+     * --------------------------------------------------------
+     * DELETE FINAL PARTIAL BATCH
+     * --------------------------------------------------------
      */
-    if (batch.length > 0) {
-      const deleted =
-        await redisClient.del(batch);
-
-      deletedCount += deleted;
-    }
+    await flushBatch();
 
     console.log(
       `REDIS CACHE PATTERN DELETED: ${pattern} (${deletedCount} keys)`

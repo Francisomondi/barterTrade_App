@@ -48,7 +48,10 @@ export const uploadMyAvatar = async (file) => {
 
   const response = await api.patch(
     "/auth/me/avatar",
-    formData
+    formData,
+    {
+      timeout: 120000,
+    }
   );
 
   return response.data;
