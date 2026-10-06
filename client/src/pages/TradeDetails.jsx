@@ -105,7 +105,7 @@ const ConfirmationStatusCard = ({
 }) => {
   return (
     <div
-      className={`rounded-2xl border p-5 ${
+      className={`rounded-2xl border p-4 ${
         confirmed
           ? "border-green-200 bg-green-50"
           : "border-gray-200 bg-gray-50"
@@ -124,7 +124,7 @@ const ConfirmationStatusCard = ({
           </p>
 
           <h3
-            className={`mt-1 text-lg font-extrabold ${
+            className={`mt-1 text-base font-extrabold ${
               confirmed
                 ? "text-green-800"
                 : "text-[#21191B]"
@@ -135,7 +135,7 @@ const ConfirmationStatusCard = ({
         </div>
 
         <div
-          className={`flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold ${
+          className={`flex h-9 w-9 items-center justify-center rounded-full text-base font-bold ${
             confirmed
               ? "bg-green-600 text-white"
               : "bg-white text-gray-400 shadow-sm"
@@ -146,7 +146,7 @@ const ConfirmationStatusCard = ({
       </div>
 
       <p
-        className={`mt-4 text-sm font-bold ${
+        className={`mt-3 text-sm font-bold ${
           confirmed
             ? "text-green-700"
             : "text-gray-500"
@@ -1536,7 +1536,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
           <div className="mt-8 h-32 rounded-2xl bg-[#E7DDDF]" />
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <div className="mt-6 grid gap-5 lg:grid-cols-2">
             <div className="h-96 rounded-2xl bg-[#E7DDDF]" />
             <div className="h-96 rounded-2xl bg-[#E7DDDF]" />
           </div>
@@ -1707,14 +1707,16 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
           HEADER
       ================================================== */}
 
-      <section className="bg-[#3D0F18] px-6 py-10 text-white">
-        <div className="mx-auto max-w-6xl">
+      <section className="relative overflow-hidden bg-[#3D0F18] px-4 pb-12 pt-6 text-white sm:px-6 md:pb-14 md:pt-7">
+        <div className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full border border-white/10 bg-white/5" />
+        <div className="pointer-events-none absolute -bottom-32 left-1/3 h-64 w-64 rounded-full bg-[#8A2638]/25 blur-3xl" />
+        <div className="relative mx-auto max-w-6xl">
           <button
             type="button"
             onClick={() =>
               navigate("/trades")
             }
-            className="mb-6 text-sm font-semibold text-white/70 transition hover:text-white"
+            className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/75 backdrop-blur transition hover:bg-white/10 hover:text-white"
           >
             ← Back to My Trades
           </button>
@@ -1725,7 +1727,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
                 Trade Details
               </p>
 
-              <h1 className="mt-2 text-3xl font-extrabold md:text-5xl">
+              <h1 className="mt-1 text-3xl font-black tracking-tight md:text-4xl">
                 {trade.tradeNumber}
               </h1>
 
@@ -1753,7 +1755,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         </div>
       </section>
 
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="relative mx-auto -mt-6 max-w-6xl px-4 pb-12 sm:px-6 md:-mt-7 md:pb-16">
         {/* =================================================
             GLOBAL ACTION ERROR
         ================================================== */}
@@ -1786,11 +1788,33 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
           </div>
         )}
 
+        <nav className="sticky top-3 z-30 mb-5 rounded-2xl border border-[#E7DDDF] bg-white/95 p-2 shadow-lg shadow-[#3D0F18]/5 backdrop-blur" aria-label="Trade page navigation">
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {[
+              ["trade-progress", "Progress"],
+              ["trade-exchange", "Exchange"],
+              ["trade-info", "Details"],
+              ["trade-actions", "Actions"],
+              ...(trade.dispute ? [["trade-safety", "Safety"]] : []),
+              ...(trade.status === "COMPLETED" ? [["trade-ratings", "Rating"]] : []),
+            ].map(([target, label]) => (
+              <button
+                key={target}
+                type="button"
+                onClick={() => document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" })}
+                className="shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold text-gray-600 transition hover:bg-[#F5E8EB] hover:text-[#5B1725]"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </nav>
+
         {/* =================================================
             TRADE PROGRESS
         ================================================== */}
 
-        <section className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm md:p-8">
+        <section id="trade-progress" className="scroll-mt-24 rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
@@ -1809,7 +1833,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
             </p>
           </div>
 
-          <div className="mt-8 overflow-x-auto pb-2">
+          <div className="mt-5 overflow-x-auto rounded-2xl bg-[#FCFAF9] px-3 py-4">
             <div className="flex min-w-175 items-start">
               {statusSteps.map(
                 (status, index) => {
@@ -1828,7 +1852,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
                     >
                       {index > 0 && (
                         <div
-                          className={`absolute right-1/2 top-5 h-1 w-full ${
+                          className={`absolute right-1/2 top-[18px] h-1 w-full ${
                             index <=
                             currentStatusIndex
                               ? "bg-[#8A2638]"
@@ -1882,7 +1906,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "PENDING" && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+          <section id="current-stage" className="scroll-mt-24 mt-6 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-blue-100 bg-blue-50 px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -1976,7 +2000,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "AGREED" && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-purple-200 bg-white shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-3xl border border-purple-100 bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-purple-100 bg-purple-50 px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -2156,7 +2180,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "READY_FOR_HANDOVER" && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-indigo-100 bg-indigo-50 px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -2282,7 +2306,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "IN_PROGRESS" && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-sm">
+          <section className="mt-6 overflow-hidden rounded-3xl border border-orange-100 bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-orange-100 bg-orange-50 px-6 py-6 md:px-8">
               <p className="text-sm font-bold uppercase tracking-wider text-orange-700">
                 Stage 5 · In Progress
@@ -2386,7 +2410,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "COMPLETED" && (
-          <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-6 shadow-sm">
+          <section className="mt-6 rounded-3xl border border-green-200 bg-green-50/70 p-5 shadow-[0_18px_50px_rgba(61,15,24,0.04)] md:p-7">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-600 text-2xl font-bold text-white">
                 ✓
@@ -2424,7 +2448,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         ================================================== */}
 
         {trade.status === "CANCELLED" && (
-          <section className="mt-6 rounded-2xl border border-gray-200 bg-gray-100 p-6 shadow-sm">
+          <section className="mt-6 rounded-3xl border border-gray-200 bg-gray-50 p-5 shadow-[0_18px_50px_rgba(61,15,24,0.04)] md:p-7">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gray-500 text-xl font-bold text-white">
                 ×
@@ -2453,7 +2477,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         ================================================== */}
 
         {canRaiseDispute && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-red-200 bg-white shadow-sm">
+          <section id="trade-safety" className="scroll-mt-24 mt-6 overflow-hidden rounded-3xl border border-red-100 bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-red-100 bg-red-50 px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
@@ -2623,7 +2647,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         ================================================== */}
 
         {trade.status === "DISPUTED" && (
-          <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6 shadow-sm">
+          <section className="mt-6 rounded-3xl border border-red-200 bg-red-50/70 p-5 shadow-[0_18px_50px_rgba(61,15,24,0.04)] md:p-7">
             <div className="flex items-start gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-600 text-xl font-bold text-white">
                 !
@@ -2652,7 +2676,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         ================================================== */}
 
         {hasActiveDispute && (
-          <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-sm">
+          <section className="mt-6 rounded-3xl border border-amber-200 bg-amber-50/70 p-5 shadow-[0_18px_50px_rgba(61,15,24,0.04)] md:p-7">
             <div className="flex items-start gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-500 text-lg font-bold text-white">
                 !
@@ -2684,7 +2708,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         )}
 
 {hasResolvedDispute && (
-  <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
+  <section className="mt-6 rounded-3xl border border-blue-200 bg-blue-50/70 p-5 shadow-[0_18px_50px_rgba(61,15,24,0.04)] md:p-7">
     <div className="flex items-start gap-4">
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-lg font-bold text-white">
         ✓
@@ -2720,7 +2744,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
             DISPUTE HISTORY
         ================================================== */}
       {trade.dispute && (
-        <section className="mt-6 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
+        <section className="mt-6 rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
           <div className="flex items-start gap-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#5B1725] text-lg font-bold text-white">
               !
@@ -2978,7 +3002,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
         {trade.status ===
           "COMPLETED" && (
-          <section className="mt-6 overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm">
+          <section id="trade-ratings" className="scroll-mt-24 mt-6 overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
             <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] px-6 py-6 md:px-8">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -3041,7 +3065,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
                 </div>
               )}
 
-              <div className="grid gap-6 lg:grid-cols-2">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {/* YOUR RATING */}
 
                 <div className="rounded-2xl border border-[#E7DDDF] bg-[#FBF5F6] p-6">
@@ -3319,8 +3343,8 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
             ITEMS BEING TRADED
         ================================================== */}
 
-        <section className="mt-8">
-          <div className="mb-5">
+        <section id="trade-exchange" className="scroll-mt-24 mt-6">
+          <div className="mb-4">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
               Exchange
             </p>
@@ -3333,7 +3357,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
           <div className="grid gap-6 lg:grid-cols-2">
             {/* YOUR ITEM */}
 
-            <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm">
+            <div className="overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
               <div className="bg-[#F5E8EB] px-5 py-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
                   Your item
@@ -3350,11 +3374,11 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
                       yourListing?.title ||
                       "Your item"
                     }
-                    className="h-64 w-full object-cover"
+                    className="h-36 w-full object-cover transition duration-500 hover:scale-[1.02] sm:h-40"
                   />
                 </div>
 
-                <h3 className="mt-5 text-xl font-extrabold text-[#21191B]">
+                <h3 className="mt-4 text-lg font-extrabold text-[#21191B]">
                   {yourListing?.title ||
                     "Item unavailable"}
                 </h3>
@@ -3386,7 +3410,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
             {/* THEIR ITEM */}
 
-            <div className="overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm">
+            <div className="overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-[0_18px_50px_rgba(61,15,24,0.06)]">
               <div className="bg-[#F5E8EB] px-5 py-3">
                 <p className="text-xs font-bold uppercase tracking-wider text-[#8A2638]">
                   Their item
@@ -3403,11 +3427,11 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
                       theirListing?.title ||
                       "Their item"
                     }
-                    className="h-64 w-full object-cover"
+                    className="h-36 w-full object-cover transition duration-500 hover:scale-[1.02] sm:h-40"
                   />
                 </div>
 
-                <h3 className="mt-5 text-xl font-extrabold text-[#21191B]">
+                <h3 className="mt-4 text-lg font-extrabold text-[#21191B]">
                   {theirListing?.title ||
                     "Item unavailable"}
                 </h3>
@@ -3443,10 +3467,10 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
             TRADER + TRADE INFORMATION
         ================================================== */}
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-2">
+        <section id="trade-info" className="scroll-mt-24 mt-6 grid gap-5 lg:grid-cols-2">
           {/* OTHER TRADER */}
 
-          <div className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
               Trading with
             </p>
@@ -3509,7 +3533,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
 
           {/* TRADE INFORMATION */}
 
-          <div className="rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
+          <div className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
               Trade information
             </p>
@@ -3588,7 +3612,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
         ================================================== */}
 
         {trade.offer?.message && (
-          <section className="mt-6 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
+          <section className="mt-6 rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
             <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">
               Offer message
             </p>
@@ -3603,7 +3627,7 @@ const canRaiseDispute = isParticipant && disputableStatuses.includes(
             TRADE ACTIONS
         ================================================== */}
 
-        <section className="mt-6 rounded-2xl border border-[#E7DDDF] bg-white p-6 shadow-sm">
+        <section id="trade-actions" className="scroll-mt-24 mt-6 rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-[0_18px_50px_rgba(61,15,24,0.06)] md:p-6">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-wider text-[#8A2638]">

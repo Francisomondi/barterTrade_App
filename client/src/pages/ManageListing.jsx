@@ -844,7 +844,7 @@ const ManageListing = () => {
     listing.images || [];
 
   const remainingSlots =
-    8 - images.length;
+    5 - images.length;
 
   // ======================================================
   // UI
@@ -983,7 +983,9 @@ const ManageListing = () => {
 
           <aside className="space-y-4 lg:sticky lg:top-5">
             <section className="rounded-2xl border border-[#E7DDDF] bg-white p-5 shadow-[0_6px_24px_rgba(61,15,24,0.05)]">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">Listing Overview</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-[#8A2638]">
+                Listing Overview
+              </p>
               <div className="mt-4">
                 <p className="text-sm text-gray-500">Estimated value</p>
                 <p className="mt-1 text-2xl font-black text-[#5B1725]">KES {Number(listing.estimatedValue || 0).toLocaleString("en-KE")}</p>
@@ -995,7 +997,7 @@ const ManageListing = () => {
                 </div>
                 <div>
                   <p className="text-xs text-gray-500">Photos</p>
-                  <p className="mt-1 text-sm font-bold text-[#21191B]">{images.length} / 8</p>
+                  <p className="mt-1 text-sm font-bold text-[#21191B]">{images.length} / 5</p>
                 </div>
               </div>
               <Link to={`/listings/${listing.id}`} className="mt-4 flex w-full items-center justify-center rounded-lg border border-[#DCCFD2] px-4 py-2.5 text-sm font-bold text-[#5B1725] transition hover:bg-[#F9F3F4]">View public listing</Link>

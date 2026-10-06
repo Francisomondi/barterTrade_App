@@ -24,6 +24,7 @@ import {
   Star,
   Store,
   UserRound,
+  Trophy,
 } from "lucide-react";
 
 import {
@@ -32,7 +33,7 @@ import {
 
 import PremiumBadge from "../components/PremiumBadge";
 
-/**
+/*
  * ============================================================
  * HELPERS
  * ============================================================
@@ -78,7 +79,10 @@ const formatListingDate = (date) => {
 const formatValue = (value) => {
   const number = Number(value);
 
-  if (!Number.isFinite(number) || number <= 0) {
+  if (
+    !Number.isFinite(number) ||
+    number <= 0
+  ) {
     return null;
   }
 
@@ -109,7 +113,67 @@ const getPrimaryImage = (listing) => {
   );
 };
 
-/**
+/*
+ * ============================================================
+ * STAT CARD
+ * ============================================================
+ */
+
+const StatCard = ({
+  icon,
+  value,
+  label,
+}) => {
+  return (
+    <div className="flex min-w-0 items-center gap-3 p-4 sm:p-5">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F7ECEE] text-[#5B1725]">
+        {icon}
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-xl font-black text-[#21191B] sm:text-2xl">
+          {value}
+        </p>
+
+        <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
+          {label}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+/*
+ * ============================================================
+ * INFORMATION ROW
+ * ============================================================
+ */
+
+const InfoRow = ({
+  icon,
+  label,
+  children,
+}) => {
+  return (
+    <div className="flex items-start gap-3 rounded-xl bg-[#FBF8F8] px-4 py-3">
+      <div className="mt-0.5 shrink-0 text-[#8A2638]">
+        {icon}
+      </div>
+
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">
+          {label}
+        </p>
+
+        <div className="mt-0.5 break-words text-sm font-bold text-[#21191B]">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/*
  * ============================================================
  * PUBLIC PROFILE
  * ============================================================
@@ -132,7 +196,7 @@ const PublicProfile = () => {
   const [error, setError] =
     useState("");
 
-  /**
+  /*
    * ==========================================================
    * LOAD PUBLIC PROFILE
    * ==========================================================
@@ -165,13 +229,10 @@ const PublicProfile = () => {
           return;
         }
 
-        /**
+        /*
          * ====================================================
-         * BUSINESS ACCOUNT
+         * BUSINESS PROFILE
          * ====================================================
-         *
-         * ACTIVE businesses should use their public storefront,
-         * not their personal public profile.
          */
 
         if (
@@ -190,7 +251,7 @@ const PublicProfile = () => {
           return;
         }
 
-        /**
+        /*
          * ====================================================
          * PERSONAL PROFILE
          * ====================================================
@@ -206,10 +267,14 @@ const PublicProfile = () => {
           );
         }
 
-        setProfile(response.user);
+        setProfile(
+          response.user
+        );
 
         setListings(
-          Array.isArray(response.listings)
+          Array.isArray(
+            response.listings
+          )
             ? response.listings
             : []
         );
@@ -248,9 +313,9 @@ const PublicProfile = () => {
     navigate,
   ]);
 
-  /**
+  /*
    * ==========================================================
-   * DERIVED PROFILE VALUES
+   * DERIVED VALUES
    * ==========================================================
    */
 
@@ -292,7 +357,7 @@ const PublicProfile = () => {
     )
   );
 
-  /**
+  /*
    * ==========================================================
    * LOADING
    * ==========================================================
@@ -300,15 +365,28 @@ const PublicProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F8F5F3] px-4 py-10 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-[#F8F5F3] px-4 py-10 sm:px-6">
         <div className="mx-auto max-w-6xl">
-          <div className="flex min-h-[65vh] items-center justify-center rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
-            <div className="text-center">
-              <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-[#E7DDDF] border-t-[#5B1725]" />
+          <div className="overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
+            <div className="h-36 animate-pulse bg-[#3D0F18]/90" />
 
-              <p className="mt-4 text-sm font-semibold text-gray-500">
-                Loading trader profile...
-              </p>
+            <div className="p-6">
+              <div className="-mt-16 h-28 w-28 animate-pulse rounded-[2rem] border-4 border-white bg-[#E7DDDF]" />
+
+              <div className="mt-5 h-7 w-52 animate-pulse rounded-lg bg-[#E7DDDF]" />
+
+              <div className="mt-3 h-4 w-36 animate-pulse rounded bg-[#EEE7E8]" />
+
+              <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[1, 2, 3, 4].map(
+                  (item) => (
+                    <div
+                      key={item}
+                      className="h-20 animate-pulse rounded-2xl bg-[#F3EEEE]"
+                    />
+                  )
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -316,17 +394,20 @@ const PublicProfile = () => {
     );
   }
 
-  /**
+  /*
    * ==========================================================
    * ERROR
    * ==========================================================
    */
 
-  if (error || !profile) {
+  if (
+    error ||
+    !profile
+  ) {
     return (
-      <div className="min-h-screen bg-[#F8F5F3] px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mx-auto flex min-h-[65vh] max-w-6xl items-center justify-center">
-          <div className="w-full max-w-lg rounded-3xl border border-[#E7DDDF] bg-white p-8 text-center shadow-sm">
+      <div className="min-h-screen bg-[#F8F5F3] px-4 py-10 sm:px-6">
+        <div className="mx-auto flex min-h-[65vh] max-w-xl items-center justify-center">
+          <div className="w-full rounded-3xl border border-[#E7DDDF] bg-white p-8 text-center shadow-sm">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-[#F5E8EB] text-[#5B1725]">
               <UserRound
                 size={30}
@@ -337,7 +418,7 @@ const PublicProfile = () => {
               Profile unavailable
             </h1>
 
-            <p className="mt-2 text-sm leading-6 text-gray-500">
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-gray-500">
               {error ||
                 "This trader profile could not be found."}
             </p>
@@ -358,7 +439,7 @@ const PublicProfile = () => {
     );
   }
 
-  /**
+  /*
    * ==========================================================
    * PROFILE
    * ==========================================================
@@ -366,49 +447,45 @@ const PublicProfile = () => {
 
   return (
     <div className="min-h-screen bg-[#F8F5F3]">
-      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        {/* ====================================================
-            BREADCRUMB / BACK
-        ==================================================== */}
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        {/* ==================================================
+            BACK
+        ================================================== */}
 
-        <div className="mb-5">
-          <Link
-            to="/marketplace"
-            className="inline-flex items-center gap-2 text-sm font-bold text-[#5B1725] transition hover:text-[#8A2638]"
-          >
-            <ArrowLeft
-              size={17}
-            />
+        <Link
+          to="/marketplace"
+          className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-[#5B1725] transition hover:text-[#8A2638]"
+        >
+          <ArrowLeft
+            size={17}
+          />
 
-            Marketplace
-          </Link>
-        </div>
+          Marketplace
+        </Link>
 
-        {/* ====================================================
+        {/* ==================================================
             PROFILE HERO
-        ==================================================== */}
+        ================================================== */}
 
         <section className="overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
           {/* Cover */}
 
-          <div className="relative h-36 overflow-hidden bg-[#3D0F18] sm:h-44 lg:h-48">
-            <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-[#8A2638]/50 blur-3xl" />
+          <div className="relative h-32 overflow-hidden bg-[#3D0F18] sm:h-40">
+            <div className="absolute -right-24 -top-28 h-72 w-72 rounded-full bg-[#8A2638]/50 blur-3xl" />
 
-            <div className="absolute -bottom-32 left-[30%] h-72 w-72 rounded-full bg-[#DCAEB7]/10 blur-3xl" />
+            <div className="absolute -bottom-32 left-[25%] h-72 w-72 rounded-full bg-[#D6B15E]/10 blur-3xl" />
 
-            <div className="absolute right-[18%] top-8 h-20 w-20 rounded-full border border-white/10 bg-white/5" />
+            <div className="absolute right-[18%] top-7 h-20 w-20 rounded-full border border-white/10 bg-white/5" />
 
-            <div className="absolute bottom-7 left-[10%] h-12 w-12 rounded-full border border-white/10 bg-white/5" />
-
-            <div className="absolute bottom-0 left-0 h-px w-full bg-white/10" />
+            <div className="absolute inset-x-0 bottom-0 h-px bg-white/10" />
           </div>
 
-          <div className="relative px-5 pb-7 sm:px-8 sm:pb-8">
-            <div className="-mt-14 flex flex-col gap-5 sm:-mt-16 sm:flex-row sm:items-end sm:justify-between">
-              {/* Avatar */}
+          <div className="relative px-5 pb-6 sm:px-7">
+            {/* Avatar + status */}
 
-              <div className="relative shrink-0">
-                <div className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-[2rem] border-[5px] border-white bg-[#F4E7EA] text-4xl font-black text-[#5B1725] shadow-xl sm:h-32 sm:w-32 sm:text-5xl">
+            <div className="-mt-12 flex flex-col gap-4 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
+              <div className="relative w-fit">
+                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[1.7rem] border-[5px] border-white bg-[#F4E7EA] text-4xl font-black text-[#5B1725] shadow-lg sm:h-28 sm:w-28">
                   {profile.avatar ? (
                     <img
                       src={
@@ -430,7 +507,9 @@ const PublicProfile = () => {
                             .currentTarget
                             .parentElement;
 
-                        if (parent) {
+                        if (
+                          parent
+                        ) {
                           parent.textContent =
                             firstLetter;
                         }
@@ -442,14 +521,12 @@ const PublicProfile = () => {
                 </div>
 
                 <span
-                  className="absolute bottom-2 right-2 h-5 w-5 rounded-full border-4 border-white bg-green-500"
+                  className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-full border-4 border-white bg-green-500"
                   title="Active trader"
                 />
               </div>
 
-              {/* Type */}
-
-              <div className="flex flex-wrap items-center gap-2 pb-1">
+              <div className="flex flex-wrap gap-2 pb-1">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F5E8EB] px-3 py-1.5 text-xs font-bold text-[#5B1725]">
                   <UserRound
                     size={14}
@@ -470,252 +547,216 @@ const PublicProfile = () => {
 
             {/* Identity */}
 
-            <div className="mt-5">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="text-2xl font-black tracking-tight text-[#21191B] sm:text-3xl">
-                  {profile.name ||
-                    "BarterConnect User"}
-                </h1>
+            <div className="mt-4 grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
+              <div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className="text-2xl font-black tracking-tight text-[#21191B] sm:text-3xl">
+                    {profile.name ||
+                      "BarterConnekt User"}
+                  </h1>
 
-                {profile.isPremium && (
-                  <PremiumBadge
-                    size="lg"
-                  />
+                  {profile.isPremium && (
+                    <PremiumBadge
+                      size="lg"
+                    />
+                  )}
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-500">
+                  {profile.location && (
+                    <div className="flex items-center gap-1.5">
+                      <MapPin
+                        size={16}
+                        className="text-[#8A2638]"
+                      />
+
+                      <span>
+                        {
+                          profile.location
+                        }
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    <CalendarDays
+                      size={16}
+                      className="text-[#8A2638]"
+                    />
+
+                    <span>
+                      Member since{" "}
+                      {formatMemberSince(
+                        profile.createdAt
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {profile.bio ? (
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-600">
+                    {profile.bio}
+                  </p>
+                ) : (
+                  <p className="mt-3 text-sm italic text-gray-400">
+                    This trader has not added
+                    a bio yet.
+                  </p>
                 )}
               </div>
 
-              {/* Location */}
+              {/* Primary actions */}
 
-              {profile.location && (
-                <div className="mt-3 flex items-center gap-2 text-sm font-medium text-gray-500">
-                  <MapPin
-                    size={17}
-                    className="shrink-0 text-[#8A2638]"
-                  />
-
-                  <span>
-                    {
-                      profile.location
-                    }
-                  </span>
-                </div>
-              )}
-
-              {/* Bio */}
-
-              {profile.bio ? (
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-gray-600">
-                  {profile.bio}
-                </p>
-              ) : (
-                <p className="mt-4 max-w-3xl text-sm italic leading-7 text-gray-400">
-                  This trader has not
-                  added a bio yet.
-                </p>
-              )}
-
-              {/* Actions */}
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                {profile.phone && (
+              <div className="flex flex-wrap gap-2 lg:justify-end">
+                {profile?.phone && (
                   <a
                     href={`tel:${profile.phone}`}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#3D0F18]"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#3D0F18]"
                   >
                     <Phone
-                      size={18}
+                      size={17}
                     />
 
-                    Call Seller
+                    Call Trader
                   </a>
                 )}
 
                 <Link
                   to="/marketplace"
-                  className="inline-flex items-center gap-2 rounded-xl border border-[#E7DDDF] bg-white px-5 py-3 text-sm font-bold text-[#5B1725] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#FBF5F6]"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-[#E7DDDF] bg-white px-5 py-3 text-sm font-bold text-[#5B1725] transition hover:bg-[#FBF5F6]"
                 >
                   <Store
-                    size={18}
+                    size={17}
                   />
 
-                  Browse Marketplace
+                  Marketplace
                 </Link>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ====================================================
-            REPUTATION STATS
-        ==================================================== */}
+        {/* ==================================================
+            STATS
+        ================================================== */}
 
-        <section className="mt-5 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm lg:grid-cols-4">
-          {/* Barter Score */}
-
-          <div className="border-b border-r border-[#E7DDDF] p-5 lg:border-b-0">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F8EED5]">
+        <section className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-[#E7DDDF] bg-white shadow-sm lg:grid-cols-4">
+          <div className="border-b border-r border-[#EEE5E7] lg:border-b-0">
+            <StatCard
+              icon={
                 <Star
                   size={19}
-                  className="text-amber-600"
                 />
-              </div>
-
-              <div>
-                <p className="text-2xl font-black text-[#5B1725]">
-                  {barterScore.toFixed(
-                    1
-                  )}
-                </p>
-
-                <p className="text-xs font-medium text-gray-500">
-                  Barter Score
-                </p>
-              </div>
-            </div>
+              }
+              value={
+                barterScore.toFixed(
+                  1
+                )
+              }
+              label="Barter Score"
+            />
           </div>
 
-          {/* Rating */}
-
-          <div className="border-b border-[#E7DDDF] p-5 lg:border-b-0 lg:border-r">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F8EED5] text-lg">
-                ⭐
-              </div>
-
-              <div>
-                <p className="text-2xl font-black text-[#5B1725]">
-                  {averageRating.toFixed(
-                    1
-                  )}
-                </p>
-
-                <p className="text-xs font-medium text-gray-500">
-                  {totalRatings}{" "}
-                  {totalRatings === 1
-                    ? "rating"
-                    : "ratings"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Trades */}
-
-          <div className="border-r border-[#E7DDDF] p-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB] text-lg">
-                🤝
-              </div>
-
-              <div>
-                <p className="text-2xl font-black text-[#5B1725]">
-                  {
-                    completedTrades
-                  }
-                </p>
-
-                <p className="text-xs font-medium text-gray-500">
-                  Completed trades
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Listings */}
-
-          <div className="p-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB]">
-                <Package
+          <div className="border-b border-[#EEE5E7] lg:border-b-0 lg:border-r">
+            <StatCard
+              icon={
+                <Star
                   size={19}
-                  className="text-[#5B1725]"
                 />
-              </div>
-
-              <div>
-                <p className="text-2xl font-black text-[#5B1725]">
-                  {
-                    activeListingCount
-                  }
-                </p>
-
-                <p className="text-xs font-medium text-gray-500">
-                  Active listings
-                </p>
-              </div>
-            </div>
+              }
+              value={
+                averageRating.toFixed(
+                  1
+                )
+              }
+              label={`${totalRatings} ${
+                totalRatings === 1
+                  ? "rating"
+                  : "ratings"
+              }`}
+            />
           </div>
+
+          <div className="border-r border-[#EEE5E7]">
+            <StatCard
+              icon={
+                <Trophy
+                  size={19}
+                />
+              }
+              value={
+                completedTrades
+              }
+              label="Completed trades"
+            />
+          </div>
+
+          <StatCard
+            icon={
+              <Package
+                size={19}
+              />
+            }
+            value={
+              activeListingCount
+            }
+            label="Active listings"
+          />
         </section>
 
-        {/* ====================================================
-            MAIN CONTENT
-        ==================================================== */}
+        {/* ==================================================
+            CONTENT
+        ================================================== */}
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[1fr_300px]">
-          {/* ==================================================
-              ACTIVE LISTINGS
-          ================================================== */}
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_320px]">
+          {/* =================================================
+              LISTINGS
+          ================================================= */}
 
           <section className="overflow-hidden rounded-3xl border border-[#E7DDDF] bg-white shadow-sm">
-            <div className="border-b border-[#E7DDDF] bg-[#FBF5F6] px-5 py-6 sm:px-7">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
-                    Marketplace
-                  </p>
+            <div className="flex items-center justify-between gap-4 border-b border-[#EEE5E7] px-5 py-5 sm:px-6">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+                  Marketplace
+                </p>
 
-                  <h2 className="mt-1 text-xl font-black text-[#21191B] sm:text-2xl">
-                    Seller Listings
-                  </h2>
+                <h2 className="mt-1 text-xl font-black text-[#21191B]">
+                  Available for Barter
+                </h2>
 
-                  <p className="mt-1 text-sm leading-6 text-gray-500">
-                    Items currently
-                    available for barter
-                    from this trader.
-                  </p>
-                </div>
-
-                <div className="rounded-full bg-white px-4 py-2 text-xs font-bold text-[#5B1725] shadow-sm">
-                  {
-                    activeListingCount
-                  }{" "}
-                  active
-                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Active items from this
+                  trader.
+                </p>
               </div>
+
+              <span className="shrink-0 rounded-full bg-[#F5E8EB] px-3 py-1.5 text-xs font-black text-[#5B1725]">
+                {activeListingCount} active
+              </span>
             </div>
 
-            <div className="p-5 sm:p-7">
+            <div className="p-4 sm:p-5">
               {listings.length ===
               0 ? (
-                <div className="rounded-2xl border border-[#EEE5E7] bg-[#FBF8F8] p-8 text-center">
-                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F5E8EB]">
+                <div className="rounded-2xl bg-[#FBF8F8] px-6 py-10 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]">
                     <Package
-                      size={25}
-                      className="text-[#5B1725]"
+                      size={23}
                     />
                   </div>
 
-                  <h3 className="mt-4 text-lg font-black text-[#21191B]">
+                  <h3 className="mt-4 font-black text-[#21191B]">
                     No active listings
                   </h3>
 
-                  <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-gray-500">
-                    This trader does not
-                    currently have any
-                    active items listed
+                  <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-gray-500">
+                    This trader currently
+                    has no items available
                     for barter.
                   </p>
-
-                  <Link
-                    to="/marketplace"
-                    className="mt-5 inline-flex rounded-xl bg-[#5B1725] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18]"
-                  >
-                    Browse Marketplace
-                  </Link>
                 </div>
               ) : (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   {listings.map(
                     (listing) => {
                       const image =
@@ -734,11 +775,11 @@ const PublicProfile = () => {
                             listing.id
                           }
                           to={`/listings/${listing.id}`}
-                          className="group overflow-hidden rounded-2xl border border-[#EEE5E7] bg-white transition hover:-translate-y-0.5 hover:border-[#D9C0C6] hover:shadow-md"
+                          className="group flex min-w-0 overflow-hidden rounded-2xl border border-[#EEE5E7] bg-white transition hover:border-[#D9C0C6] hover:shadow-md"
                         >
                           {/* Image */}
 
-                          <div className="relative aspect-[4/3] overflow-hidden bg-[#F4EEEE]">
+                          <div className="relative h-32 w-32 shrink-0 overflow-hidden bg-[#F4EEEE] sm:h-36 sm:w-36">
                             {image ? (
                               <img
                                 src={
@@ -748,13 +789,13 @@ const PublicProfile = () => {
                                   listing.title ||
                                   "Listing"
                                 }
-                                className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                               />
                             ) : (
                               <div className="flex h-full w-full items-center justify-center">
                                 <Package
                                   size={
-                                    36
+                                    30
                                   }
                                   className="text-[#B69CA2]"
                                 />
@@ -762,7 +803,7 @@ const PublicProfile = () => {
                             )}
 
                             {listing.condition && (
-                              <span className="absolute left-3 top-3 rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#5B1725] shadow-sm">
+                              <span className="absolute left-2 top-2 max-w-[90%] truncate rounded-full bg-white/95 px-2 py-1 text-[9px] font-bold uppercase text-[#5B1725] shadow-sm">
                                 {
                                   listing.condition
                                 }
@@ -770,13 +811,13 @@ const PublicProfile = () => {
                             )}
                           </div>
 
-                          {/* Details */}
+                          {/* Listing details */}
 
-                          <div className="p-4">
+                          <div className="flex min-w-0 flex-1 flex-col p-3">
                             {listing
                               ?.category
                               ?.name && (
-                              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#8A2638]">
+                              <p className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#8A2638]">
                                 {
                                   listing
                                     .category
@@ -785,51 +826,48 @@ const PublicProfile = () => {
                               </p>
                             )}
 
-                            <h3 className="mt-1 line-clamp-2 text-base font-black leading-6 text-[#21191B]">
+                            <h3 className="mt-1 line-clamp-2 text-sm font-black leading-5 text-[#21191B]">
                               {listing.title ||
                                 "Untitled listing"}
                             </h3>
 
                             {listing.description && (
-                              <p className="mt-2 line-clamp-2 text-xs leading-5 text-gray-500">
+                              <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-gray-500">
                                 {
                                   listing.description
                                 }
                               </p>
                             )}
 
-                            <div className="mt-4 flex items-end justify-between gap-3 border-t border-[#F0E8EA] pt-3">
-                              <div>
-                                {value && (
+                            <div className="mt-auto flex items-end justify-between gap-2 pt-3">
+                              <div className="min-w-0">
+                                {value ? (
                                   <>
-                                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                                    <p className="text-[9px] font-bold uppercase text-gray-400">
                                       Est.
                                       value
                                     </p>
 
-                                    <p className="mt-0.5 text-sm font-black text-[#5B1725]">
+                                    <p className="truncate text-xs font-black text-[#5B1725]">
                                       {
                                         value
                                       }
                                     </p>
                                   </>
+                                ) : (
+                                  <p className="text-[10px] text-gray-400">
+                                    Listed{" "}
+                                    {formatListingDate(
+                                      listing.createdAt
+                                    )}
+                                  </p>
                                 )}
-
-                                {!value &&
-                                  listing.createdAt && (
-                                    <p className="text-xs text-gray-400">
-                                      Listed{" "}
-                                      {formatListingDate(
-                                        listing.createdAt
-                                      )}
-                                    </p>
-                                  )}
                               </div>
 
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725] transition group-hover:bg-[#5B1725] group-hover:text-white">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F5E8EB] text-[#5B1725] transition group-hover:bg-[#5B1725] group-hover:text-white">
                                 <ChevronRight
                                   size={
-                                    18
+                                    16
                                   }
                                 />
                               </span>
@@ -846,244 +884,230 @@ const PublicProfile = () => {
                 listings.length &&
                 listings.length >
                   0 && (
-                  <div className="mt-5 rounded-xl bg-[#FBF8F8] px-4 py-3">
-                    <p className="text-center text-xs font-medium leading-5 text-gray-500">
-                      Showing the
-                      seller's latest{" "}
-                      {
-                        listings.length
-                      }{" "}
-                      active listings.
-                    </p>
-                  </div>
+                  <p className="mt-4 text-center text-xs text-gray-400">
+                    Showing the latest{" "}
+                    {listings.length} of{" "}
+                    {activeListingCount}{" "}
+                    active listings.
+                  </p>
                 )}
             </div>
           </section>
 
-          {/* ==================================================
-              SELLER INFORMATION
-          ================================================== */}
+          {/* =================================================
+              SIDEBAR
+          ================================================= */}
 
-          <aside className="space-y-5">
-            {/* Contact */}
+          <aside className="space-y-4">
+            {/* Trader details */}
 
             <section className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
-                Contact
-              </p>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+                    Trader
+                  </p>
 
-              <h2 className="mt-1 text-xl font-black text-[#21191B]">
-                Contact Seller
-              </h2>
+                  <h2 className="mt-1 text-lg font-black text-[#21191B]">
+                    Trader Information
+                  </h2>
+                </div>
 
-              <p className="mt-2 text-xs leading-5 text-gray-500">
-                Contact this trader
-                directly about their
-                listed items.
-              </p>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]">
+                  <UserRound
+                    size={19}
+                  />
+                </div>
+              </div>
 
-              {profile.phone ? (
-                <div className="mt-5">
-                  <div className="rounded-2xl border border-[#EEE5E7] bg-[#FBF8F8] p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#5B1725] shadow-sm">
-                        <Phone
-                          size={18}
-                        />
-                      </div>
+              <div className="mt-4 space-y-2.5">
+                {/* Phone */}
 
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                          Phone
-                        </p>
-
-                        <a
-                          href={`tel:${profile.phone}`}
-                          className="mt-1 block break-all text-sm font-black text-[#21191B] transition hover:text-[#8A2638]"
-                        >
-                          {
-                            profile.phone
-                          }
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-
-                  <a
-                    href={`tel:${profile.phone}`}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18]"
-                  >
+                <InfoRow
+                  icon={
                     <Phone
                       size={17}
                     />
+                  }
+                  label="Phone number"
+                >
+                  {profile?.phone ? (
+                    <a
+                      href={`tel:${profile.phone}`}
+                      className="transition hover:text-[#8A2638]"
+                    >
+                      {profile.phone}
+                    </a>
+                  ) : (
+                    <span className="font-medium text-gray-400">
+                      Not provided
+                    </span>
+                  )}
+                </InfoRow>
 
-                    Call Seller
-                  </a>
-                </div>
-              ) : (
-                <div className="mt-5 rounded-2xl bg-[#FBF8F8] p-4">
-                  <p className="text-sm leading-6 text-gray-500">
-                    This seller has not
-                    added a public phone
-                    number.
-                  </p>
-                </div>
+                {/* Location */}
+
+                <InfoRow
+                  icon={
+                    <MapPin
+                      size={17}
+                    />
+                  }
+                  label="Location"
+                >
+                  {profile.location || (
+                    <span className="font-medium text-gray-400">
+                      Not provided
+                    </span>
+                  )}
+                </InfoRow>
+
+                {/* Joined */}
+
+                <InfoRow
+                  icon={
+                    <CalendarDays
+                      size={17}
+                    />
+                  }
+                  label="Member since"
+                >
+                  {formatMemberSince(
+                    profile.createdAt
+                  )}
+                </InfoRow>
+
+                {/* Membership */}
+
+                <InfoRow
+                  icon={
+                    <Crown
+                      size={17}
+                    />
+                  }
+                  label="Membership"
+                >
+                  {profile.isPremium
+                    ? "Premium Trader"
+                    : "Standard Trader"}
+                </InfoRow>
+              </div>
+
+              {profile.phone && (
+                <a
+                  href={`tel:${profile.phone}`}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#5B1725] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#3D0F18]"
+                >
+                  <Phone
+                    size={17}
+                  />
+
+                  Call Trader
+                </a>
               )}
             </section>
 
             {/* Reputation */}
 
             <section className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
-                Reputation
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8A2638]">
+                    Trust
+                  </p>
 
-              <h2 className="mt-1 text-xl font-black text-[#21191B]">
-                Trader Reputation
-              </h2>
-
-              <div className="mt-5">
-                <div className="flex items-end gap-2">
-                  <span className="text-4xl font-black text-[#5B1725]">
-                    {averageRating.toFixed(
-                      1
-                    )}
-                  </span>
-
-                  <span className="pb-1 text-sm font-semibold text-gray-400">
-                    / 5
-                  </span>
+                  <h2 className="mt-1 text-lg font-black text-[#21191B]">
+                    Reputation
+                  </h2>
                 </div>
 
-                <div
-                  className="mt-2 flex items-center gap-0.5"
-                  aria-label={`${averageRating.toFixed(
-                    1
-                  )} out of 5`}
-                >
-                  {[
-                    1, 2, 3, 4, 5,
-                  ].map((star) => (
-                    <span
-                      key={star}
-                      className={`text-xl ${
-                        star <=
-                        ratingStars
-                          ? "text-yellow-500"
-                          : "text-gray-300"
-                      }`}
-                    >
-                      ★
-                    </span>
-                  ))}
-                </div>
-
-                <p className="mt-3 text-xs leading-5 text-gray-500">
-                  Based on{" "}
-                  <strong className="text-[#21191B]">
-                    {totalRatings}
-                  </strong>{" "}
-                  completed trade{" "}
-                  {totalRatings === 1
-                    ? "rating"
-                    : "ratings"}
-                  .
-                </p>
+                <ShieldCheck
+                  size={22}
+                  className="text-green-600"
+                />
               </div>
-            </section>
 
-            {/* Member information */}
-
-            <section className="rounded-3xl border border-[#E7DDDF] bg-white p-5 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#8A2638]">
-                Trader
-              </p>
-
-              <h2 className="mt-1 text-xl font-black text-[#21191B]">
-                Member Details
-              </h2>
-
-              <div className="mt-5 space-y-3">
-                <div className="flex items-center gap-3 rounded-xl bg-[#FBF8F8] px-4 py-3">
-                  <CalendarDays
-                    size={18}
-                    className="shrink-0 text-[#8A2638]"
-                  />
-
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                      Member since
-                    </p>
-
-                    <p className="mt-0.5 text-sm font-bold text-[#21191B]">
-                      {formatMemberSince(
-                        profile.createdAt
+              <div className="mt-4 flex items-center gap-4">
+                <div>
+                  <div className="flex items-end gap-1">
+                    <span className="text-4xl font-black text-[#5B1725]">
+                      {averageRating.toFixed(
+                        1
                       )}
-                    </p>
+                    </span>
+
+                    <span className="pb-1 text-xs font-bold text-gray-400">
+                      / 5
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex gap-0.5">
+                    {[
+                      1, 2, 3, 4, 5,
+                    ].map(
+                      (star) => (
+                        <span
+                          key={
+                            star
+                          }
+                          className={`text-lg ${
+                            star <=
+                            ratingStars
+                              ? "text-yellow-500"
+                              : "text-gray-300"
+                          }`}
+                        >
+                          ★
+                        </span>
+                      )
+                    )}
                   </div>
                 </div>
 
-                {profile.location && (
-                  <div className="flex items-center gap-3 rounded-xl bg-[#FBF8F8] px-4 py-3">
-                    <MapPin
-                      size={18}
-                      className="shrink-0 text-[#8A2638]"
-                    />
+                <div className="border-l border-[#EEE5E7] pl-4">
+                  <p className="text-xl font-black text-[#21191B]">
+                    {
+                      completedTrades
+                    }
+                  </p>
 
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                        Location
-                      </p>
+                  <p className="text-xs text-gray-500">
+                    successful trades
+                  </p>
 
-                      <p className="mt-0.5 break-words text-sm font-bold text-[#21191B]">
-                        {
-                          profile.location
-                        }
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {profile.isPremium && (
-                  <div className="flex items-center gap-3 rounded-xl bg-amber-50 px-4 py-3">
-                    <Crown
-                      size={18}
-                      className="shrink-0 text-amber-600"
-                    />
-
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
-                        Membership
-                      </p>
-
-                      <p className="mt-0.5 text-sm font-bold text-[#21191B]">
-                        Premium Trader
-                      </p>
-                    </div>
-                  </div>
-                )}
+                  <p className="mt-2 text-xs font-semibold text-[#8A2638]">
+                    {totalRatings}{" "}
+                    {totalRatings === 1
+                      ? "review"
+                      : "reviews"}
+                  </p>
+                </div>
               </div>
             </section>
 
             {/* Safety */}
 
-            <section className="rounded-3xl border border-[#E7DDDF] bg-[#3D0F18] p-5 text-white shadow-sm">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-                <ShieldCheck
-                  size={20}
-                />
+            <section className="overflow-hidden rounded-3xl bg-[#3D0F18] p-5 text-white shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                  <ShieldCheck
+                    size={20}
+                  />
+                </div>
+
+                <div>
+                  <h2 className="font-black">
+                    Trade Safely
+                  </h2>
+
+                  <p className="mt-1 text-xs leading-5 text-white/65">
+                    Inspect items before
+                    completing an exchange
+                    and keep confirmations
+                    inside BarterConnekt.
+                  </p>
+                </div>
               </div>
-
-              <h2 className="mt-4 text-lg font-black">
-                Trade Safely
-              </h2>
-
-              <p className="mt-2 text-xs leading-6 text-white/70">
-                Review the item
-                carefully and keep
-                important trade actions
-                inside BarterConnect.
-              </p>
             </section>
           </aside>
         </div>
