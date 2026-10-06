@@ -172,16 +172,58 @@ export const activateSubscriptionWithTx = async ({
         "Previous subscription does not have an expiry date."
       );
     }
+
+    const previousEndsAt =
+      new Date(previous.endsAt);
+
+    if (
+      Number.isNaN(
+        previousEndsAt.getTime()
+      )
+    ) {
+      throw new Error(
+        "Previous subscription has an invalid expiry date."
+      );
+    }
   }
 
-  /*
-   * ==========================================================
-   * CALCULATE MEMBERSHIP PERIOD
-   * ==========================================================
-   */
+    /*
+    * ==========================================================
+    * CALCULATE MEMBERSHIP PERIOD
+    * ==========================================================
+    */
 
-  const activationTime =
-    new Date(activatedAt);
+    /*
+    * Never activate a subscription with an invalid duration.
+    *
+    * The subscription row stores the purchased duration so
+    * activation must use that immutable purchase value rather
+    * than looking up the current plan configuration.
+    */
+
+    if (
+      !Number.isInteger(
+        subscription.durationDays
+      ) ||
+      subscription.durationDays <= 0
+    ) {
+      throw new Error(
+        "Subscription duration is invalid."
+      );
+    }
+
+    const activationTime =
+      new Date(activatedAt);
+
+    if (
+      Number.isNaN(
+        activationTime.getTime()
+      )
+    ) {
+      throw new Error(
+        "Subscription activation time is invalid."
+      );
+    }
 
   let startsAt =
     new Date(activationTime);
@@ -196,15 +238,25 @@ export const activateSubscriptionWithTx = async ({
    * begin immediately.
    */
 
-  if (
-    subscription.renewalOf?.endsAt
-  ) {
-    const previousEndsAt =
-      new Date(
-        subscription
-          .renewalOf
-          .endsAt
+if (
+  subscription.renewalOf?.endsAt
+) {
+  const previousEndsAt =
+    new Date(
+      subscription
+        .renewalOf
+        .endsAt
+    );
+
+    if (
+      Number.isNaN(
+        previousEndsAt.getTime()
+      )
+    ) {
+      throw new Error(
+        "Previous subscription has an invalid expiry date."
       );
+    }
 
     if (
       previousEndsAt >

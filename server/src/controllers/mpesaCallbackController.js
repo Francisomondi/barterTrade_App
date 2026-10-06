@@ -1,7 +1,6 @@
 import prisma from "../config/prisma.js";
 
 import {
-  activateSubscription,
   activateSubscriptionWithTx,
 } from "../services/subscriptionActivationService.js";
 
@@ -23,8 +22,7 @@ import {
  * Do not protect this route using normal user authentication.
  */
 
-export const promotionPaymentCallback =
-  async (req, res) => {
+export const promotionPaymentCallback = async (req, res) => {
     try {
       console.log(
         "M-PESA PAYMENT CALLBACK:",
@@ -151,29 +149,35 @@ export const promotionPaymentCallback =
          *
          * activateSubscription() is expected to be idempotent.
          */
-        if (
-          payment.type ===
-            "SUBSCRIPTION" &&
-          payment.subscriptionId
-        ) {
-          try {
-            await activateSubscription({
-              subscriptionId:
-                payment.subscriptionId,
+      if (
+        payment.type ===
+          "SUBSCRIPTION" &&
+        payment.subscriptionId
+      ) {
+        /*
+        * IMPORTANT:
+        *
+        * Do not blindly reactivate a COMPLETED subscription
+        * payment here.
+        *
+        * A payment may be COMPLETED while its subscription
+        * intentionally remains PENDING because entitlement
+        * activation was blocked for manual reconciliation.
+        *
+        * Examples:
+        *
+        * - amount mismatch
+        * - invalid renewal source
+        * - unrelated same-plan subscription became active
+        *
+        * Recovery must therefore go through the same entitlement
+        * safety checks as first-time callback processing.
+        */
 
-              paymentId:
-                payment.id,
-            });
-          } catch (
-            activationError
-          ) {
-            console.error(
-              "SUBSCRIPTION RECOVERY ACTIVATION ERROR:",
-              activationError
-            );
-          }
-        }
-
+        console.log(
+          `Subscription payment ${payment.id} is already completed. No automatic entitlement recovery was attempted from the global callback shortcut.`
+        );
+      }
         return res
           .status(200)
           .json({
@@ -766,27 +770,38 @@ export const promotionPaymentCallback =
                   currentPayment.status ===
                   "COMPLETED"
                 ) {
-                  const recoveredSubscription =
-                    await activateSubscriptionWithTx({
-                      tx,
-
-                      subscriptionId:
-                        currentPayment.subscriptionId,
-
-                      paymentId:
-                        currentPayment.id,
-                    });
+                  /*
+                  * Payment financial truth has already been recorded.
+                  *
+                  * Do not automatically activate a still-PENDING
+                  * subscription here.
+                  *
+                  * COMPLETED + PENDING may intentionally represent a
+                  * manual-reconciliation state.
+                  *
+                  * If the subscription is already ACTIVE, this is simply
+                  * an idempotent duplicate callback.
+                  */
 
                   return {
                     alreadyProcessed: true,
 
-                    conflict: false,
+                    conflict:
+                      currentPayment.subscription.status !==
+                      "ACTIVE",
+
+                    renewalConflict:
+                      Boolean(
+                        currentPayment.subscription
+                          .renewalOfId
+                      ) &&
+                      currentPayment.subscription.status !==
+                        "ACTIVE",
 
                     subscription:
-                      recoveredSubscription,
+                      currentPayment.subscription,
                   };
                 }
-
                 const now =
                   new Date();
 
