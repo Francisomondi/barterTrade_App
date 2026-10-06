@@ -18,6 +18,12 @@ import prisma from "../config/prisma.js";
  * Subscription = ACTIVE
  *
  * can happen in the same DB transaction.
+ *
+ * Supports:
+ *
+ * - normal subscription activation
+ * - safe subscription renewal
+ * - duplicate callback recovery
  */
 export const activateSubscriptionWithTx = async ({
   tx,
@@ -54,6 +60,10 @@ export const activateSubscriptionWithTx = async ({
       where: {
         id: subscriptionId,
       },
+
+      include: {
+        renewalOf: true,
+      },
     });
 
   if (!subscription) {
@@ -64,13 +74,8 @@ export const activateSubscriptionWithTx = async ({
 
   /*
    * ==========================================================
-   * VERIFY PAYMENT BELONGS TO THIS SUBSCRIPTION
+   * VERIFY PAYMENT
    * ==========================================================
-   *
-   * We verify this BEFORE the ACTIVE idempotency return.
-   *
-   * That prevents an unrelated paymentId from being accepted
-   * merely because the subscription is already ACTIVE.
    */
 
   const payment =
@@ -103,9 +108,9 @@ export const activateSubscriptionWithTx = async ({
    * IDEMPOTENCY
    * ==========================================================
    *
-   * Never restart or extend an ACTIVE subscription.
+   * Never restart or extend an already ACTIVE subscription.
    *
-   * This is critical for duplicate M-Pesa callbacks.
+   * Duplicate Safaricom callbacks therefore remain harmless.
    */
 
   if (
@@ -116,11 +121,9 @@ export const activateSubscriptionWithTx = async ({
   }
 
   /*
-   * Only PENDING can transition into ACTIVE.
-   *
-   * EXPIRED subscriptions are never reactivated.
-   * Renewal must use a NEW subscription row.
+   * Only PENDING subscriptions may activate.
    */
+
   if (
     subscription.status !==
     "PENDING"
@@ -132,16 +135,85 @@ export const activateSubscriptionWithTx = async ({
 
   /*
    * ==========================================================
-   * CALCULATE NEW MEMBERSHIP PERIOD
+   * VALIDATE RENEWAL RELATIONSHIP
    * ==========================================================
-   *
-   * Renewal never stacks onto an old endsAt.
-   *
-   * A new subscription starts from successful activation time.
    */
 
-  const startsAt =
+  if (subscription.renewalOfId) {
+    const previous =
+      subscription.renewalOf;
+
+    if (!previous) {
+      throw new Error(
+        "Renewal source subscription not found."
+      );
+    }
+
+    if (
+      previous.userId !==
+      subscription.userId
+    ) {
+      throw new Error(
+        "Renewal subscription belongs to a different user."
+      );
+    }
+
+    if (
+      previous.plan !==
+      subscription.plan
+    ) {
+      throw new Error(
+        "Renewal subscription plan does not match the previous subscription."
+      );
+    }
+
+    if (!previous.endsAt) {
+      throw new Error(
+        "Previous subscription does not have an expiry date."
+      );
+    }
+  }
+
+  /*
+   * ==========================================================
+   * CALCULATE MEMBERSHIP PERIOD
+   * ==========================================================
+   */
+
+  const activationTime =
     new Date(activatedAt);
+
+  let startsAt =
+    new Date(activationTime);
+
+  /*
+   * RENEWAL:
+   *
+   * If the previous subscription still has paid time remaining,
+   * begin the renewed period when that subscription expires.
+   *
+   * If it has already expired by the time payment completes,
+   * begin immediately.
+   */
+
+  if (
+    subscription.renewalOf?.endsAt
+  ) {
+    const previousEndsAt =
+      new Date(
+        subscription
+          .renewalOf
+          .endsAt
+      );
+
+    if (
+      previousEndsAt >
+      activationTime
+    ) {
+      startsAt =
+        previousEndsAt;
+    }
+  }
 
   const endsAt =
     new Date(startsAt);
@@ -153,7 +225,7 @@ export const activateSubscriptionWithTx = async ({
 
   /*
    * ==========================================================
-   * ACTIVATE
+   * ACTIVATE SUBSCRIPTION
    * ==========================================================
    */
 
@@ -171,6 +243,10 @@ export const activateSubscriptionWithTx = async ({
         startsAt,
 
         endsAt,
+      },
+
+      include: {
+        renewalOf: true,
       },
     });
 
@@ -213,15 +289,8 @@ export const activateSubscriptionWithTx = async ({
  * ============================================================
  * STANDALONE ACTIVATION / RECOVERY
  * ============================================================
- *
- * Used for:
- *
- * - duplicate callback recovery
- * - reconciliation
- * - recovery of Payment COMPLETED + Subscription PENDING
- *
- * Redis/cache side effects do NOT belong here.
  */
+
 export const activateSubscription = async ({
   subscriptionId,
   paymentId,

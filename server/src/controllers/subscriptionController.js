@@ -2,7 +2,7 @@ import prisma from "../config/prisma.js";
 import {SUBSCRIPTION_PLANS,getSubscriptionPlan} from "../config/subscriptionPlans.js";
 import { expireSubscriptions,expireSubscriptionIfNeeded} from "../services/subscriptionExpiryService.js";
 import {initiateStkPush} from "../services/mpesaService.js";
-import { getActiveSubscriptionByPlan, canCreateSubscriptionByPlan} from "../services/subscriptionService.js";
+import { getActiveSubscriptionByPlan,getPendingSubscriptionByPlan, getPendingRenewalByPlan, canCreateSubscriptionByPlan} from "../services/subscriptionService.js";
 
 /*
  * ============================================================
@@ -124,109 +124,161 @@ export const getSubscriptionPlans =
  */
 
 export const createSubscription = async (req, res) => {
-    try {
-      /*
-       
-       * EXPIRE OLD ACTIVE SUBSCRIPTIONS
-       * ======================================================
-       */
+  try {
+    /*
+     * ======================================================
+     * EXPIRE OLD ACTIVE SUBSCRIPTIONS
+     * ======================================================
+     */
 
-      await expireSubscriptions();
+    await expireSubscriptions();
 
-      const userId =
-        req.user.id;
+    const userId = req.user.id;
 
-      const {
-        plan: requestedPlan,
-      } = req.body;
+    const {
+      plan: requestedPlan,
+      renew = false,
+    } = req.body;
 
-      /*
-       * ======================================================
-       * VALIDATE PLAN
-       * ======================================================
-       */
+    /*
+     * ======================================================
+     * VALIDATE PLAN
+     * ======================================================
+     */
 
-      const plan =
-        getSubscriptionPlan(
-          requestedPlan
-        );
+    const plan =
+      getSubscriptionPlan(
+        requestedPlan
+      );
 
-      if (!plan) {
-        return res
-          .status(400)
-          .json({
-            success: false,
+    if (!plan) {
+      return res
+        .status(400)
+        .json({
+          success: false,
 
-            code:
-              "INVALID_SUBSCRIPTION_PLAN",
+          code:
+            "INVALID_SUBSCRIPTION_PLAN",
 
-            message:
-              "Invalid subscription plan.",
-          });
-      }
+          message:
+            "Invalid subscription plan.",
+        });
+    }
 
-      /*
- * ======================================================
- * VALIDATE SUBSCRIPTION ELIGIBILITY
- * ======================================================
- *
- * Eligibility is resolved by the backend.
- *
- * PREMIUM:
- * - available to authenticated users.
- *
- * BUSINESS_PRO:
- * - requires an existing BusinessProfile.
- *
- * The frontend must never decide Business Pro eligibility.
- */
+    /*
+     * ======================================================
+     * NORMALIZE RENEWAL INTENT
+     * ======================================================
+     *
+     * Require an actual boolean.
+     *
+     * This prevents values such as:
+     *
+     * "false"
+     *
+     * from accidentally being treated as truthy.
+     */
 
-const eligibility =
-  await canCreateSubscriptionByPlan(
-    userId,
-    plan.type
-  );
+    if (
+      typeof renew !==
+      "boolean"
+    ) {
+      return res
+        .status(400)
+        .json({
+          success: false,
 
-if (
-  !eligibility.allowed &&
-  eligibility.code !==
-    "SUBSCRIPTION_ALREADY_PENDING"
-) {
-  return res
-    .status(eligibility.status || 409)
-    .json({
-      success: false,
+          code:
+            "INVALID_RENEWAL_VALUE",
 
-      code:
-        eligibility.code ||
-        "SUBSCRIPTION_NOT_ALLOWED",
+          message:
+            "renew must be a boolean.",
+        });
+    }
 
-      message:
-        eligibility.reason ||
-        "This subscription cannot be created.",
+    /*
+     * ======================================================
+     * VALIDATE SUBSCRIPTION ELIGIBILITY
+     * ======================================================
+     *
+     * PREMIUM:
+     * - available to authenticated users.
+     *
+     * BUSINESS_PRO:
+     * - requires an existing BusinessProfile.
+     *
+     * IMPORTANT:
+     *
+     * canCreateSubscriptionByPlan() normally rejects an
+     * existing ACTIVE subscription.
+     *
+     * That rejection is allowed through ONLY when this is
+     * an explicit renewal request.
+     */
 
-      subscription:
-        eligibility.subscription || null,
-    });
-}
-
-      /*
-       * ======================================================
-       * BLOCK EARLY RENEWAL
-       * ======================================================
-       *
-       * A user with an ACTIVE Premium subscription cannot
-       * create another subscription.
-       *
-       * This prevents subscription stacking.
-       */
-
-    const activeSubscription = await getActiveSubscriptionByPlan(
+    const eligibility =
+      await canCreateSubscriptionByPlan(
         userId,
         plan.type
       );
 
-    if (activeSubscription) {
+    const activeSubscription =
+      await getActiveSubscriptionByPlan(
+        userId,
+        plan.type
+      );
+
+    const isAllowedActiveRenewal =
+      renew === true &&
+      eligibility.code ===
+        "SUBSCRIPTION_ALREADY_ACTIVE" &&
+      Boolean(activeSubscription);
+
+    if (
+      !eligibility.allowed &&
+      eligibility.code !==
+        "SUBSCRIPTION_ALREADY_PENDING" &&
+      !isAllowedActiveRenewal
+    ) {
+      return res
+        .status(
+          eligibility.status ||
+            409
+        )
+        .json({
+          success: false,
+
+          code:
+            eligibility.code ||
+            "SUBSCRIPTION_NOT_ALLOWED",
+
+          message:
+            eligibility.reason ||
+            "This subscription cannot be created.",
+
+          subscription:
+            eligibility.subscription ||
+            null,
+        });
+    }
+
+    /*
+     * ======================================================
+     * NORMAL PURCHASE WHILE ALREADY ACTIVE
+     * ======================================================
+     *
+     * Existing behaviour remains unchanged.
+     *
+     * An ACTIVE subscription may only be bypassed through
+     * an explicit:
+     *
+     * renew: true
+     */
+
+    if (
+      activeSubscription &&
+      !renew
+    ) {
       return res
         .status(409)
         .json({
@@ -236,266 +288,340 @@ if (
             "SUBSCRIPTION_ALREADY_ACTIVE",
 
           message:
-            `Your ${plan.name} subscription is already active. You can renew after it expires.`,
+            `Your ${plan.name} subscription is already active.`,
 
           subscription:
             activeSubscription,
+
+          canRenew: true,
         });
     }
 
-      /*
-       * ======================================================
-       * FIND EXISTING PENDING SUBSCRIPTION
-       * ======================================================
-       *
-       * We reuse a valid PENDING subscription instead of
-       * creating duplicate subscription rows every time the
-       * user returns to the Premium page.
-       */
+    /*
+     * ======================================================
+     * INVALID RENEWAL
+     * ======================================================
+     *
+     * Renewal requires an ACTIVE subscription.
+     *
+     * If the previous subscription has already expired,
+     * the user should simply purchase a normal subscription.
+     */
 
-      const pendingSubscription =
-        await prisma.subscription.findFirst({
-          where: {
-            userId,
+    if (
+      renew &&
+      !activeSubscription
+    ) {
+      return res
+        .status(409)
+        .json({
+          success: false,
 
-            plan:
-              plan.type,
+          code:
+            "NO_ACTIVE_SUBSCRIPTION_TO_RENEW",
 
-            status:
-              "PENDING",
-          },
+          message:
+            `You do not currently have an active ${plan.name} subscription to renew.`,
+        });
+    }
 
-          orderBy: {
-            createdAt:
-              "desc",
-          },
+/*
+ * ======================================================
+ * FIND EXISTING PENDING SUBSCRIPTION
+ * ======================================================
+ *
+ * NORMAL PURCHASE:
+ *
+ * getPendingSubscriptionByPlan()
+ *
+ * Only searches:
+ *
+ * renewalOfId = null
+ *
+ *
+ * RENEWAL:
+ *
+ * getPendingRenewalByPlan()
+ *
+ * Only searches for a renewal tied to the current
+ * active subscription.
+ */
 
-          include: {
-            payments: {
-              where: {
-                type:
-                  "SUBSCRIPTION",
-              },
+const pendingSubscriptionBase =
+  renew
+    ? await getPendingRenewalByPlan(
+        userId,
+        plan.type,
+        activeSubscription.id
+      )
+    : await getPendingSubscriptionByPlan(
+        userId,
+        plan.type
+      );
 
-              orderBy: {
-                createdAt:
-                  "desc",
-              },
+/*
+ * The service helpers intentionally return only the
+ * subscription record.
+ *
+ * createSubscription() also needs its payment history
+ * for completed-payment and duplicate-STK protection.
+ */
+
+const pendingSubscription =
+  pendingSubscriptionBase
+    ? await prisma.subscription.findUnique({
+        where: {
+          id: pendingSubscriptionBase.id,
+        },
+
+        include: {
+          payments: {
+            where: {
+              type: "SUBSCRIPTION",
+            },
+
+            orderBy: {
+              createdAt: "desc",
             },
           },
-        });
+
+          renewalOf: true,
+        },
+      })
+    : null;
+
+    /*
+     * ======================================================
+     * REUSE EXISTING PENDING SUBSCRIPTION
+     * ======================================================
+     */
+
+    if (pendingSubscription) {
+      const completedPayment =
+        pendingSubscription.payments.find(
+          (payment) =>
+            payment.status ===
+            "COMPLETED"
+        );
 
       /*
-       * ======================================================
-       * HANDLE EXISTING PENDING SUBSCRIPTION
-       * ======================================================
+       * Financial payment already completed.
+       *
+       * Do not create another subscription or another
+       * payment attempt while activation/recovery is pending.
        */
 
-      if (pendingSubscription) {
-        /*
-         * ----------------------------------------------------
-         * COMPLETED PAYMENT RECOVERY
-         * ----------------------------------------------------
-         *
-         * If a completed payment exists but the subscription
-         * is somehow still PENDING, do NOT create another
-         * subscription or another STK request.
-         *
-         * Callback recovery will be hardened separately.
-         */
+      if (completedPayment) {
+        return res
+          .status(409)
+          .json({
+            success: false,
 
-        const completedPayment =
-          pendingSubscription.payments.find(
-            (payment) =>
-              payment.status ===
-              "COMPLETED"
-          );
+            code:
+              "SUBSCRIPTION_PAYMENT_COMPLETED",
 
-        if (completedPayment) {
+            message:
+              `Payment for this ${plan.name} ${
+                renew
+                  ? "renewal"
+                  : "subscription"
+              } has already been completed. Activation is being finalized.`,
+
+            subscription:
+              pendingSubscription,
+
+            payment:
+              completedPayment,
+          });
+      }
+
+      /*
+       * Check for a recently-created M-Pesa payment.
+       */
+
+      const pendingPayment =
+        pendingSubscription.payments.find(
+          (payment) =>
+            payment.status ===
+            "PENDING"
+        );
+
+      if (pendingPayment) {
+        const paymentAge =
+          Date.now() -
+          new Date(
+            pendingPayment.createdAt
+          ).getTime();
+
+        if (
+          paymentAge <
+          MPESA_STK_RETRY_AFTER_MS
+        ) {
+          const retryAfterSeconds =
+            Math.max(
+              1,
+              Math.ceil(
+                (
+                  MPESA_STK_RETRY_AFTER_MS -
+                  paymentAge
+                ) /
+                  1000
+              )
+            );
+
           return res
-            .status(409)
+            .status(200)
             .json({
-              success: false,
+              success: true,
 
-              code:
-                "SUBSCRIPTION_PAYMENT_COMPLETED",
+              reused: true,
+
+              renewal:
+                renew,
+
+              paymentPending:
+                true,
+
+              retryAfterSeconds,
 
               message:
-                `Payment for this ${plan.name} subscription has already been completed. Activation is being finalized.`,
+                "Your M-Pesa payment request is still pending.",
 
               subscription:
                 pendingSubscription,
 
               payment:
-                completedPayment,
+                pendingPayment,
             });
         }
-
-        /*
-         * ----------------------------------------------------
-         * LIVE M-PESA PAYMENT
-         * ----------------------------------------------------
-         *
-         * If there is a recent PENDING payment, preserve the
-         * current subscription/payment instead of creating a
-         * duplicate.
-         */
-
-        const pendingPayment =
-          pendingSubscription.payments.find(
-            (payment) =>
-              payment.status ===
-              "PENDING"
-          );
-
-        if (pendingPayment) {
-          const paymentAge =
-            Date.now() -
-            new Date(
-              pendingPayment.createdAt
-            ).getTime();
-
-          if (
-            paymentAge <
-            MPESA_STK_RETRY_AFTER_MS
-          ) {
-            const retryAfterSeconds =
-              Math.max(
-                1,
-                Math.ceil(
-                  (
-                    MPESA_STK_RETRY_AFTER_MS -
-                    paymentAge
-                  ) /
-                    1000
-                )
-              );
-
-            return res
-              .status(200)
-              .json({
-                success: true,
-
-                reused: true,
-
-                paymentPending: true,
-
-                retryAfterSeconds,
-
-                message:
-                  "Your M-Pesa payment request is still pending.",
-
-                subscription:
-                  pendingSubscription,
-
-                payment:
-                  pendingPayment,
-              });
-          }
-        }
-
-        /*
-         * ----------------------------------------------------
-         * REUSE PENDING SUBSCRIPTION
-         * ----------------------------------------------------
-         *
-         * Failed, cancelled, or sufficiently old payment
-         * attempts do not require a new Subscription row.
-         *
-         * /:id/pay will deal with stale Payment attempts and
-         * create a fresh Payment when necessary.
-         */
-
-        return res
-          .status(200)
-          .json({
-            success: true,
-
-            reused: true,
-
-            paymentPending: false,
-
-            message:
-               `Existing pending ${plan.name} subscription returned. Continue payment to activate it.`,
-
-            subscription:
-              pendingSubscription,
-          });
       }
 
       /*
-       * ======================================================
-       * CREATE NEW PENDING SUBSCRIPTION
-       * ======================================================
-       *
-       * This is reached when:
-       *
-       * - user has never subscribed, or
-       * - previous subscriptions are EXPIRED/CANCELLED.
-       *
-       * Price/duration always come from server configuration.
+       * Pending subscription exists but there is no recent
+       * payment preventing another STK attempt.
        */
 
-      const subscription =
-        await prisma.subscription.create({
-          data: {
-            userId,
-
-            plan:
-              plan.type,
-
-            status:
-              "PENDING",
-
-            amount:
-              plan.amount,
-
-            currency:
-              plan.currency,
-
-            durationDays:
-              plan.durationDays,
-          },
-        });
-
       return res
-        .status(201)
+        .status(200)
         .json({
           success: true,
 
-          reused: false,
+          reused: true,
 
-          paymentPending: false,
+          renewal:
+            renew,
 
-          message:
-            `${plan.name} subscription created. Complete payment to activate it.`,
-
-          subscription,
-        });
-    } catch (error) {
-      console.error(
-        "CREATE SUBSCRIPTION ERROR:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          success: false,
+          paymentPending:
+            false,
 
           message:
-            "Unable to create subscription.",
+            renew
+              ? `Existing pending ${plan.name} renewal returned. Continue payment to renew your subscription.`
+              : `Existing pending ${plan.name} subscription returned. Continue payment to activate it.`,
+
+          subscription:
+            pendingSubscription,
         });
     }
-};
 
-/*
- * ============================================================
- * GET MY SUBSCRIPTION
- * ============================================================
- *
- * GET /api/subscriptions/me
- */
+    /*
+     * ======================================================
+     * CREATE NEW PENDING SUBSCRIPTION
+     * ======================================================
+     *
+     * NORMAL:
+     *
+     * renewalOfId = null
+     *
+     * RENEWAL:
+     *
+     * renewalOfId = current ACTIVE subscription
+     *
+     * No entitlement is granted here.
+     *
+     * The subscription remains PENDING until M-Pesa confirms
+     * the payment.
+     */
+
+    const subscription =
+      await prisma.subscription.create({
+        data: {
+          userId,
+
+          plan:
+            plan.type,
+
+          status:
+            "PENDING",
+
+          amount:
+            plan.amount,
+
+          currency:
+            plan.currency,
+
+          durationDays:
+            plan.durationDays,
+
+          renewalOfId:
+            renew
+              ? activeSubscription.id
+              : null,
+        },
+
+        include: {
+          renewalOf:
+            true,
+        },
+      });
+
+    /*
+     * ======================================================
+     * RESPONSE
+     * ======================================================
+     */
+
+    return res
+      .status(201)
+      .json({
+        success: true,
+
+        reused: false,
+
+        renewal:
+          renew,
+
+        paymentPending:
+          false,
+
+        message:
+          renew
+            ? `${plan.name} renewal created. Complete payment to add ${plan.durationDays} days to your subscription.`
+            : `${plan.name} subscription created. Complete payment to activate it.`,
+
+        subscription,
+
+        currentSubscription:
+          renew
+            ? activeSubscription
+            : null,
+      });
+  } catch (error) {
+    console.error(
+      "CREATE SUBSCRIPTION ERROR:",
+      error
+    );
+
+    return res
+      .status(500)
+      .json({
+        success: false,
+
+        message:
+          "Unable to create subscription.",
+      });
+  }
+};
 
 /*
  * ============================================================
@@ -670,12 +796,80 @@ export const getMySubscription = async (req, res) => {
             )
         ) || null;
 
+      /*
+      * --------------------------------------------------------
+      * PENDING NORMAL SUBSCRIPTION
+      * --------------------------------------------------------
+      *
+      * A normal pending purchase has no renewal source.
+      */
+
       const pendingSubscription =
         planSubscriptions.find(
           (subscription) =>
-            subscription.status ===
-            "PENDING"
+            subscription.status === "PENDING" &&
+            !subscription.renewalOfId
         ) || null;
+
+      /*
+      * --------------------------------------------------------
+      * PENDING RENEWAL
+      * --------------------------------------------------------
+      *
+      * A renewal is explicitly linked to the subscription
+      * that it is extending through renewalOfId.
+      */
+
+      const pendingRenewal = planSubscriptions.find(
+          (subscription) =>
+            subscription.status === "PENDING" &&
+            Boolean(subscription.renewalOfId)
+        ) || null;
+        /*
+        * --------------------------------------------------------
+        * SCHEDULED RENEWAL
+        * --------------------------------------------------------
+        *
+        * A successfully-paid early renewal may already have
+        * status ACTIVE even though its entitlement period has
+        * not started yet.
+        *
+        * Example:
+        *
+        * Current:
+        * 6 Oct -> 5 Nov
+        *
+        * Scheduled renewal:
+        * 5 Nov -> 5 Dec
+        *
+        * The scheduled renewal must NOT count as current
+        * entitlement before 5 Nov.
+        */
+
+        const scheduledRenewal =
+          planSubscriptions.find(
+            (subscription) => {
+              if (
+                subscription.status !== "ACTIVE" ||
+                !subscription.renewalOfId ||
+                !subscription.startsAt ||
+                !subscription.endsAt
+              ) {
+                return false;
+              }
+
+              const startsAt =
+                new Date(subscription.startsAt);
+
+              const endsAt =
+                new Date(subscription.endsAt);
+
+              return (
+                startsAt > now &&
+                endsAt > startsAt
+              );
+            }
+          ) || null;
 
       const latestSubscription =
         planSubscriptions[0] ||
@@ -728,18 +922,42 @@ export const getMySubscription = async (req, res) => {
         getDaysRemaining(
           activeSubscription
         );
+      /*
+ * --------------------------------------------------------
+    * RENEWAL ELIGIBILITY
+    * --------------------------------------------------------
+    *
+    * Early renewal IS supported.
+    *
+    * The user may renew while the current subscription is
+    * active.
+    *
+    * However, we should not offer another renewal when:
+    *
+    * 1. there is already a PENDING renewal waiting for
+    *    payment, or
+    *
+    * 2. there is already a successfully-paid future
+    *    renewal scheduled.
+    */
+
+    const canRenew =
+      Boolean(activeSubscription) &&
+      !pendingRenewal &&
+      !scheduledRenewal;
 
       /*
-       * Current renewal policy:
-       *
-       * Active subscriptions cannot be renewed early.
-       *
-       * This matches createSubscription() and
-       * payForSubscription().
-       */
+      * Human/API-friendly renewal state.
+      */
 
-      const canRenew =
-        !activeSubscription;
+      const renewalStatus =
+        pendingRenewal
+          ? "PENDING_PAYMENT"
+          : scheduledRenewal
+            ? "SCHEDULED"
+            : canRenew
+              ? "AVAILABLE"
+              : "UNAVAILABLE";
 
       return {
         plan: {
@@ -823,12 +1041,22 @@ export const getMySubscription = async (req, res) => {
          * Renewal
          */
 
-        canRenew,
+       canRenew,
 
-        renewalBlockedReason:
-          activeSubscription
-            ? "Subscription is currently active."
-            : null,
+      renewalStatus,
+
+      pendingRenewal,
+
+      scheduledRenewal,
+
+      renewalBlockedReason:
+        pendingRenewal
+          ? "A renewal is already waiting for payment."
+          : scheduledRenewal
+            ? "A paid renewal is already scheduled."
+            : !activeSubscription
+              ? "There is no active subscription to renew."
+              : null,
 
         /*
          * Payments
@@ -1103,29 +1331,35 @@ export const payForSubscription = async (req, res) => {
        * ======================================================
        */
 
-      const subscription =
-        await prisma.subscription.findFirst({
-          where: {
-            id:
-              subscriptionId,
+    const subscription = await prisma.subscription.findFirst({
+        where: {
+          id: subscriptionId,
+          userId,
+        },
 
-            userId,
-          },
+        include: {
+          payments: {
+            where: {
+              type: "SUBSCRIPTION",
+            },
 
-          include: {
-            payments: {
-              where: {
-                type:
-                  "SUBSCRIPTION",
-              },
-
-              orderBy: {
-                createdAt:
-                  "desc",
-              },
+            orderBy: {
+              createdAt: "desc",
             },
           },
-        });
+
+          renewalOf: {
+            select: {
+              id: true,
+              userId: true,
+              plan: true,
+              status: true,
+              startsAt: true,
+              endsAt: true,
+            },
+          },
+        },
+    });
 
       if (!subscription) {
         return res
@@ -1141,46 +1375,209 @@ export const payForSubscription = async (req, res) => {
           });
       }
 
+          /*
+    * ======================================================
+    * DETERMINE WHETHER THIS IS A RENEWAL
+    * ======================================================
+    *
+    * Normal subscription:
+    *
+    * renewalOfId = null
+    *
+    * Renewal:
+    *
+    * renewalOfId = previous subscription ID
+    */
+
+    const isRenewal =
+      Boolean(
+        subscription.renewalOfId
+      );
+
       /*
- * ======================================================
- * BLOCK DUPLICATE ACTIVE SUBSCRIPTION FOR SAME PLAN
- * ======================================================
- *
- * Personal Premium and Business Pro are independent.
- *
- * Therefore:
- *
- * PREMIUM must only block another PREMIUM.
- * BUSINESS_PRO must only block another BUSINESS_PRO.
- *
- * Never allow one plan to block the other.
- */
+    * ======================================================
+    * VALIDATE RENEWAL SOURCE
+    * ======================================================
+    */
 
-const currentActiveSubscription = await getActiveSubscriptionByPlan(
-    userId,
-    subscription.plan
-  );
+    if (isRenewal) {
+      const renewalSource =
+        subscription.renewalOf;
 
-if (
-  currentActiveSubscription &&
-  currentActiveSubscription.id !==
-    subscription.id
-) {
-  return res
-    .status(409)
-    .json({
-      success: false,
+      /*
+      * renewalOfId exists but Prisma could not find
+      * the referenced subscription.
+      */
 
-      code:
-        "SUBSCRIPTION_ALREADY_ACTIVE",
+      if (!renewalSource) {
+        return res
+          .status(409)
+          .json({
+            success: false,
 
-      message:
-        `Your ${subscription.plan} subscription is already active. Another ${subscription.plan} subscription cannot be purchased until it expires.`,
+            code:
+              "INVALID_RENEWAL_SOURCE",
 
-      subscription:
-        currentActiveSubscription,
-    });
-}
+            message:
+              "The subscription being renewed could not be verified.",
+          });
+      }
+
+      /*
+      * The previous subscription must belong
+      * to the same authenticated user.
+      */
+
+      if (
+        renewalSource.userId !==
+        userId
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            code:
+              "INVALID_RENEWAL_SOURCE",
+
+            message:
+              "The renewal subscription does not belong to this account.",
+          });
+      }
+
+      /*
+      * BUSINESS_PRO may only renew BUSINESS_PRO.
+      *
+      * PREMIUM may only renew PREMIUM.
+      */
+
+      if (
+        renewalSource.plan !==
+        subscription.plan
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            code:
+              "INVALID_RENEWAL_PLAN",
+
+            message:
+              "A subscription can only renew the same plan.",
+          });
+      }
+
+      /*
+      * A legitimate previous subscription must
+      * have had a real entitlement period.
+      */
+
+      if (
+        !renewalSource.startsAt ||
+        !renewalSource.endsAt
+      ) {
+        return res
+          .status(409)
+          .json({
+            success: false,
+
+            code:
+              "INVALID_RENEWAL_SOURCE",
+
+            message:
+              "The subscription being renewed does not have a valid subscription period.",
+          });
+      }
+    }
+
+    /*
+    * ======================================================
+    * FIND CURRENT ACTIVE SAME-PLAN SUBSCRIPTION
+    * ======================================================
+    *
+    * Premium and Business Pro remain independent.
+    */
+
+    const currentActiveSubscription =
+      await getActiveSubscriptionByPlan(
+        userId,
+        subscription.plan
+      );
+
+    /*
+    * ======================================================
+    * NORMAL PURCHASE PROTECTION
+    * ======================================================
+    *
+    * If this is NOT a renewal, another currently-active
+    * subscription for the same plan must still block
+    * payment.
+    */
+
+    if (
+      !isRenewal &&
+      currentActiveSubscription &&
+      currentActiveSubscription.id !==
+        subscription.id
+    ) {
+      return res
+        .status(409)
+        .json({
+          success: false,
+
+          code:
+            "SUBSCRIPTION_ALREADY_ACTIVE",
+
+          message:
+            `Your ${subscription.plan} subscription is already active. Use the renewal option if you want to extend it.`,
+
+          subscription:
+            currentActiveSubscription,
+        });
+    }
+
+    /*
+    * ======================================================
+    * RENEWAL CONFLICT PROTECTION
+    * ======================================================
+    *
+    * A renewal is allowed while its ORIGINAL subscription
+    * remains active.
+    *
+    * Example:
+    *
+    * Active subscription A
+    * Renewal B
+    * B.renewalOfId === A.id
+    *
+    * This is valid.
+    *
+    * But if another unrelated subscription C is currently
+    * active, B must not renew A over C.
+    */
+
+    if (
+      isRenewal &&
+      currentActiveSubscription &&
+      currentActiveSubscription.id !==
+        subscription.renewalOfId
+    ) {
+      return res
+        .status(409)
+        .json({
+          success: false,
+
+          code:
+            "RENEWAL_SUBSCRIPTION_CONFLICT",
+
+          message:
+            `Another ${subscription.plan} subscription is currently active. This renewal can no longer be processed automatically.`,
+
+          subscription:
+            currentActiveSubscription,
+        });
+    }
 
       /*
        * ======================================================
@@ -1310,13 +1707,19 @@ if (
               code:
                 "PAYMENT_ALREADY_PENDING",
 
-              message:
-                "An M-Pesa payment request is already pending.",
+              message: isRenewal
+                ? "An M-Pesa renewal payment request is already pending."
+                : "An M-Pesa payment request is already pending.",
 
               retryAfterSeconds,
 
               payment:
                 pendingPayment,
+
+              subscription,
+
+              renewal:
+                isRenewal,
             });
         }
 
@@ -1376,8 +1779,9 @@ if (
             phoneNumber:
               normalizedPhone,
 
-            description:
-              `BarterTrade ${subscription.plan} subscription`,
+            description: isRenewal
+              ? `BarterConnekt ${subscription.plan} renewal`
+              : `BarterConnekt ${subscription.plan} subscription`,
           },
         });
 
@@ -1416,8 +1820,12 @@ if (
 
             transactionDescription:
               subscription.plan === "BUSINESS_PRO"
-                ? "BarterTrade Business Pro"
-                : "BarterTrade Premium",
+                ? isRenewal
+                  ? "BarterConnekt Business Pro Renewal"
+                  : "BarterConnekt Business Pro"
+                : isRenewal
+                  ? "BarterConnekt Premium Renewal"
+                  : "BarterConnekt Premium",
           });
 
         /*
@@ -1506,39 +1914,70 @@ if (
         * Only the verified M-Pesa callback can activate it.
         */
 
-        return res
-          .status(200)
-          .json({
-            success: true,
+      return res
+        .status(200)
+        .json({
+          success: true,
 
-            message:
-              stkResponse
-                ?.CustomerMessage ||
-              "M-Pesa payment request sent. Check your phone.",
+          renewal:
+            isRenewal,
 
-            payment:
-              updatedPayment,
+          message:
+            stkResponse
+              ?.CustomerMessage ||
+            (isRenewal
+              ? "M-Pesa renewal request sent. Check your phone."
+              : "M-Pesa payment request sent. Check your phone."),
 
-            subscription: {
-              id:
-                subscription.id,
+          payment:
+            updatedPayment,
 
-              plan:
-                subscription.plan,
+          subscription: {
+            id:
+              subscription.id,
 
-              status:
-                subscription.status,
+            plan:
+              subscription.plan,
 
-              amount:
-                subscription.amount,
+            status:
+              subscription.status,
 
-              currency:
-                subscription.currency,
+            amount:
+              subscription.amount,
 
-              durationDays:
-                subscription.durationDays,
-            },
-          });
+            currency:
+              subscription.currency,
+
+            durationDays:
+              subscription.durationDays,
+
+            renewalOfId:
+              subscription.renewalOfId,
+
+            renewal:
+              isRenewal,
+          },
+
+          renewalSource:
+            isRenewal
+              ? {
+                  id:
+                    subscription
+                      .renewalOf.id,
+
+                  startsAt:
+                    subscription
+                      .renewalOf
+                      .startsAt,
+
+                  endsAt:
+                    subscription
+                      .renewalOf
+                      .endsAt,
+                }
+              : null,
+        });
+
       } catch (mpesaError) {
         console.error(
           "SUBSCRIPTION STK ERROR:",
@@ -1597,7 +2036,7 @@ if (
             "Unable to process subscription payment.",
         });
     }
-  };
+};
 
 /*
  * ============================================================

@@ -80,16 +80,35 @@ export const getActiveSubscriptionByPlan = async (
   userId,
   plan
 ) => {
-  if (!userId || !isValidSubscriptionPlan(plan)) {
+  if (!userId || !plan) {
     return null;
   }
 
-  /*
-   * Clean expired ACTIVE rows before checking entitlement.
-   */
-  await expireUserSubscriptions(userId);
-
   const now = new Date();
+
+  /*
+   * ======================================================
+   * CURRENT ACTIVE SUBSCRIPTION FOR A SPECIFIC PLAN
+   * ======================================================
+   *
+   * IMPORTANT:
+   *
+   * status === ACTIVE alone is NOT enough.
+   *
+   * Early renewal can create an ACTIVE subscription whose
+   * startsAt is in the future.
+   *
+   * Example:
+   *
+   * Current:
+   * 6 Oct -> 5 Nov
+   *
+   * Renewal:
+   * 5 Nov -> 5 Dec
+   *
+   * Both rows may have status ACTIVE, but only the first
+   * subscription provides entitlement before 5 Nov.
+   */
 
   return prisma.subscription.findFirst({
     where: {
@@ -108,8 +127,14 @@ export const getActiveSubscriptionByPlan = async (
       },
     },
 
+    /*
+     * If historical data somehow contains overlapping
+     * ACTIVE subscriptions, prefer the one that started
+     * most recently.
+     */
+
     orderBy: {
-      endsAt: "desc",
+      startsAt: "desc",
     },
   });
 };
@@ -128,19 +153,71 @@ export const getPendingSubscriptionByPlan = async (
   }
 
   return prisma.subscription.findFirst({
-    where: {
-      userId,
+  where: {
+    userId,
 
-      plan,
+    plan,
 
-      status: "PENDING",
-    },
+    status: "PENDING",
+
+    renewalOfId: null,
+  },
 
     orderBy: {
       createdAt: "desc",
     },
   });
 };
+
+  /*
+  * ============================================================
+  * GET PENDING RENEWAL BY PLAN
+  * ============================================================
+  *
+  * Finds a PENDING renewal for a specific active/source
+  * subscription.
+  *
+  * This is intentionally separate from
+  * getPendingSubscriptionByPlan().
+  *
+  * Normal pending subscription:
+  *
+  * renewalOfId = null
+  *
+  * Renewal:
+  *
+  * renewalOfId = source subscription ID
+  */
+
+  export const getPendingRenewalByPlan = async (
+    userId,
+    plan,
+    renewalOfId
+  ) => {
+    if (
+      !userId ||
+      !isValidSubscriptionPlan(plan) ||
+      !renewalOfId
+    ) {
+      return null;
+    }
+
+    return prisma.subscription.findFirst({
+      where: {
+        userId,
+
+        plan,
+
+        status: "PENDING",
+
+        renewalOfId,
+      },
+
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  };
 
 /*
  * ============================================================

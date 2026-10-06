@@ -15,10 +15,32 @@ export const getSubscriptionPlans = async () => {
  *   plan: "PREMIUM"
  * }
  */
-export const createSubscription = async (plan = "PREMIUM") => {
-  const response = await api.post("/subscriptions", {
-    plan,
-  });
+/**
+ * POST /api/subscriptions
+ *
+ * Normal purchase:
+ * {
+ *   plan: "BUSINESS_PRO",
+ *   renew: false
+ * }
+ *
+ * Renewal:
+ * {
+ *   plan: "BUSINESS_PRO",
+ *   renew: true
+ * }
+ */
+export const createSubscription = async (
+  plan = "PREMIUM",
+  options = {}
+) => {
+  const response = await api.post(
+    "/subscriptions",
+    {
+      plan,
+      renew: options.renew === true,
+    }
+  );
 
   return response.data;
 };

@@ -663,48 +663,40 @@ export const promotionPaymentCallback =
          */
 
         case "SUBSCRIPTION": {
-          if (
-            !payment.subscription
-          ) {
+          if (!payment.subscription) {
             console.error(
               `Payment ${payment.id} does not have a subscription.`
             );
 
             /*
-             * Financially successful, but the entitlement relation
-             * cannot be resolved.
-             */
-            await prisma.payment.update(
-              {
-                where: {
-                  id:
-                    payment.id,
-                },
+            * Financially successful, but the entitlement relation
+            * cannot be resolved.
+            */
+            await prisma.payment.update({
+              where: {
+                id: payment.id,
+              },
 
-                data: {
-                  status:
-                    "COMPLETED",
+              data: {
+                status: "COMPLETED",
 
-                  merchantRequestId:
-                    MerchantRequestID ||
-                    payment.merchantRequestId,
+                merchantRequestId:
+                  MerchantRequestID ||
+                  payment.merchantRequestId,
 
-                  receiptNumber:
-                    mpesaReceiptNumber,
+                receiptNumber:
+                  mpesaReceiptNumber,
 
-                  phoneNumber:
-                    callbackPhoneNumber,
+                phoneNumber:
+                  callbackPhoneNumber,
 
-                  resultCode:
-                    String(
-                      ResultCode
-                    ),
+                resultCode:
+                  String(ResultCode),
 
-                  resultDescription:
-                    "M-PESA payment completed successfully, but the subscription record was not found. Manual reconciliation required.",
-                },
-              }
-            );
+                resultDescription:
+                  "M-PESA payment completed successfully, but the subscription record was not found. Manual reconciliation required.",
+              },
+            });
 
             console.error(
               `Subscription payment ${payment.id} completed financially but requires manual reconciliation.`
@@ -714,90 +706,81 @@ export const promotionPaymentCallback =
           }
 
           /*
-           * ========================================================
-           * ATOMIC PAYMENT + SUBSCRIPTION ACTIVATION
-           * ========================================================
-           *
-           * The important rule:
-           *
-           * Payment COMPLETED
-           *
-           * and
-           *
-           * Subscription ACTIVE
-           *
-           * are committed in the SAME Prisma transaction.
-           */
+          * ========================================================
+          * ATOMIC PAYMENT + SUBSCRIPTION ACTIVATION
+          * ========================================================
+          *
+          * Payment COMPLETED and Subscription ACTIVE are committed
+          * in the SAME Prisma transaction.
+          */
 
           const transactionResult =
             await prisma.$transaction(
               async (tx) => {
                 /*
-                 * Re-read inside transaction.
-                 */
+                * --------------------------------------------------
+                * RE-READ PAYMENT INSIDE TRANSACTION
+                * --------------------------------------------------
+                */
+
                 const currentPayment =
-                  await tx.payment.findUnique(
-                    {
-                      where: {
-                        id:
-                          payment.id,
-                      },
+                  await tx.payment.findUnique({
+                    where: {
+                      id: payment.id,
+                    },
 
-                      include: {
-                        subscription:
-                          true,
-                      },
-                    }
-                  );
+                    include: {
+                      subscription: true,
+                    },
+                  });
 
-                if (
-                  !currentPayment
-                ) {
+                if (!currentPayment) {
                   throw new Error(
                     "Payment disappeared during callback processing."
                   );
                 }
 
-                if (
-                  !currentPayment
-                    .subscription
-                ) {
+                if (!currentPayment.subscription) {
                   throw new Error(
                     "Subscription disappeared during callback processing."
                   );
                 }
 
                 /*
-                 * --------------------------------------------------
-                 * DUPLICATE CALLBACK / RECOVERY
-                 * --------------------------------------------------
-                 */
+                * --------------------------------------------------
+                * DUPLICATE CALLBACK / RECOVERY
+                * --------------------------------------------------
+                *
+                * Safaricom may send the same callback more than once.
+                *
+                * If Payment is already COMPLETED, do not add another
+                * subscription period.
+                *
+                * activateSubscriptionWithTx() is idempotent and can
+                * safely recover a PENDING subscription if an earlier
+                * callback completed the Payment but activation did
+                * not finish.
+                */
+
                 if (
-                  currentPayment
-                    .status ===
+                  currentPayment.status ===
                   "COMPLETED"
                 ) {
                   const recoveredSubscription =
-                    await activateSubscriptionWithTx(
-                      {
-                        tx,
+                    await activateSubscriptionWithTx({
+                      tx,
 
-                        subscriptionId:
-                          currentPayment
-                            .subscriptionId,
+                      subscriptionId:
+                        currentPayment.subscriptionId,
 
-                        paymentId:
-                          currentPayment
-                            .id,
-                      }
-                    );
+                      paymentId:
+                        currentPayment.id,
+                    });
 
                   return {
-                    alreadyProcessed:
-                      true,
+                    alreadyProcessed: true,
 
-                    conflict:
-                      false,
+                    conflict: false,
 
                     subscription:
                       recoveredSubscription,
@@ -808,71 +791,125 @@ export const promotionPaymentCallback =
                   new Date();
 
                 /*
-                * --------------------------------------------------
-                * PREVENT TWO ACTIVE SUBSCRIPTIONS OF THE SAME PLAN
+                * ==================================================
+                * SAME-PLAN SUBSCRIPTION / RENEWAL PROTECTION
+                * ==================================================
+                *
+                * NORMAL PURCHASE
                 * --------------------------------------------------
                 *
-                * Personal Premium and Business Pro are independent.
+                * A normal purchase must never create a second
+                * currently-active entitlement for the same plan.
                 *
-                * This protects against an old STK callback arriving
-                * after another subscription of the SAME plan has
-                * already become active.
+                *
+                * RENEWAL
+                * --------------------------------------------------
+                *
+                * A renewal is explicitly identified using:
+                *
+                * subscription.renewalOfId
+                *
+                * This points to the subscription whose paid period
+                * is being extended.
+                *
+                * IMPORTANT:
+                *
+                * We DO NOT require the renewal source to still be
+                * ACTIVE when this callback arrives.
+                *
+                * Example:
+                *
+                * 11:57 PM - user initiates renewal
+                * 11:59 PM - current subscription expires
+                * 12:01 AM - Safaricom callback arrives
+                *
+                * That is still a legitimate renewal.
                 */
-                  const subscriptionPlan =
-                    currentPayment.subscription.plan;
 
-                  const anotherActiveSubscription =
+                const subscriptionPlan =
+                  currentPayment.subscription.plan;
+
+                const renewalOfId =
+                  currentPayment.subscription
+                    .renewalOfId || null;
+
+                const isRenewal =
+                  Boolean(renewalOfId);
+
+                /*
+                * ==================================================
+                * LOAD RENEWAL SOURCE DIRECTLY
+                * ==================================================
+                */
+
+                let renewalSourceSubscription =
+                  null;
+
+                if (isRenewal) {
+                  renewalSourceSubscription =
                     await tx.subscription.findFirst({
                       where: {
+                        /*
+                        * Must be the exact subscription referenced
+                        * by renewalOfId.
+                        */
+                        id:
+                          renewalOfId,
+
+                        /*
+                        * Prevent another user's subscription from
+                        * ever being used as the renewal source.
+                        */
                         userId:
                           currentPayment.userId,
 
+                        /*
+                        * PREMIUM can only renew PREMIUM.
+                        *
+                        * BUSINESS_PRO can only renew BUSINESS_PRO.
+                        */
                         plan:
                           subscriptionPlan,
-
-                        status:
-                          "ACTIVE",
-
-                        id: {
-                          not:
-                            currentPayment.subscriptionId,
-                        },
-
-                        startsAt: {
-                          lte:
-                            now,
-                        },
-
-                        endsAt: {
-                          gt:
-                            now,
-                        },
                       },
 
                       select: {
                         id: true,
+
+                        userId: true,
+
                         plan: true,
+
+                        status: true,
+
                         startsAt: true,
+
                         endsAt: true,
                       },
                     });
 
-                if (
-                  anotherActiveSubscription
-                ) {
                   /*
-                   * Safaricom says money succeeded, so Payment must
-                   * reflect financial truth.
-                   *
-                   * But do NOT activate/extend another membership.
-                   */
-                  const completedPayment =
-                    await tx.payment.update(
-                      {
+                  * ------------------------------------------------
+                  * INVALID RENEWAL SOURCE
+                  * ------------------------------------------------
+                  *
+                  * Safaricom has genuinely confirmed the money.
+                  *
+                  * Therefore Payment must remain financial truth:
+                  *
+                  * COMPLETED
+                  *
+                  * But entitlement must NOT be invented when the
+                  * renewal relationship cannot be verified.
+                  */
+
+                  if (
+                    !renewalSourceSubscription
+                  ) {
+                    const completedPayment =
+                      await tx.payment.update({
                         where: {
                           id:
-                            currentPayment
-                              .id,
+                            currentPayment.id,
                         },
 
                         data: {
@@ -896,10 +933,221 @@ export const promotionPaymentCallback =
                             ),
 
                           resultDescription:
-                            `M-PESA payment completed after another ${subscriptionPlan} subscription had already become active. The subscription was not activated again. Manual reconciliation required.`,
+                            `M-PESA payment completed, but the ${subscriptionPlan} renewal source could not be verified. Manual reconciliation required.`,
                         },
-                      }
-                    );
+                      });
+
+                    return {
+                      alreadyProcessed:
+                        false,
+
+                      conflict:
+                        true,
+
+                      renewalConflict:
+                        true,
+
+                      payment:
+                        completedPayment,
+                    };
+                  }
+
+                  /*
+                  * ------------------------------------------------
+                  * VERIFY SOURCE HAD A REAL SUBSCRIPTION PERIOD
+                  * ------------------------------------------------
+                  *
+                  * A PENDING subscription that never received an
+                  * entitlement must not be used as the source of a
+                  * renewal.
+                  */
+
+                  if (
+                    !renewalSourceSubscription
+                      .startsAt ||
+                    !renewalSourceSubscription
+                      .endsAt
+                  ) {
+                    const completedPayment =
+                      await tx.payment.update({
+                        where: {
+                          id:
+                            currentPayment.id,
+                        },
+
+                        data: {
+                          status:
+                            "COMPLETED",
+
+                          merchantRequestId:
+                            MerchantRequestID ||
+                            currentPayment
+                              .merchantRequestId,
+
+                          receiptNumber:
+                            mpesaReceiptNumber,
+
+                          phoneNumber:
+                            callbackPhoneNumber,
+
+                          resultCode:
+                            String(
+                              ResultCode
+                            ),
+
+                          resultDescription:
+                            `M-PESA payment completed, but the ${subscriptionPlan} renewal source has no valid membership period. Manual reconciliation required.`,
+                        },
+                      });
+
+                    return {
+                      alreadyProcessed:
+                        false,
+
+                      conflict:
+                        true,
+
+                      renewalConflict:
+                        true,
+
+                      payment:
+                        completedPayment,
+
+                      renewalSourceSubscription,
+                    };
+                  }
+                }
+
+                /*
+                * ==================================================
+                * FIND CURRENT SAME-PLAN ENTITLEMENT
+                * ==================================================
+                *
+                * Do not rely on:
+                *
+                * status === "ACTIVE"
+                *
+                * alone.
+                *
+                * A scheduled renewal can have ACTIVE database status
+                * while its startsAt is still in the future.
+                *
+                * A currently usable entitlement therefore requires:
+                *
+                * status = ACTIVE
+                * startsAt <= now
+                * endsAt > now
+                */
+
+                const anotherActiveSubscription =
+                  await tx.subscription.findFirst({
+                    where: {
+                      userId:
+                        currentPayment.userId,
+
+                      plan:
+                        subscriptionPlan,
+
+                      status:
+                        "ACTIVE",
+
+                      /*
+                      * Exclude the subscription currently being
+                      * activated by this payment.
+                      */
+                      id: {
+                        not:
+                          currentPayment
+                            .subscriptionId,
+                      },
+
+                      startsAt: {
+                        lte:
+                          now,
+                      },
+
+                      endsAt: {
+                        gt:
+                          now,
+                      },
+                    },
+
+                    select: {
+                      id: true,
+
+                      userId: true,
+
+                      plan: true,
+
+                      status: true,
+
+                      startsAt: true,
+
+                      endsAt: true,
+                    },
+                  });
+
+                /*
+                * ==================================================
+                * RENEWAL CONFLICT PROTECTION
+                * ==================================================
+                *
+                * If this is an explicit renewal AND another
+                * same-plan subscription is currently providing the
+                * entitlement, that subscription must be the exact
+                * subscription referenced by renewalOfId.
+                *
+                * Example:
+                *
+                * renewalOfId = subscription A
+                *
+                * but
+                *
+                * current entitlement = subscription B
+                *
+                * That is suspicious/stale state.
+                *
+                * Record the successful financial payment, but do
+                * NOT automatically grant another entitlement.
+                */
+
+                if (
+                  isRenewal &&
+                  anotherActiveSubscription &&
+                  anotherActiveSubscription.id !==
+                    renewalSourceSubscription.id
+                ) {
+                  const completedPayment =
+                    await tx.payment.update({
+                      where: {
+                        id:
+                          currentPayment.id,
+                      },
+
+                      data: {
+                        status:
+                          "COMPLETED",
+
+                        merchantRequestId:
+                          MerchantRequestID ||
+                          currentPayment
+                            .merchantRequestId,
+
+                        receiptNumber:
+                          mpesaReceiptNumber,
+
+                        phoneNumber:
+                          callbackPhoneNumber,
+
+                        resultCode:
+                          String(
+                            ResultCode
+                          ),
+
+                        resultDescription:
+                          `M-PESA payment completed, but another ${subscriptionPlan} subscription became active after this renewal was created. Manual reconciliation required.`,
+                      },
+                    });
 
                   return {
                     alreadyProcessed:
@@ -907,6 +1155,81 @@ export const promotionPaymentCallback =
 
                     conflict:
                       true,
+
+                    renewalConflict:
+                      true,
+
+                    payment:
+                      completedPayment,
+
+                    activeSubscription:
+                      anotherActiveSubscription,
+
+                    renewalSourceSubscription,
+                  };
+                }
+
+                /*
+                * ==================================================
+                * NORMAL DUPLICATE SUBSCRIPTION PROTECTION
+                * ==================================================
+                *
+                * If renewalOfId is NULL, this is an ordinary
+                * subscription purchase.
+                *
+                * Another currently-active same-plan subscription
+                * therefore means this late callback must NOT grant
+                * another entitlement.
+                *
+                * We still record Payment COMPLETED because Safaricom
+                * genuinely collected the money.
+                */
+
+                if (
+                  !isRenewal &&
+                  anotherActiveSubscription
+                ) {
+                  const completedPayment =
+                    await tx.payment.update({
+                      where: {
+                        id:
+                          currentPayment.id,
+                      },
+
+                      data: {
+                        status:
+                          "COMPLETED",
+
+                        merchantRequestId:
+                          MerchantRequestID ||
+                          currentPayment
+                            .merchantRequestId,
+
+                        receiptNumber:
+                          mpesaReceiptNumber,
+
+                        phoneNumber:
+                          callbackPhoneNumber,
+
+                        resultCode:
+                          String(
+                            ResultCode
+                          ),
+
+                        resultDescription:
+                          `M-PESA payment completed after another ${subscriptionPlan} subscription had already become active. The subscription was not activated again. Manual reconciliation required.`,
+                      },
+                    });
+
+                  return {
+                    alreadyProcessed:
+                      false,
+
+                    conflict:
+                      true,
+
+                    renewalConflict:
+                      false,
 
                     payment:
                       completedPayment,
@@ -917,66 +1240,112 @@ export const promotionPaymentCallback =
                 }
 
                 /*
-                 * --------------------------------------------------
-                 * COMPLETE PAYMENT
-                 * --------------------------------------------------
-                 */
+                * ==================================================
+                * VALID RENEWAL
+                * ==================================================
+                *
+                * At this point an explicit renewal has passed:
+                *
+                * - renewalOfId exists
+                * - renewal source exists
+                * - same user
+                * - same plan
+                * - source has startsAt
+                * - source has endsAt
+                * - no unrelated active subscription replaced it
+                *
+                * Notice that renewalSourceSubscription may now be
+                * EXPIRED.
+                *
+                * That is intentional.
+                *
+                * It may have expired while Safaricom was processing
+                * the payment.
+                *
+                * We therefore allow execution to continue.
+                */
 
-                await tx.payment.update(
-                  {
-                    where: {
-                      id:
-                        currentPayment
-                          .id,
-                    },
-
-                    data: {
-                      status:
-                        "COMPLETED",
-
-                      merchantRequestId:
-                        MerchantRequestID ||
-                        currentPayment
-                          .merchantRequestId,
-
-                      receiptNumber:
-                        mpesaReceiptNumber,
-
-                      phoneNumber:
-                        callbackPhoneNumber,
-
-                      resultCode:
-                        String(
-                          ResultCode
-                        ),
-
-                      resultDescription:
-                        ResultDesc ||
-                        "M-PESA subscription payment completed successfully.",
-                    },
-                  }
-                );
+                if (isRenewal) {
+                  console.log(
+                    `Valid ${subscriptionPlan} renewal detected. Subscription ${currentPayment.subscriptionId} renews ${renewalSourceSubscription.id}.`
+                  );
+                }
 
                 /*
-                 * --------------------------------------------------
-                 * ACTIVATE SUBSCRIPTION IN SAME TRANSACTION
-                 * --------------------------------------------------
-                 */
+                * ==================================================
+                * COMPLETE PAYMENT
+                * ==================================================
+                *
+                * We have now passed all entitlement safety checks.
+                */
+
+                await tx.payment.update({
+                  where: {
+                    id:
+                      currentPayment.id,
+                  },
+
+                  data: {
+                    status:
+                      "COMPLETED",
+
+                    merchantRequestId:
+                      MerchantRequestID ||
+                      currentPayment
+                        .merchantRequestId,
+
+                    receiptNumber:
+                      mpesaReceiptNumber,
+
+                    phoneNumber:
+                      callbackPhoneNumber,
+
+                    resultCode:
+                      String(
+                        ResultCode
+                      ),
+
+                    resultDescription:
+                      ResultDesc ||
+                      "M-PESA subscription payment completed successfully.",
+                  },
+                });
+
+                /*
+                * ==================================================
+                * ACTIVATE SUBSCRIPTION IN SAME TRANSACTION
+                * ==================================================
+                *
+                * The activation service is responsible for the
+                * subscription dates.
+                *
+                * NORMAL PURCHASE:
+                *
+                * startsAt = confirmation time
+                *
+                * RENEWAL BEFORE EXPIRY:
+                *
+                * startsAt = previousSubscription.endsAt
+                *
+                * RENEWAL AFTER SOURCE EXPIRED:
+                *
+                * startsAt = confirmation time
+                *
+                * This prevents the user from losing remaining paid
+                * days while also preventing retroactive entitlement.
+                */
 
                 const activatedSubscription =
-                  await activateSubscriptionWithTx(
-                    {
-                      tx,
+                  await activateSubscriptionWithTx({
+                    tx,
 
-                      subscriptionId:
-                        currentPayment
-                          .subscriptionId,
+                    subscriptionId:
+                      currentPayment
+                        .subscriptionId,
 
-                      paymentId:
-                        currentPayment
-                          .id,
-                    }
-                  );
+                    paymentId:
+                      currentPayment.id,
+                  });
 
                 return {
                   alreadyProcessed:
@@ -992,17 +1361,25 @@ export const promotionPaymentCallback =
             );
 
           /*
-           * Transaction has committed by the time execution reaches
-           * here.
-           */
+          * Transaction has committed by the time execution
+          * reaches here.
+          */
 
           if (
-            transactionResult
-              .conflict
+            transactionResult.conflict
           ) {
-            console.warn(
-             `Subscription payment ${payment.id} completed, but another subscription of the same plan is already active. Manual reconciliation required.`
-            );
+            if (
+              transactionResult
+                .renewalConflict
+            ) {
+              console.warn(
+                `Subscription renewal payment ${payment.id} completed, but the renewal could not be activated automatically. Manual reconciliation required.`
+              );
+            } else {
+              console.warn(
+                `Subscription payment ${payment.id} completed, but another subscription of the same plan is already active. Manual reconciliation required.`
+              );
+            }
           } else if (
             transactionResult
               .alreadyProcessed
