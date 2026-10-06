@@ -291,7 +291,7 @@ const requireOwnerBusiness = async (
     }
 
     return business;
-  };
+};
 
 /**
  * ============================================================
@@ -318,13 +318,30 @@ const resolveBusinessAnalyticsAccess = async (
         business.id
     );
 
+  const analyticsTier =
+    isBusinessPro
+      ? "BUSINESS_PRO"
+      : "BUSINESS_FREE";
+
   return {
+    /**
+     * --------------------------------------------------------
+     * CORE ENTITLEMENT
+     * --------------------------------------------------------
+     */
+
+    tier:
+      analyticsTier,
+
+    analyticsTier,
+
     isBusinessPro,
 
-    analyticsTier:
-      isBusinessPro
-        ? "BUSINESS_PRO"
-        : "BUSINESS_FREE",
+    /**
+     * --------------------------------------------------------
+     * HISTORICAL ANALYTICS ACCESS
+     * --------------------------------------------------------
+     */
 
     maxHistoryDays:
       isBusinessPro
@@ -336,6 +353,40 @@ const resolveBusinessAnalyticsAccess = async (
 
     advancedHistoricalAnalytics:
       isBusinessPro,
+
+    /**
+     * --------------------------------------------------------
+     * BUSINESS PRO FEATURE ACCESS
+     * --------------------------------------------------------
+     */
+
+    features: {
+      conversionIntelligence:
+        isBusinessPro,
+
+      demandIntelligence:
+        isBusinessPro,
+
+      categoryBenchmarks:
+        isBusinessPro,
+
+      growthRecommendations:
+        isBusinessPro,
+
+      advancedPromotionAnalytics:
+        isBusinessPro,
+    },
+
+    /**
+     * --------------------------------------------------------
+     * CURRENT ENTITLED SUBSCRIPTION
+     * --------------------------------------------------------
+     *
+     * This represents CURRENT entitlement only.
+     *
+     * Pending renewals and future scheduled renewals do not
+     * become entitlement through this object.
+     */
 
     subscription:
       isBusinessPro
@@ -380,6 +431,12 @@ export const getMyBusinessAnalyticsEntitlement = async (
   res
 ) => {
   try {
+    /**
+     * --------------------------------------------------------
+     * 1. Resolve authenticated owner's business
+     * --------------------------------------------------------
+     */
+
     const business =
       await requireOwnerBusiness(
         req,
@@ -390,69 +447,116 @@ export const getMyBusinessAnalyticsEntitlement = async (
       return;
     }
 
-    const entitlement =
-      await getBusinessProEntitlement(
-        req.user.id
+    /**
+     * --------------------------------------------------------
+     * 2. Resolve unified dashboard entitlement
+     * --------------------------------------------------------
+     *
+     * Business Pro entitlement is determined server-side.
+     *
+     * Client-supplied tier/plan/business flags are ignored.
+     */
+
+    const access =
+      await resolveBusinessAnalyticsAccess(
+        req.user.id,
+        business
       );
 
-    const isBusinessPro =
-      Boolean(
-        entitlement?.isBusinessPro &&
-        entitlement?.businessId === business.id
-      );
+    /**
+     * --------------------------------------------------------
+     * 3. Return dashboard-ready contract
+     * --------------------------------------------------------
+     */
 
-    return res.status(200).json({
-      success: true,
+    return res
+      .status(200)
+      .json({
+        success: true,
 
-      access: {
-        tier:
-          isBusinessPro
-            ? "BUSINESS_PRO"
-            : "BUSINESS_FREE",
+        business: {
+          id:
+            business.id,
 
-        isBusinessPro,
+          businessName:
+            business.businessName,
 
-        maxHistoryDays:
-          DEFAULT_ANALYTICS_DAYS,
+          slug:
+            business.slug,
 
-        customDateRange: false,
+          status:
+            business.status,
 
-        advancedAnalytics:
-          isBusinessPro,
+          verificationStatus:
+            business.verificationStatus,
+        },
 
-        subscription:
-          isBusinessPro
-            ? {
-                plan:
-                  entitlement.plan,
+        access: {
+          tier:
+            access.tier,
 
-                status:
-                  entitlement.status,
+          analyticsTier:
+            access.analyticsTier,
 
-                startedAt:
-                  entitlement.startedAt,
+          isBusinessPro:
+            access.isBusinessPro,
 
-                expiresAt:
-                  entitlement.expiresAt,
+          maxHistoryDays:
+            access.maxHistoryDays,
 
-                daysRemaining:
-                  entitlement.daysRemaining,
-              }
-            : null,
-      },
-    });
+          customDateRange:
+            access.customDateRange,
+
+          advancedHistoricalAnalytics:
+            access
+              .advancedHistoricalAnalytics,
+
+          features:
+            access.features,
+
+          subscription:
+            access.subscription,
+        },
+
+        dashboard: {
+          mode:
+            access.isBusinessPro
+              ? "BUSINESS_PRO"
+              : "BUSINESS_FREE",
+
+          showUpgrade:
+            !access.isBusinessPro,
+
+          showProBadge:
+            access.isBusinessPro,
+
+          extendedHistory:
+            access.isBusinessPro,
+
+          customDateRange:
+            access.customDateRange,
+
+          advancedAnalytics:
+            access.isBusinessPro,
+        },
+      });
   } catch (error) {
     console.error(
       "GET BUSINESS ANALYTICS ENTITLEMENT ERROR:",
       error
     );
 
-    return res.status(500).json({
-      success: false,
+    return res
+      .status(500)
+      .json({
+        success: false,
 
-      message:
-        "Failed to load business analytics entitlement.",
-    });
+        code:
+          "BUSINESS_ANALYTICS_ENTITLEMENT_ERROR",
+
+        message:
+          "Failed to load business analytics entitlement.",
+      });
   }
 };
 
@@ -464,19 +568,29 @@ export const getMyBusinessAnalyticsEntitlement = async (
  *
  * GET /api/business/me/analytics
  *
- * Query:
+ * Standard range:
  *
  * ?days=30
  *
- * Later Business Pro:
+ * Business Pro:
+ *
+ * ?days=90
+ *
+ * or:
  *
  * ?startDate=...
  * ?endDate=...
  *
- * For now the service supports custom windows internally,
- * but Free/Pro access policy will be added in later steps.
+ * Business Free is restricted to the standard analytics
+ * history window.
+ *
+ * Business Pro receives extended historical analytics and
+ * custom date-range access.
+ *
+ * Entitlement is resolved server-side from the authenticated
+ * user's active BUSINESS_PRO subscription.
  * ============================================================
- */
+ */ 
 
 export const getMyBusinessAnalytics = async (
   req,
@@ -3708,7 +3822,8 @@ export const getMyBusinessGrowthRecommendations =
 
       const access =
         await resolveBusinessAnalyticsAccess(
-          req.user.id
+          req.user.id,
+          business
         );
 
       /**
@@ -3748,30 +3863,45 @@ export const getMyBusinessGrowthRecommendations =
           },
 
           access: {
-            tier:
-              access.tier,
+          analyticsTier:
+            access.analyticsTier,
 
-            isBusinessPro:
-              false,
+          isBusinessPro:
+            false,
 
-            maxHistoryDays:
-              access.maxHistoryDays,
+          requiredPlan:
+            "BUSINESS_PRO",
 
-            customDateRange:
-              access.customDateRange,
-          },
+          growthRecommendations:
+            false,
 
-          preview: {
-            feature:
-              "GROWTH_RECOMMENDATIONS",
+          maxHistoryDays:
+            access.maxHistoryDays,
 
-            title:
-              "Growth Recommendations",
+          customDateRange:
+            access.customDateRange,
 
-            description:
-              "Turn your business analytics into prioritized actions based on observed conversion, demand and privacy-safe category benchmark signals.",
+          advancedHistoricalAnalytics:
+            access.advancedHistoricalAnalytics,
+        },
 
-            capabilities: [
+        preview: {
+          feature:
+            "GROWTH_RECOMMENDATIONS",
+
+          title:
+            "Growth Recommendations",
+
+          description:
+            "Turn your business analytics into prioritized actions based on observed conversion, demand and privacy-safe category benchmark signals.",
+
+          locked:
+            true,
+
+          requiresBusinessPro:
+            true,
+
+          capabilities: [
               "PRIORITIZED_GROWTH_ACTIONS",
               "LISTING_LEVEL_RECOMMENDATIONS",
               "BUSINESS_LEVEL_RECOMMENDATIONS",

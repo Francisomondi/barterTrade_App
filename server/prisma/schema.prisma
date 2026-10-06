@@ -640,7 +640,7 @@ model Subscription {
 
   renewalOf Subscription? @relation("SubscriptionRenewals", fields: [renewalOfId], references: [id], onDelete: SetNull)
 
-  renewals Subscription[] @relation("SubscriptionRenewals")
+  renewals Subscription? @relation("SubscriptionRenewals")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -649,12 +649,12 @@ model Subscription {
 
   payments Payment[]
 
+  @@unique([renewalOfId])
   @@index([userId])
   @@index([status])
   @@index([endsAt])
   @@index([userId, status])
   @@index([userId, plan, status])
-  @@index([renewalOfId])
 }
 
 model BusinessAnalyticsEvent {

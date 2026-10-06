@@ -543,37 +543,136 @@ const pendingSubscription =
      * the payment.
      */
 
-    const subscription =
-      await prisma.subscription.create({
-        data: {
-          userId,
+    let subscription;
 
-          plan:
-            plan.type,
+    try {
+      subscription =
+        await prisma.subscription.create({
+          data: {
+            userId,
 
-          status:
-            "PENDING",
+            plan:
+              plan.type,
 
-          amount:
-            plan.amount,
+            status:
+              "PENDING",
 
-          currency:
-            plan.currency,
+            amount:
+              plan.amount,
 
-          durationDays:
-            plan.durationDays,
+            currency:
+              plan.currency,
 
-          renewalOfId:
-            renew
-              ? activeSubscription.id
-              : null,
-        },
+            durationDays:
+              plan.durationDays,
 
-        include: {
-          renewalOf:
-            true,
-        },
-      });
+            renewalOfId:
+              renew
+                ? activeSubscription.id
+                : null,
+          },
+
+          include: {
+            renewalOf:
+              true,
+          },
+        });
+    } catch (error) {
+      /*
+      * --------------------------------------------------------
+      * DUPLICATE RENEWAL RACE
+      * --------------------------------------------------------
+      *
+      * PostgreSQL is the final concurrency guard.
+      *
+      * Two requests may both observe:
+      *
+      * no pending renewal
+      *
+      * before either INSERT commits.
+      *
+      * @@unique([renewalOfId]) guarantees that only one wins.
+      *
+      * Prisma reports a unique-constraint violation as P2002.
+      */
+
+      if (
+        renew &&
+        error?.code === "P2002"
+      ) {
+        const existingRenewal =
+          await prisma.subscription.findFirst({
+            where: {
+              userId,
+
+              plan:
+                plan.type,
+
+              renewalOfId:
+                activeSubscription.id,
+            },
+
+            include: {
+              payments: {
+                where: {
+                  type:
+                    "SUBSCRIPTION",
+                },
+
+                orderBy: {
+                  createdAt:
+                    "desc",
+                },
+              },
+
+              renewalOf:
+                true,
+            },
+          });
+
+        if (existingRenewal) {
+          return res
+            .status(200)
+            .json({
+              success: true,
+
+              reused: true,
+
+              renewal: true,
+              renewalStatus:
+              existingRenewal.status === "ACTIVE"
+                ? "SCHEDULED"
+                : "PENDING_PAYMENT",
+
+              paymentPending:
+                existingRenewal
+                  .payments
+                  .some(
+                    (payment) =>
+                      payment.status ===
+                      "PENDING"
+                  ),
+
+              message:
+                `An existing ${plan.name} renewal was found and returned.`,
+
+              subscription:
+                existingRenewal,
+
+              currentSubscription:
+                activeSubscription,
+            });
+        }
+      }
+
+      /*
+      * Not the duplicate-renewal race we know how to recover.
+      *
+      * Let the controller's outer catch handle it.
+      */
+
+      throw error;
+    }
 
     /*
      * ======================================================
