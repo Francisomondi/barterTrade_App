@@ -36,6 +36,7 @@ import PremiumAnalytics from "./pages/PremiumAnalytics";
 import BusinessStorefront from "./pages/BusinessStorefront";
 import BusinessDashboard from "./pages/BusinessDashboard";
 import BusinessReports from "./pages/BusinessReports";
+import BusinessPro from "./pages/BusinessPro";
 
 import CreateBusiness from "./pages/CreateBusiness";
 import ManageBusiness from "./pages/ManageBusiness";
@@ -109,6 +110,7 @@ const App = () => {
             <Route path="/business/dashboard" element={<BusinessDashboard />}/>
             <Route path="/business/reports" element={<BusinessReports />}/>
             <Route path="/business/manage"element={ <ManageBusiness />}/>
+            <Route path="/business/pro" element={<BusinessPro />}/>
         
 
           </Route>

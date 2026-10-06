@@ -497,97 +497,471 @@ if (
  * GET /api/subscriptions/me
  */
 
+/*
+ * ============================================================
+ * GET MY SUBSCRIPTIONS
+ * ============================================================
+ *
+ * GET /api/subscriptions/me
+ *
+ * Returns subscription-management information for:
+ *
+ * - PREMIUM
+ * - BUSINESS_PRO
+ *
+ * This endpoint is the frontend source of truth for:
+ *
+ * - active subscription
+ * - pending subscription
+ * - expiry
+ * - days remaining
+ * - renewal state
+ * - latest payment
+ * - payment history
+ *
+ * IMPORTANT:
+ *
+ * PREMIUM and BUSINESS_PRO are independent products.
+ * One must never affect the entitlement of the other.
+ * ============================================================
+ */
+
 export const getMySubscription = async (req, res) => {
-    try {
-      await expireSubscriptions();
+  try {
+    /*
+     * --------------------------------------------------------
+     * EXPIRE OLD SUBSCRIPTIONS FIRST
+     * --------------------------------------------------------
+     */
 
-      const userId =
-        req.user.id;
+    await expireSubscriptions();
 
-      /*
-       * Return latest subscriptions so frontend can show:
-       *
-       * ACTIVE
-       * PENDING
-       * EXPIRED
-       */
+    const userId = req.user.id;
 
-      const subscriptions =
-        await prisma.subscription.findMany({
-          where: {
-            userId,
-          },
+    /*
+     * --------------------------------------------------------
+     * LOAD USER SUBSCRIPTIONS
+     * --------------------------------------------------------
+     *
+     * We include subscription payments so the frontend can
+     * render payment history and the latest M-Pesa receipt.
+     * --------------------------------------------------------
+     */
 
-          orderBy: {
-            createdAt:
-              "desc",
-          },
+    const subscriptions =
+      await prisma.subscription.findMany({
+        where: {
+          userId,
+        },
 
-          include: {
-            payments: {
-              orderBy: {
-                createdAt:
-                  "desc",
-              },
+        orderBy: {
+          createdAt: "desc",
+        },
 
-              take: 1,
+        include: {
+          payments: {
+            where: {
+              type: "SUBSCRIPTION",
+            },
+
+            orderBy: {
+              createdAt: "desc",
+            },
+
+            select: {
+              id: true,
+              amount: true,
+              currency: true,
+              status: true,
+              provider: true,
+              phoneNumber: true,
+              receiptNumber: true,
+              resultCode: true,
+              resultDescription: true,
+              merchantRequestId: true,
+              checkoutRequestId: true,
+              createdAt: true,
+              updatedAt: true,
             },
           },
-        });
+        },
+      });
 
-      const now =
-        new Date();
+    const now = new Date();
+
+    /*
+     * --------------------------------------------------------
+     * HELPERS
+     * --------------------------------------------------------
+     */
+
+    const isCurrentlyActive = (subscription) => {
+      if (
+        !subscription ||
+        subscription.status !== "ACTIVE" ||
+        !subscription.startsAt ||
+        !subscription.endsAt
+      ) {
+        return false;
+      }
+
+      const startsAt =
+        new Date(subscription.startsAt);
+
+      const endsAt =
+        new Date(subscription.endsAt);
+
+      return (
+        startsAt <= now &&
+        endsAt > now
+      );
+    };
+
+    const getDaysRemaining = (subscription) => {
+      if (
+        !isCurrentlyActive(subscription)
+      ) {
+        return 0;
+      }
+
+      const endsAt =
+        new Date(
+          subscription.endsAt
+        ).getTime();
+
+      const difference =
+        endsAt - now.getTime();
+
+      return Math.max(
+        0,
+        Math.ceil(
+          difference /
+            (1000 * 60 * 60 * 24)
+        )
+      );
+    };
+
+    /*
+     * --------------------------------------------------------
+     * BUILD PLAN STATUS
+     * --------------------------------------------------------
+     */
+
+    const buildPlanStatus = (
+      planType
+    ) => {
+      const plan =
+        getSubscriptionPlan(
+          planType
+        );
+
+      const planSubscriptions =
+        subscriptions.filter(
+          (subscription) =>
+            subscription.plan ===
+            planType
+        );
 
       const activeSubscription =
-        subscriptions.find(
+        planSubscriptions.find(
           (subscription) =>
-            subscription.plan === "PREMIUM" &&
-            subscription.status === "ACTIVE" &&
-            subscription.startsAt &&
-            subscription.endsAt &&
-            new Date(subscription.startsAt) <= now &&
-            new Date(subscription.endsAt) > now
+            isCurrentlyActive(
+              subscription
+            )
         ) || null;
 
       const pendingSubscription =
-        subscriptions.find(
+        planSubscriptions.find(
           (subscription) =>
-            subscription.plan === "PREMIUM" &&
-            subscription.status === "PENDING"
+            subscription.status ===
+            "PENDING"
         ) || null;
 
-      return res
-        .status(200)
-        .json({
-          success: true,
+      const latestSubscription =
+        planSubscriptions[0] ||
+        null;
 
-          isPremium:
-            Boolean(
-              activeSubscription
-            ),
+      /*
+       * Flatten all payments belonging to this plan.
+       */
 
-          activeSubscription,
+      const payments =
+        planSubscriptions
+          .flatMap(
+            (subscription) =>
+              (
+                subscription.payments ||
+                []
+              ).map(
+                (payment) => ({
+                  ...payment,
 
-          pendingSubscription,
+                  subscriptionId:
+                    subscription.id,
 
-          subscriptions,
-        });
-    } catch (error) {
-      console.error(
-        "GET MY SUBSCRIPTION ERROR:",
-        error
+                  plan:
+                    subscription.plan,
+                })
+              )
+          )
+          .sort(
+            (a, b) =>
+              new Date(
+                b.createdAt
+              ).getTime() -
+              new Date(
+                a.createdAt
+              ).getTime()
+          );
+
+      const latestPayment =
+        payments[0] || null;
+
+      const latestCompletedPayment =
+        payments.find(
+          (payment) =>
+            payment.status ===
+            "COMPLETED"
+        ) || null;
+
+      const daysRemaining =
+        getDaysRemaining(
+          activeSubscription
+        );
+
+      /*
+       * Current renewal policy:
+       *
+       * Active subscriptions cannot be renewed early.
+       *
+       * This matches createSubscription() and
+       * payForSubscription().
+       */
+
+      const canRenew =
+        !activeSubscription;
+
+      return {
+        plan: {
+          type:
+            plan?.type ||
+            planType,
+
+          name:
+            plan?.name ||
+            planType,
+
+          amount:
+            plan?.amount ||
+            0,
+
+          currency:
+            plan?.currency ||
+            "KES",
+
+          durationDays:
+            plan?.durationDays ||
+            30,
+
+          description:
+            plan?.description ||
+            null,
+
+          features:
+            Array.isArray(
+              plan?.features
+            )
+              ? plan.features
+              : [],
+        },
+
+        /*
+         * Entitlement
+         */
+
+        isActive:
+          Boolean(
+            activeSubscription
+          ),
+
+        status:
+          activeSubscription
+            ? "ACTIVE"
+            : pendingSubscription
+              ? "PENDING"
+              : latestSubscription
+                ?.status ||
+                "INACTIVE",
+
+        /*
+         * Important dates
+         */
+
+        startsAt:
+          activeSubscription
+            ?.startsAt ||
+          null,
+
+        endsAt:
+          activeSubscription
+            ?.endsAt ||
+          null,
+
+        daysRemaining,
+
+        /*
+         * Subscription records
+         */
+
+        activeSubscription,
+
+        pendingSubscription,
+
+        latestSubscription,
+
+        /*
+         * Renewal
+         */
+
+        canRenew,
+
+        renewalBlockedReason:
+          activeSubscription
+            ? "Subscription is currently active."
+            : null,
+
+        /*
+         * Payments
+         */
+
+        latestPayment,
+
+        latestCompletedPayment,
+
+        latestReceiptNumber:
+          latestCompletedPayment
+            ?.receiptNumber ||
+          null,
+
+        payments,
+      };
+    };
+
+    /*
+     * --------------------------------------------------------
+     * PERSONAL PREMIUM
+     * --------------------------------------------------------
+     */
+
+    const premium =
+      buildPlanStatus(
+        "PREMIUM"
       );
 
-      return res
-        .status(500)
-        .json({
-          success: false,
+    /*
+     * --------------------------------------------------------
+     * BUSINESS PRO
+     * --------------------------------------------------------
+     */
 
-          message:
-            "Unable to load subscription.",
-        });
-    }
-  };
+    const businessPro =
+      buildPlanStatus(
+        "BUSINESS_PRO"
+      );
+
+    /*
+     * --------------------------------------------------------
+     * BUSINESS PROFILE ELIGIBILITY
+     * --------------------------------------------------------
+     *
+     * Business Pro should only be offered to accounts that
+     * actually own a business profile.
+     * --------------------------------------------------------
+     */
+
+    const businessProfile =
+      await prisma.businessProfile.findUnique({
+        where: {
+          userId,
+        },
+
+        select: {
+          id: true,
+          businessName: true,
+          slug: true,
+          status: true,
+          verificationStatus: true,
+        },
+      });
+
+    const businessProEligible =
+      Boolean(
+        businessProfile
+      );
+
+    /*
+     * --------------------------------------------------------
+     * RESPONSE
+     * --------------------------------------------------------
+     */
+
+    return res
+      .status(200)
+      .json({
+        success: true,
+
+        /*
+         * Backward compatibility
+         *
+         * Existing Premium.jsx code can continue using these.
+         */
+
+        isPremium:
+          premium.isActive,
+
+        activeSubscription:
+          premium.activeSubscription,
+
+        pendingSubscription:
+          premium.pendingSubscription,
+
+        subscriptions,
+
+        /*
+         * New structured subscription management API
+         */
+
+        plans: {
+          premium,
+
+          businessPro: {
+            ...businessPro,
+
+            eligible:
+              businessProEligible,
+
+            businessProfile:
+              businessProfile ||
+              null,
+          },
+        },
+      });
+  } catch (error) {
+    console.error(
+      "GET MY SUBSCRIPTION ERROR:",
+      error
+    );
+
+    return res
+      .status(500)
+      .json({
+        success: false,
+
+        message:
+          "Unable to load subscription information.",
+      });
+  }
+};
 
 /*
  * ============================================================
