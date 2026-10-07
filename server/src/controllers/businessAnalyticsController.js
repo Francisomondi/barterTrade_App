@@ -730,10 +730,12 @@ export const getMyBusinessAnalytics = async (
      */
 
     const analytics =
-      await getBusinessAnalytics(
-        business.id,
-        analyticsOptions
-      );
+      await getBusinessAnalytics({
+        businessId:
+          business.id,
+
+        ...analyticsOptions,
+      });
 
     /**
      * ----------------------------------------------------------

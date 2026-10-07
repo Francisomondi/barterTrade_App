@@ -163,8 +163,7 @@ export const getPublicBusiness = async (
  * ============================================================
  */
 
-export const getPublicBusinessListings =
-  async ({
+export const getPublicBusinessListings = async ({
     slug,
     page = 1,
     limit = 12,
@@ -179,6 +178,42 @@ export const getPublicBusinessListings =
           limit,
         },
       }
+    );
+
+    return response.data;
+};
+
+/*
+ * ============================================================
+ * GET BUSINESS ANALYTICS ENTITLEMENT
+ * ============================================================
+ *
+ * GET /api/business/me/analytics/entitlement
+ *
+ * This is the authoritative frontend source for:
+ *
+ * - BUSINESS_FREE
+ * - BUSINESS_PRO
+ * - active Business Pro subscription
+ * - expiry
+ * - days remaining
+ * - renewal state
+ *
+ * IMPORTANT:
+ *
+ * Business Pro must NEVER be inferred from:
+ *
+ * - Personal Premium
+ * - AuthContext
+ * - BusinessProfile fields
+ * - localStorage
+ * - frontend flags
+ */
+
+export const getMyBusinessAnalyticsEntitlement =
+  async () => {
+    const response = await api.get(
+      "/business/me/analytics/entitlement"
     );
 
     return response.data;

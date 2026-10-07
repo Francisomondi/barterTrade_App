@@ -479,7 +479,8 @@ const getEventMetrics =
       engagementRate:
         percentage(
           engagementActions,
-          totalViews
+          totalViews +
+            engagementActions
         ),
     };
   };
@@ -3482,7 +3483,6 @@ const engagementExceedsViews =
   engagementActions >
   views;
 
-
   const offersExceedEngagement =
     offersReceived >
     engagementActions;
@@ -3630,6 +3630,447 @@ dataQuality: {
 /**
  * ============================================================
  * UNDERPERFORMING LISTING DETECTION
+ * ============================================================
+ *
+ * Identifies factual conversion blockers from the listing's
+ * observed marketplace funnel.
+ *
+ * IMPORTANT:
+ *
+ * This helper deliberately avoids arbitrary percentage
+ * thresholds.
+ *
+ * A listing is marked as underperforming only when activity
+ * reaches one funnel stage but does not progress to the next
+ * observable stage.
+ *
+ * Data-quality mismatches are surfaced separately and must not
+ * be treated as genuine conversion underperformance.
+ * ============================================================
+ */
+
+const detectUnderperformingListing = ({
+  conversion,
+  engagementToOffer,
+  offerToAcceptedOffer,
+  acceptedOfferToTrade,
+  overallListingToTrade,
+  conversionFunnel,
+} = {}) => {
+  /**
+   * ----------------------------------------------------------
+   * Canonical counts
+   * ----------------------------------------------------------
+   */
+
+  const views =
+    safeNumber(
+      conversion?.counts?.views
+    );
+
+  const uniqueViewers =
+    safeNumber(
+      conversion?.counts
+        ?.uniqueViewers
+    );
+
+  const engagementActions =
+    safeNumber(
+      conversion?.counts
+        ?.engagementActions
+    );
+
+  const offersReceived =
+    safeNumber(
+      conversion?.counts
+        ?.offersReceived
+    );
+
+  const acceptedOffers =
+    safeNumber(
+      conversion?.counts
+        ?.acceptedOffers
+    );
+
+  const completedTrades =
+    safeNumber(
+      conversion?.counts
+        ?.completedTrades
+    );
+
+  /**
+   * ----------------------------------------------------------
+   * Canonical rates
+   * ----------------------------------------------------------
+   */
+
+  const engagementRate =
+    safeNumber(
+      conversion?.rates
+        ?.engagementRate
+    );
+
+  const engagementToOfferRate =
+    safeNumber(
+      engagementToOffer
+        ?.conversionRate
+    );
+
+  const viewToOfferRate =
+    safeNumber(
+      conversion?.rates
+        ?.viewToOfferRate
+    );
+
+  const offerAcceptanceRate =
+    safeNumber(
+      offerToAcceptedOffer
+        ?.conversionRate
+    );
+
+  const acceptedOfferToTradeRate =
+    safeNumber(
+      acceptedOfferToTrade
+        ?.conversionRate
+    );
+
+  const offerToTradeRate =
+    safeNumber(
+      conversion?.rates
+        ?.offerToTradeRate
+    );
+
+  const viewToTradeRate =
+    safeNumber(
+      overallListingToTrade
+        ?.conversionRate
+    );
+
+  /**
+   * ----------------------------------------------------------
+   * Data-quality guard
+   * ----------------------------------------------------------
+   *
+   * Historical windows can contain downstream events whose
+   * upstream activity happened before the selected period.
+   *
+   * Those attribution mismatches must not be interpreted as
+   * listing underperformance.
+   */
+
+  const hasAttributionMismatch =
+    Boolean(
+      conversionFunnel
+        ?.dataQuality
+        ?.hasAttributionMismatch
+    );
+
+  const dataQualitySignals =
+    Array.isArray(
+      conversionFunnel
+        ?.dataQuality
+        ?.signals
+    )
+      ? conversionFunnel
+          .dataQuality
+          .signals
+      : [];
+
+  /**
+   * ----------------------------------------------------------
+   * Underperformance issues
+   * ----------------------------------------------------------
+   */
+
+  const issues = [];
+
+  /**
+   * 1. Traffic -> Engagement
+   *
+   * The listing is receiving traffic but no tracked
+   * engagement actions are being generated.
+   */
+
+  if (
+    views > 0 &&
+    engagementActions === 0
+  ) {
+    issues.push({
+      code:
+        "TRAFFIC_NO_ENGAGEMENT",
+
+      stage:
+        "VIEW_TO_ENGAGEMENT",
+
+      title:
+        "Traffic is not producing engagement",
+
+      description:
+        "The listing received views but no tracked engagement actions in the selected analytics period.",
+
+      evidence: {
+        views,
+
+        uniqueViewers,
+
+        engagementActions,
+
+        engagementRate,
+      },
+    });
+  }
+
+  /**
+   * 2. Engagement -> Offers
+   *
+   * Visitors are interacting with the listing, but no
+   * marketplace offers have been generated.
+   */
+
+  if (
+    engagementActions > 0 &&
+    offersReceived === 0
+  ) {
+    issues.push({
+      code:
+        "ENGAGEMENT_NO_OFFERS",
+
+      stage:
+        "ENGAGEMENT_TO_OFFER",
+
+      title:
+        "Engagement is not producing offers",
+
+      description:
+        "The listing has tracked engagement but no received offers in the selected analytics period.",
+
+      evidence: {
+        views,
+
+        engagementActions,
+
+        offersReceived,
+
+        engagementToOfferRate,
+
+        viewToOfferRate,
+      },
+    });
+  }
+
+  /**
+   * 3. Offers -> Accepted Offers
+   *
+   * Marketplace intent exists, but none of the observed
+   * offers have progressed into accepted offers.
+   */
+
+  if (
+    offersReceived > 0 &&
+    acceptedOffers === 0
+  ) {
+    issues.push({
+      code:
+        "OFFERS_NO_ACCEPTANCE",
+
+      stage:
+        "OFFER_TO_ACCEPTED_OFFER",
+
+      title:
+        "Offers are not progressing to acceptance",
+
+      description:
+        "The listing received offers but none are represented as accepted in the selected analytics period.",
+
+      evidence: {
+        offersReceived,
+
+        acceptedOffers,
+
+        offerAcceptanceRate,
+      },
+    });
+  }
+
+  /**
+   * 4. Accepted Offers -> Completed Trades
+   *
+   * An exchange has progressed into acceptance, but no
+   * completed trade is represented in this period.
+   */
+
+  if (
+    acceptedOffers > 0 &&
+    completedTrades === 0
+  ) {
+    issues.push({
+      code:
+        "ACCEPTED_NO_COMPLETION",
+
+      stage:
+        "ACCEPTED_OFFER_TO_TRADE",
+
+      title:
+        "Accepted offers are not reaching completion",
+
+      description:
+        "The listing has accepted offers but no completed trade is represented in the selected analytics period.",
+
+      evidence: {
+        acceptedOffers,
+
+        completedTrades,
+
+        acceptedOfferToTradeRate,
+
+        offerToTradeRate,
+
+        viewToTradeRate,
+      },
+    });
+  }
+
+  /**
+   * ----------------------------------------------------------
+   * Data-quality protection
+   * ----------------------------------------------------------
+   *
+   * If the selected period contains a genuine attribution
+   * mismatch, do not label the listing as underperforming.
+   *
+   * The raw issues remain available for diagnostic visibility,
+   * but they are not promoted to actionable blockers.
+   */
+
+  const reliableForAssessment =
+    !hasAttributionMismatch;
+
+  const actionableIssues =
+    reliableForAssessment
+      ? issues
+      : [];
+
+  /**
+   * ----------------------------------------------------------
+   * Primary blocker
+   * ----------------------------------------------------------
+   *
+   * The deepest observed funnel blocker is the most immediate
+   * conversion stage preventing further marketplace progress.
+   */
+
+  const issuePriority = {
+    TRAFFIC_NO_ENGAGEMENT: 1,
+
+    ENGAGEMENT_NO_OFFERS: 2,
+
+    OFFERS_NO_ACCEPTANCE: 3,
+
+    ACCEPTED_NO_COMPLETION: 4,
+  };
+
+  const primaryIssue =
+    actionableIssues.length > 0
+      ? [...actionableIssues].sort(
+          (a, b) =>
+            (issuePriority[
+              b.code
+            ] || 0) -
+            (issuePriority[
+              a.code
+            ] || 0)
+        )[0]
+      : null;
+
+  /**
+   * ----------------------------------------------------------
+   * Final underperformance state
+   * ----------------------------------------------------------
+   */
+
+  const isUnderperforming =
+    actionableIssues.length > 0;
+
+  let status =
+    "NO_OBSERVED_BLOCKER";
+
+  if (hasAttributionMismatch) {
+    status =
+      "DATA_QUALITY_WARNING";
+  } else if (
+    isUnderperforming
+  ) {
+    status =
+      "CONVERSION_BLOCKER";
+  }
+
+  return {
+    isUnderperforming,
+
+    status,
+
+    issueCount:
+      actionableIssues.length,
+
+    primaryIssue,
+
+    issues:
+      actionableIssues,
+
+    observedIssues:
+      issues,
+
+    funnel: {
+      furthestStageReached:
+        conversionFunnel
+          ?.summary
+          ?.furthestStageReached ||
+        "NONE",
+
+      reachedTradeStage:
+        Boolean(
+          conversionFunnel
+            ?.summary
+            ?.reachedTradeStage
+        ),
+
+      largestDropOff:
+        conversionFunnel
+          ?.largestDropOff ||
+        null,
+    },
+
+    rates: {
+      engagementRate,
+
+      engagementToOfferRate,
+
+      viewToOfferRate,
+
+      offerAcceptanceRate,
+
+      acceptedOfferToTradeRate,
+
+      offerToTradeRate,
+
+      viewToTradeRate,
+    },
+
+    dataQuality: {
+      reliableForAssessment,
+
+      hasAttributionMismatch,
+
+      signals:
+        dataQualitySignals,
+    },
+  };
+};
+
+
+/**
+ * ============================================================
+ * HIGH OPPORTUNITY LISTING DETECTION
  * ============================================================
  */
 

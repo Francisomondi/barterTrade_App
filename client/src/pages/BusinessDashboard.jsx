@@ -35,6 +35,7 @@ import { toast } from "react-toastify";
 
 import {
   getMyBusiness,
+  getMyBusinessAnalyticsEntitlement,
   updateMyBusinessStatus,
 } from "../api/business";
 
@@ -70,6 +71,11 @@ const BusinessDashboard = () => {
   const [business, setBusiness] =
     useState(null);
 
+  const [
+    businessEntitlement,
+    setBusinessEntitlement,
+  ] = useState(null);
+
   const [listings, setListings] =
     useState([]);
 
@@ -98,9 +104,11 @@ const BusinessDashboard = () => {
 
         const [
           businessResponse,
+          businessEntitlementResponse,
           listingsResponse,
         ] = await Promise.all([
           getMyBusiness(),
+          getMyBusinessAnalyticsEntitlement(),
           getMyListings(),
         ]);
 
@@ -120,11 +128,17 @@ const BusinessDashboard = () => {
         ) {
           setBusiness(null);
           setListings([]);
+          setBusinessEntitlement(null);
+
           return;
         }
 
         setBusiness(
           currentBusiness
+        );
+
+        setBusinessEntitlement(
+          businessEntitlementResponse || null
         );
 
         /*
@@ -221,85 +235,178 @@ const BusinessDashboard = () => {
   };
 
   /*
-   * ==========================================================
-   * LISTING SUMMARY
-   * ==========================================================
-   */
+ * ==========================================================
+ * LISTING SUMMARY
+ * ==========================================================
+ */
 
-  const listingSummary =
-    useMemo(() => {
-      return {
-        total:
-          listings.length,
-      };
-    }, [listings]);
+const listingSummary =
+  useMemo(() => {
+    return {
+      total:
+        listings.length,
+    };
+  }, [listings]);
 
-  /*
-   * ==========================================================
-   * RECENT LISTINGS
-   * ==========================================================
-   */
+/*
+ * ==========================================================
+ * RECENT LISTINGS
+ * ==========================================================
+ */
 
-  const recentListings =
-    useMemo(() => {
-      return [...listings]
-        .sort((a, b) => {
-          const aDate =
-            new Date(
-              a.createdAt || 0
-            ).getTime();
+const recentListings =
+  useMemo(() => {
+    return [...listings]
+      .sort((a, b) => {
+        const aDate =
+          new Date(
+            a.createdAt || 0
+          ).getTime();
 
-          const bDate =
-            new Date(
-              b.createdAt || 0
-            ).getTime();
+        const bDate =
+          new Date(
+            b.createdAt || 0
+          ).getTime();
 
-          return bDate - aDate;
-        })
-        .slice(0, 4);
-    }, [listings]);
+        return bDate - aDate;
+      })
+      .slice(0, 4);
+  }, [listings]);
 
-  /*
-   * ==========================================================
-   * PREMIUM EXPIRY
-   * ==========================================================
-   */
+/*
+ * ==========================================================
+ * BUSINESS PRO ENTITLEMENT
+ * ==========================================================
+ *
+ * This is derived from the authoritative backend
+ * entitlement response.
+ *
+ * Personal Premium does NOT grant Business Pro.
+ */
 
-  const premiumExpiryLabel =
-    useMemo(() => {
-      if (
-        !isPremium ||
-        !premiumEndsAt
-      ) {
-        return null;
-      }
+const businessAccess =
+  businessEntitlement?.access ||
+  null;
 
-      const date =
-        new Date(
-          premiumEndsAt
-        );
+const isBusinessPro =
+  businessAccess?.isBusinessPro ===
+  true;
 
-      if (
-        Number.isNaN(
-          date.getTime()
-        )
-      ) {
-        return null;
-      }
+const businessTier =
+  businessAccess?.tier ||
+  businessAccess?.analyticsTier ||
+  "BUSINESS_FREE";
 
-      return date.toLocaleDateString(
-        "en-KE",
-        {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        }
+const businessProSubscription =
+  businessAccess?.subscription ||
+  null;
+
+const businessProExpiresAt =
+  businessProSubscription?.expiresAt ||
+  null;
+
+const rawBusinessProDaysRemaining =
+  businessProSubscription
+    ?.daysRemaining;
+
+const businessProDaysRemaining =
+  rawBusinessProDaysRemaining !==
+    null &&
+  rawBusinessProDaysRemaining !==
+    undefined &&
+  Number.isFinite(
+    Number(
+      rawBusinessProDaysRemaining
+    )
+  )
+    ? Number(
+        rawBusinessProDaysRemaining
+      )
+    : null;
+
+/*
+ * ==========================================================
+ * BUSINESS PRO EXPIRY
+ * ==========================================================
+ */
+
+const businessProExpiryLabel =
+  useMemo(() => {
+    if (
+      !isBusinessPro ||
+      !businessProExpiresAt
+    ) {
+      return null;
+    }
+
+    const date =
+      new Date(
+        businessProExpiresAt
       );
-    }, [
-      isPremium,
-      premiumEndsAt,
-    ]);
 
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return null;
+    }
+
+    return date.toLocaleDateString(
+      "en-KE",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    );
+  }, [
+    isBusinessPro,
+    businessProExpiresAt,
+  ]);
+
+/*
+ * ==========================================================
+ * PERSONAL PREMIUM EXPIRY
+ * ==========================================================
+ *
+ * Personal Premium remains separate from Business Pro.
+ */
+
+const premiumExpiryLabel =
+  useMemo(() => {
+    if (
+      !isPremium ||
+      !premiumEndsAt
+    ) {
+      return null;
+    }
+
+    const date =
+      new Date(
+        premiumEndsAt
+      );
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return null;
+    }
+
+    return date.toLocaleDateString(
+      "en-KE",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    );
+  }, [
+    isPremium,
+    premiumEndsAt,
+  ]);
   /*
    * ==========================================================
    * UPDATE BUSINESS STATUS
@@ -913,20 +1020,16 @@ const BusinessDashboard = () => {
             </p>
           </div>
 
-          {/* PREMIUM PLAN */}
+          {/* BUSINESS PRO PLAN */}
 
           <Link
-            to={
-              isPremium
-                ? "/account/subscription"
-                : "/premium"
-            }
+            to="/business/pro"
             className="group rounded-2xl border border-[#E8DFDB] bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
           >
             <div className="flex items-start justify-between">
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                  isPremium
+                  isBusinessPro
                     ? "bg-amber-50"
                     : "bg-[#F5E8EB]"
                 }`}
@@ -934,7 +1037,7 @@ const BusinessDashboard = () => {
                 <Crown
                   size={18}
                   className={
-                    isPremium
+                    isBusinessPro
                       ? "text-amber-600"
                       : "text-[#5B1725]"
                   }
@@ -948,96 +1051,130 @@ const BusinessDashboard = () => {
             </div>
 
             <p className="mt-4 text-[8px] font-black uppercase tracking-[0.12em] text-gray-400">
-              Plan
+              Business Plan
             </p>
 
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <p
                 className={`text-lg font-black ${
-                  isPremium
+                  isBusinessPro
                     ? "text-amber-700"
                     : "text-[#3D0F18]"
                 }`}
               >
-                {isPremium
-                  ? "Premium"
-                  : "Free"}
+                {isBusinessPro
+                  ? "Business Pro"
+                  : "Business Free"}
               </p>
 
-              {isPremium && (
-                <PremiumBadge
-                  size="sm"
-                  compact
-                />
+              {isBusinessPro && (
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-800">
+                  Pro
+                </span>
               )}
             </div>
 
             <p className="mt-1 text-[10px] text-gray-500">
-              {isPremium
-                ? "Manage subscription"
-                : "Upgrade your account"}
+              {isBusinessPro
+                ? "Manage Business Pro"
+                : "Unlock advanced business tools"}
             </p>
           </Link>
         </section>
 
-        {/* ====================================================
-            PREMIUM BUSINESS ACCOUNT
-        ==================================================== */}
+      {/* ====================================================
+          BUSINESS PRO SUBSCRIPTION
+      ==================================================== */}
 
-        {isPremium && (
-          <section className="mt-4 overflow-hidden rounded-2xl border border-amber-200/70 bg-gradient-to-r from-amber-50 to-white shadow-sm">
-            <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <Crown
-                    size={19}
-                    className="text-amber-600"
-                  />
-                </div>
+      <section
+        className={`mt-4 overflow-hidden rounded-2xl border shadow-sm ${
+          isBusinessPro
+            ? "border-amber-200/70 bg-gradient-to-r from-amber-50 to-white"
+            : "border-[#E8DFDB] bg-white"
+        }`}
+      >
+        <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex items-start gap-3">
+            <div
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl shadow-sm ${
+                isBusinessPro
+                  ? "bg-white"
+                  : "bg-[#F5E8EB]"
+              }`}
+            >
+              <Crown
+                size={19}
+                className={
+                  isBusinessPro
+                    ? "text-amber-600"
+                    : "text-[#5B1725]"
+                }
+              />
+            </div>
 
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-black text-[#3D0F18]">
-                      Premium Business Account
-                    </h2>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-black text-[#3D0F18]">
+                  {isBusinessPro
+                    ? "Business Pro"
+                    : "Business Free"}
+                </h2>
 
-                    <PremiumBadge
-                      size="sm"
-                      compact
-                    />
-                  </div>
-
-                  <p className="mt-1 text-[10px] leading-5 text-gray-500">
-                    Your Business
-                    Account is using
-                    your active Premium
-                    membership.
-                  </p>
-
-                  {premiumExpiryLabel && (
-                    <p className="mt-1 text-[10px] font-bold text-amber-700">
-                      Active until{" "}
-                      {
-                        premiumExpiryLabel
-                      }
-                    </p>
-                  )}
-                </div>
+                {isBusinessPro && (
+                  <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-800">
+                    Active
+                  </span>
+                )}
               </div>
 
-              <Link
-                to="/account/subscription"
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-[10px] font-black text-amber-800 transition hover:bg-amber-50"
-              >
-                Manage Subscription
+              <p className="mt-1 text-[10px] leading-5 text-gray-500">
+                {isBusinessPro
+                  ? "Advanced analytics, business intelligence and reporting are unlocked."
+                  : "Upgrade to Business Pro to unlock advanced analytics, intelligence and reporting."}
+              </p>
 
-                <ChevronRight
-                  size={14}
-                />
-              </Link>
+              {isBusinessPro &&
+                businessProExpiryLabel && (
+                  <p className="mt-1 text-[10px] font-bold text-amber-700">
+                    Active until{" "}
+                    {businessProExpiryLabel}
+
+                    {businessProDaysRemaining !==
+                      null && (
+                      <>
+                        {" "}
+                        ·{" "}
+                        {businessProDaysRemaining}{" "}
+                        {businessProDaysRemaining ===
+                        1
+                          ? "day"
+                          : "days"}{" "}
+                        remaining
+                      </>
+                    )}
+                  </p>
+                )}
             </div>
-          </section>
-        )}
+          </div>
+
+          <Link
+            to="/business/pro"
+            className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[10px] font-black transition ${
+              isBusinessPro
+                ? "border border-amber-200 bg-white text-amber-800 hover:bg-amber-50"
+                : "bg-[#5B1725] text-white hover:bg-[#46111C]"
+            }`}
+          >
+            {isBusinessPro
+              ? "Manage Business Pro"
+              : "Upgrade to Business Pro"}
+
+            <ChevronRight
+              size={14}
+            />
+          </Link>
+        </div>
+      </section>
 
         {/* ====================================================
             MAIN CONTENT
@@ -1316,6 +1453,16 @@ const BusinessDashboard = () => {
               title="Manage Listings"
               description="Update your items"
             />
+            <DashboardAction
+              to="/business/analytics"
+              icon={FileBarChart}
+              title="Business Analytics"
+              description={
+                isBusinessPro
+                  ? "Open advanced analytics"
+                  : "View business performance"
+              }
+            />
 
             <DashboardAction
               to="/business/reports"
@@ -1335,21 +1482,17 @@ const BusinessDashboard = () => {
               )}
 
             <DashboardAction
-              to={
-                isPremium
-                  ? "/account/subscription"
-                  : "/premium"
-              }
+              to="/business/pro"
               icon={Crown}
               title={
-                isPremium
-                  ? "Premium"
-                  : "Upgrade to Premium"
+                isBusinessPro
+                  ? "Business Pro"
+                  : "Upgrade to Business Pro"
               }
               description={
-                isPremium
-                  ? "Manage your plan"
-                  : "Unlock Premium benefits"
+                isBusinessPro
+                  ? "Manage your business plan"
+                  : "Unlock advanced business tools"
               }
             />
           </div>
