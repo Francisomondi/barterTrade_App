@@ -206,6 +206,98 @@ const BenchmarkInsightCard = ({ item }) => {
   );
 };
 
+
+const GrowthActionCard = ({ action }) => {
+  const priority = String(action?.priority ?? "").toUpperCase();
+  const priorityClass = priority === "HIGH"
+    ? "border-red-200 bg-red-50 text-red-700"
+    : priority === "MEDIUM"
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : "border-gray-200 bg-gray-50 text-gray-600";
+
+  return (
+    <article className="rounded-2xl border border-[#EEE6E2] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h4 className="text-sm font-black text-[#3D0F18]">{action?.title || "Growth opportunity"}</h4>
+        {priority && (
+          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black ${priorityClass}`}>
+            {priority} priority
+          </span>
+        )}
+      </div>
+      {action?.listing?.title && (
+        <p className="mt-2 text-xs font-semibold text-[#8A2638]">{action.listing.title}</p>
+      )}
+      {typeof action?.message === "string" && (
+        <p className="mt-2 text-xs leading-5 text-gray-600">{action.message}</p>
+      )}
+      {typeof action?.reason === "string" && (
+        <p className="mt-2 text-xs leading-5 text-gray-500"><strong>Why:</strong> {action.reason}</p>
+      )}
+      {typeof action?.action === "string" && (
+        <div className="mt-3 rounded-xl bg-[#F8F5F3] p-3 text-xs leading-5 text-[#3D0F18]">
+          <strong>Recommended action:</strong> {action.action}
+        </div>
+      )}
+    </article>
+  );
+};
+
+
+const PromotionStat = ({ label, value, note }) => (
+  <article className="rounded-2xl border border-[#EEE6E2] bg-[#FAF8F7] p-4">
+    <p className="text-[11px] font-bold text-gray-500">{label}</p>
+    <p className="mt-2 break-words text-xl font-black text-[#3D0F18]">{value}</p>
+    {note && <p className="mt-1 text-[11px] text-gray-500">{note}</p>}
+  </article>
+);
+
+const PromotionPerformanceCard = ({ promotion, currencyLabel }) => {
+  const activity = promotion?.activityDuringPromotion ?? {};
+  const traffic = promotion?.promotionTraffic ?? {};
+  return (
+    <article className="rounded-2xl border border-[#EEE6E2] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-black text-[#3D0F18]">{promotion?.listing?.title || "Promoted listing"}</h4>
+          <p className="mt-1 text-xs text-gray-500">{String(promotion?.type ?? "Promotion").replaceAll("_", " ")}</p>
+        </div>
+        {promotion?.performanceState && (
+          <span className="rounded-full bg-[#F5E8EB] px-2.5 py-1 text-[10px] font-bold text-[#5B1725]">
+            {String(promotion.performanceState).replaceAll("_", " ")}
+          </span>
+        )}
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+        <div><span className="text-gray-500">Promotion views</span><p className="font-black text-[#3D0F18]">{formatNumber(traffic.views)}</p></div>
+        <div><span className="text-gray-500">Promotion clicks</span><p className="font-black text-[#3D0F18]">{formatNumber(traffic.clicks)}</p></div>
+        <div><span className="text-gray-500">Offers during promotion</span><p className="font-black text-[#3D0F18]">{formatNumber(activity.offersDuringPromotion)}</p></div>
+        <div><span className="text-gray-500">Trades during promotion</span><p className="font-black text-[#3D0F18]">{formatNumber(activity.completedTradesDuringPromotion)}</p></div>
+      </div>
+      {promotion?.amount != null && (
+        <p className="mt-4 border-t border-[#EEE6E2] pt-3 text-xs font-semibold text-[#8A2638]">
+          Promotion spend: {promotion.currency || currencyLabel || "Currency unspecified"} {formatNumber(promotion.amount)}
+        </p>
+      )}
+    </article>
+  );
+};
+
+const PromotionRecommendationCard = ({ item }) => {
+  const priority = String(item?.priority ?? "").toUpperCase();
+  return (
+    <article className="rounded-2xl border border-[#EEE6E2] bg-white p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h4 className="text-sm font-black text-[#3D0F18]">{item?.title || String(item?.code || "Optimization opportunity").replaceAll("_", " ")}</h4>
+        {priority && <span className="rounded-full bg-[#FFF6DF] px-2.5 py-1 text-[10px] font-black text-[#8A6420]">{priority}</span>}
+      </div>
+      {typeof item?.message === "string" && <p className="mt-2 text-xs leading-5 text-gray-600">{item.message}</p>}
+      {typeof item?.reason === "string" && <p className="mt-2 text-xs leading-5 text-gray-500">{item.reason}</p>}
+      {typeof item?.action === "string" && <p className="mt-3 rounded-xl bg-[#F8F5F3] p-3 text-xs font-semibold leading-5 text-[#3D0F18]">{item.action}</p>}
+    </article>
+  );
+};
+
 const BusinessAnalytics = () => {
   const [
     entitlement,
@@ -1152,6 +1244,35 @@ const benchmarkRecommendations = Array.isArray(benchmarkData?.recommendations)
 
 
 
+
+/**
+ * BUSINESS PRO — GROWTH RECOMMENDATIONS
+ * API response: { success, intelligence: { summary, topActions,
+ * businessRecommendations, listings, recommendations, ... } }
+ */
+const growthData = growthRecommendations?.intelligence ?? null;
+const growthSummary = growthData?.summary ?? {};
+const growthTopActions = Array.isArray(growthData?.topActions)
+  ? growthData.topActions : [];
+const growthBusinessActions = Array.isArray(growthData?.businessRecommendations)
+  ? growthData.businessRecommendations : [];
+const growthListingGroups = Array.isArray(growthData?.listings)
+  ? growthData.listings : [];
+
+
+/** Advanced Promotion Analytics — server-provided metrics only. */
+const promotionData = advancedPromotionAnalytics?.intelligence ?? null;
+const promotionSummary = promotionData?.summary ?? {};
+const promotionCurrencies = Array.isArray(promotionSummary.currencies) ? promotionSummary.currencies : [];
+const promotionCurrency = promotionCurrencies.length === 1 ? promotionCurrencies[0] : null;
+const promotionBest = Array.isArray(promotionData?.bestPerformingPromotions) ? promotionData.bestPerformingPromotions : [];
+const promotionUnderperforming = Array.isArray(promotionData?.underperformingPromotions) ? promotionData.underperformingPromotions : [];
+const promotionRecommendations = Array.isArray(promotionData?.topRecommendations) ? promotionData.topRecommendations : [];
+const promotionTrends = Array.isArray(promotionData?.trends) ? promotionData.trends : [];
+const formatPromotionCost = (value) => value == null || !promotionCurrency
+  ? "Not available"
+  : `${promotionCurrency} ${Number(value).toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
+
   /*
    * ==========================================================
    * LOADING
@@ -1318,7 +1439,7 @@ const benchmarkRecommendations = Array.isArray(benchmarkData?.recommendations)
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2 sm:mt-0">
-            {[7, 14, 30].map(
+            {[7, 14, 30, ...(isBusinessPro ? [60, 90, 180, 365].filter((days) => days <= maxHistoryDays) : [])].map(
               (days) => (
                 <button
                   key={days}
@@ -2903,6 +3024,196 @@ const benchmarkRecommendations = Array.isArray(benchmarkData?.recommendations)
                         </p>
                       </div>
                     )}
+                </>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ======================================================
+            BUSINESS PRO — GROWTH RECOMMENDATIONS
+        ====================================================== */}
+        {canUseGrowthRecommendations && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-[#DCC9CE] bg-white shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#EEE6E2] px-5 py-5 sm:px-6">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]">
+                  <Lightbulb size={20} />
+                </span>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#8A2638]">Business Pro</p>
+                  <h2 className="mt-1 text-lg font-black text-[#3D0F18]">Growth Recommendations</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+                    Prioritized actions based on observed listing, conversion, demand and category signals.
+                  </p>
+                </div>
+              </div>
+              <span className="rounded-full bg-[#FFF6DF] px-3 py-1.5 text-[10px] font-black text-[#8A6420]">
+                <Crown size={12} className="mr-1 inline" /> Pro Intelligence
+              </span>
+            </div>
+            <div className="space-y-6 p-5 sm:p-6">
+              {proAnalyticsErrors?.growthRecommendations ? (
+                <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-bold text-red-800">Growth recommendations unavailable</p>
+                  <p className="mt-1 text-xs text-red-700">{proAnalyticsErrors.growthRecommendations}</p>
+                </div>
+              ) : proAnalyticsLoading && !growthData ? (
+                <div className="flex items-center gap-3 py-8 text-sm text-gray-500">
+                  <RefreshCw size={18} className="animate-spin" /> Loading growth recommendations...
+                </div>
+              ) : !growthData ? (
+                <p className="rounded-2xl border border-dashed border-[#DCC9CE] p-6 text-center text-sm text-gray-500">
+                  Growth insights are not available. Refresh analytics to try again.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    {[
+                      ["Total actions", growthSummary.totalRecommendations],
+                      ["High priority", growthSummary.highPriority],
+                      ["Medium priority", growthSummary.mediumPriority],
+                      ["Affected listings", growthSummary.affectedListings],
+                    ].map(([label, value]) => (
+                      <article key={label} className="rounded-2xl border border-[#EEE6E2] bg-[#FAF8F7] p-4">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-gray-500">{label}</p>
+                        <p className="mt-2 text-2xl font-black text-[#3D0F18]">{formatNumber(value)}</p>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-black text-[#3D0F18]">Top actions</h3>
+                    <p className="mt-1 text-xs text-gray-500">The five highest-ranked actions from your analytics engine.</p>
+                    {growthTopActions.length ? (
+                      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                        {growthTopActions.map((action, index) => (
+                          <GrowthActionCard key={`${action?.code ?? "action"}-${action?.listing?.id ?? index}`} action={action} />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-3 rounded-2xl border border-dashed border-[#DCC9CE] p-5 text-sm text-gray-500">
+                        No actionable recommendations were identified for this period.
+                      </p>
+                    )}
+                  </div>
+
+                  {growthBusinessActions.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Business-wide improvements</h3>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        {growthBusinessActions.map((action, index) => (
+                          <GrowthActionCard key={`${action?.code ?? "business"}-${index}`} action={action} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {growthListingGroups.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Listing-specific opportunities</h3>
+                      <div className="mt-3 space-y-4">
+                        {growthListingGroups.map((group, index) => (
+                          <article key={group?.listing?.id ?? index} className="rounded-2xl border border-[#EEE6E2] p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <h4 className="text-sm font-black text-[#3D0F18]">{group?.listing?.title || "Listing"}</h4>
+                              <span className="text-xs font-bold text-[#8A2638]">
+                                {formatNumber(group?.recommendationCount)} actions
+                              </span>
+                            </div>
+                            {Array.isArray(group?.recommendations) && group.recommendations.length > 0 && (
+                              <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                                {group.recommendations.map((action, actionIndex) => (
+                                  <GrowthActionCard key={`${action?.code ?? "listing"}-${actionIndex}`} action={action} />
+                                ))}
+                              </div>
+                            )}
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <p className="border-t border-[#EEE6E2] pt-4 text-xs leading-5 text-gray-500">
+                    Recommendations are generated from observed marketplace activity, not predictions or guarantees of results.
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* BUSINESS PRO — ADVANCED PROMOTION ANALYTICS */}
+        {canUseAdvancedPromotionAnalytics && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-[#DCC9CE] bg-white shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#EEE6E2] px-5 py-5 sm:px-6">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]"><Megaphone size={20} /></span>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#8A2638]">Business Pro</p>
+                  <h2 className="mt-1 text-lg font-black text-[#3D0F18]">Advanced Promotion Analytics</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">Evaluate promotion traffic, observed outcomes, costs and optimization opportunities.</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-[#FFF6DF] px-3 py-1.5 text-[10px] font-black text-[#8A6420]">Pro Intelligence</span>
+            </div>
+            <div className="space-y-6 p-5 sm:p-6">
+              {proAnalyticsErrors?.advancedPromotionAnalytics ? (
+                <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{proAnalyticsErrors.advancedPromotionAnalytics}</div>
+              ) : proAnalyticsLoading && !promotionData ? (
+                <p className="flex items-center gap-2 py-8 text-sm text-gray-500"><RefreshCw size={16} className="animate-spin" /> Loading promotion intelligence...</p>
+              ) : !promotionData ? (
+                <p className="rounded-2xl border border-dashed p-5 text-sm text-gray-500">Promotion intelligence is unavailable. Refresh analytics to retry.</p>
+              ) : numberValue(promotionSummary.totalPromotions) === 0 ? (
+                <p className="rounded-2xl border border-dashed border-[#DCC9CE] p-6 text-center text-sm text-gray-500">No promotions were recorded for this period.</p>
+              ) : (
+                <>
+                  {promotionCurrencies.length > 1 && (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">Multiple currencies were used ({promotionCurrencies.join(", ")}). Combined spend and cost-per-outcome are not displayed because currencies cannot be added without conversion.</p>
+                  )}
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <PromotionStat label="Promotions" value={formatNumber(promotionSummary.totalPromotions)} />
+                    <PromotionStat label="Promotion views" value={formatNumber(promotionSummary.totalPromotionViews)} />
+                    <PromotionStat label="Promotion clicks" value={formatNumber(promotionSummary.totalPromotionClicks)} />
+                    <PromotionStat label="Click-through rate" value={percentageValue(promotionSummary.clickThroughRate)} />
+                    <PromotionStat label="Total spend" value={formatPromotionCost(promotionSummary.totalSpend)} />
+                    <PromotionStat label="Offers during promotions" value={formatNumber(promotionSummary.offersDuringPromotions)} />
+                    <PromotionStat label="Accepted offers during promotions" value={formatNumber(promotionSummary.acceptedOffersDuringPromotions)} />
+                    <PromotionStat label="Completed trades during promotions" value={formatNumber(promotionSummary.completedTradesDuringPromotions)} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-[#3D0F18]">Cost efficiency</h3>
+                    <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                      <PromotionStat label="Cost per view" value={formatPromotionCost(promotionSummary.averageCostPerView)} />
+                      <PromotionStat label="Cost per click" value={formatPromotionCost(promotionSummary.averageCostPerClick)} />
+                      <PromotionStat label="Cost per offer" value={formatPromotionCost(promotionSummary.averageCostPerOffer)} />
+                      <PromotionStat label="Cost per completed trade" value={formatPromotionCost(promotionSummary.averageCostPerCompletedTrade)} />
+                    </div>
+                  </div>
+                  {promotionBest.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Best-performing promotions</h3>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">{promotionBest.map((item, index) => <PromotionPerformanceCard key={item?.id ?? index} promotion={item} currencyLabel={promotionCurrency} />)}</div>
+                    </div>
+                  )}
+                  {promotionUnderperforming.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Promotions needing attention</h3>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">{promotionUnderperforming.map((item, index) => <PromotionPerformanceCard key={item?.id ?? index} promotion={item} currencyLabel={promotionCurrency} />)}</div>
+                    </div>
+                  )}
+                  {promotionRecommendations.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Optimization recommendations</h3>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">{promotionRecommendations.map((item, index) => <PromotionRecommendationCard key={`${item?.code ?? "tip"}-${index}`} item={item} />)}</div>
+                    </div>
+                  )}
+                  {promotionTrends.length > 0 && (
+                    <div className="border-t border-[#EEE6E2] pt-5">
+                      <h3 className="text-sm font-black text-[#3D0F18]">Historical promotion activity</h3>
+                      <p className="mt-2 text-xs text-gray-500">{formatNumber(promotionTrends.length)} trend data points available for this period.</p>
+                    </div>
+                  )}
+                  <p className="border-t border-[#EEE6E2] pt-4 text-xs leading-5 text-gray-500">Offers and trades are activity observed during promotion windows, not proven results caused by promotions. Barter trades are not monetary revenue; financial ROI is not calculated.</p>
                 </>
               )}
             </div>
