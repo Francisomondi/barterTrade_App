@@ -55,6 +55,30 @@ const formatNumber = (
   ).format(number);
 };
 
+const numberValue = (
+  value
+) => {
+  const number =
+    Number(value);
+
+  return Number.isFinite(
+    number
+  )
+    ? number
+    : 0;
+};
+
+const percentageValue = (
+  value
+) => {
+  const number =
+    numberValue(value);
+
+  return `${number.toFixed(
+    1
+  )}%`;
+};
+
 /**
  * ============================================================
  * BUSINESS PRO ANALYTICS FEATURES
@@ -138,6 +162,49 @@ const BUSINESS_PRO_ANALYTICS_FEATURES = [
       Megaphone,
   },
 ];
+
+/** Renders only explicit, non-suppressed values returned by the API. */
+const BenchmarkComparisonCard = ({ item, fallbackTitle }) => {
+  const name = item?.categoryName ?? item?.listingTitle ?? item?.title ?? item?.name ?? fallbackTitle;
+  const suppressed = item?.suppressed === true || item?.isSuppressed === true ||
+    item?.status === "SUPPRESSED" || item?.benchmark?.suppressed === true;
+  const position = item?.position ?? item?.performancePosition ?? item?.comparison?.position;
+  const explanation = item?.description ?? item?.reason ?? item?.message;
+  return (
+    <article className="rounded-2xl border border-[#EEE6E2] bg-white p-4">
+      <h4 className="break-words text-sm font-black text-[#3D0F18]">{typeof name === "string" ? name : fallbackTitle}</h4>
+      {suppressed ? (
+        <p className="mt-2 text-xs text-amber-700">Benchmark withheld: insufficient eligible marketplace sample.</p>
+      ) : (
+        <>
+          {typeof position === "string" && (
+            <span className="mt-3 inline-flex rounded-full bg-[#F5E8EB] px-3 py-1 text-xs font-bold text-[#5B1725]">
+              {position.replaceAll("_", " ")}
+            </span>
+          )}
+          {typeof explanation === "string" && <p className="mt-2 text-xs leading-5 text-gray-600">{explanation}</p>}
+          {!position && !explanation && (
+            <p className="mt-2 text-xs text-gray-500">Category comparison recorded. Detailed metrics depend on available benchmark samples.</p>
+          )}
+        </>
+      )}
+    </article>
+  );
+};
+
+const BenchmarkInsightCard = ({ item }) => {
+  const title = item?.title ?? item?.label ?? item?.code ?? "Benchmark insight";
+  const description = item?.description ?? item?.message ?? item?.reason;
+  return (
+    <article className="rounded-2xl border border-[#EEE6E2] bg-[#FAF8F7] p-4">
+      <h4 className="text-sm font-bold text-[#3D0F18]">{typeof title === "string" ? title.replaceAll("_", " ") : "Benchmark insight"}</h4>
+      {typeof description === "string" && <p className="mt-2 text-xs leading-5 text-gray-600">{description}</p>}
+      {typeof item?.affectedListings === "number" && (
+        <p className="mt-2 text-xs font-semibold text-[#8A2638]">{item.affectedListings} affected listings</p>
+      )}
+    </article>
+  );
+};
 
 const BusinessAnalytics = () => {
   const [
@@ -1057,29 +1124,33 @@ const getDemandBadgeClass = (
  * ==========================================================
  */
 
-const numberValue = (
-  value
-) => {
-  const number =
-    Number(value);
+/**
+ * BUSINESS PRO — CATEGORY BENCHMARKS
+ * The API owns privacy suppression. Never infer or fill
+ * missing competitor benchmark values with zero.
+ */
+const benchmarkData = categoryBenchmarks?.intelligence ?? null;
+const benchmarkSummary = benchmarkData?.summary ?? {};
+const benchmarkCategories = Array.isArray(benchmarkData?.categories)
+  ? benchmarkData.categories
+  : Array.isArray(benchmarkData?.categoryBenchmarks)
+    ? benchmarkData.categoryBenchmarks
+    : [];
+const benchmarkListings = Array.isArray(benchmarkData?.listings)
+  ? benchmarkData.listings
+  : Array.isArray(benchmarkData?.listingComparisons)
+    ? benchmarkData.listingComparisons
+    : [];
+const benchmarkOpportunities = Array.isArray(benchmarkData?.opportunities)
+  ? benchmarkData.opportunities
+  : Array.isArray(benchmarkData?.benchmarkOpportunities)
+    ? benchmarkData.benchmarkOpportunities
+    : [];
+const benchmarkRecommendations = Array.isArray(benchmarkData?.recommendations)
+  ? benchmarkData.recommendations
+  : [];
 
-  return Number.isFinite(
-    number
-  )
-    ? number
-    : 0;
-};
 
-const percentageValue = (
-  value
-) => {
-  const number =
-    numberValue(value);
-
-  return `${number.toFixed(
-    1
-  )}%`;
-};
 
   /*
    * ==========================================================
@@ -2724,6 +2795,120 @@ const percentageValue = (
           </section>
         )}
 
+        {/* BUSINESS PRO — CATEGORY BENCHMARKS */}
+        {canUseCategoryBenchmarks && (
+          <section className="mt-6 overflow-hidden rounded-3xl border border-[#DCC9CE] bg-white shadow-sm">
+            <div className="border-b border-[#EEE6E2] px-5 py-5 sm:px-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F5E8EB] text-[#5B1725]">
+                  <Scale size={19} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-[#8A2638]">Business Pro</p>
+                  <h2 className="mt-1 text-lg font-black text-[#3D0F18]">Category Benchmarks</h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
+                    Compare your listings with privacy-safe aggregated marketplace performance in the same categories.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-5 p-5 sm:p-6">
+              {proAnalyticsErrors?.categoryBenchmarks ? (
+                <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-bold text-red-800">Category Benchmarks could not be loaded.</p>
+                  <p className="mt-2 text-xs text-red-700">{proAnalyticsErrors.categoryBenchmarks}</p>
+                </div>
+              ) : proAnalyticsLoading && !benchmarkData ? (
+                <div role="status" className="flex items-center gap-3 py-6 text-sm text-gray-500">
+                  <RefreshCw size={18} className="animate-spin" /> Loading category benchmarks...
+                </div>
+              ) : !benchmarkData ? (
+                <div className="rounded-2xl border border-dashed border-[#DCC9CE] bg-[#FAF8F7] p-6 text-center">
+                  <Scale size={26} className="mx-auto text-[#8A2638]" />
+                  <p className="mt-3 text-sm font-bold text-[#3D0F18]">Benchmark data unavailable</p>
+                  <p className="mt-2 text-xs text-gray-500">Refresh the dashboard to retrieve your category comparisons.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-2xl border border-[#EEE6E2] bg-[#FAF8F7] p-5">
+                    <h3 className="text-sm font-black text-[#3D0F18]">Marketplace Comparison</h3>
+                    <p className="mt-2 text-xs leading-5 text-gray-500">
+                      Comparisons use aggregated activity from other eligible businesses. Small samples may be withheld to protect privacy.
+                    </p>
+                    {typeof benchmarkSummary?.description === "string" && (
+                      <p className="mt-2 text-xs text-gray-600">{benchmarkSummary.description}</p>
+                    )}
+                  </div>
+
+                  {benchmarkCategories.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-sm font-black text-[#3D0F18]">Category comparisons</h3>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {benchmarkCategories.map((category, index) => (
+                          <BenchmarkComparisonCard
+                            key={category?.categoryId ?? category?.id ?? index}
+                            item={category}
+                            fallbackTitle={`Category ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {benchmarkListings.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-sm font-black text-[#3D0F18]">Listing comparisons</h3>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {benchmarkListings.map((listing, index) => (
+                          <BenchmarkComparisonCard
+                            key={listing?.listingId ?? listing?.id ?? index}
+                            item={listing}
+                            fallbackTitle={`Listing ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {benchmarkOpportunities.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-sm font-black text-[#3D0F18]">Benchmark opportunities</h3>
+                      <div className="space-y-3">
+                        {benchmarkOpportunities.map((opportunity, index) => (
+                          <BenchmarkInsightCard key={opportunity?.code ?? index} item={opportunity} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {benchmarkRecommendations.length > 0 && (
+                    <div>
+                      <h3 className="mb-3 text-sm font-black text-[#3D0F18]">Recommendations</h3>
+                      <div className="space-y-3">
+                        {benchmarkRecommendations.map((recommendation, index) => (
+                          <BenchmarkInsightCard key={recommendation?.code ?? index} item={recommendation} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {benchmarkCategories.length === 0 &&
+                    benchmarkListings.length === 0 &&
+                    benchmarkOpportunities.length === 0 &&
+                    benchmarkRecommendations.length === 0 && (
+                      <div className="rounded-2xl border border-dashed border-[#DCC9CE] p-6 text-center">
+                        <p className="text-sm font-bold text-[#3D0F18]">No displayable comparisons</p>
+                        <p className="mt-2 text-xs leading-5 text-gray-500">
+                          Eligible marketplace samples may be insufficient, or there is no category activity for this period.
+                        </p>
+                      </div>
+                    )}
+                </>
+              )}
+            </div>
+          </section>
+        )}
+
         {/* ======================================================
             BUSINESS PRO INTELLIGENCE
         ====================================================== */}
@@ -2858,6 +3043,7 @@ const percentageValue = (
                   {[
                     "conversionIntelligence",
                     "demandIntelligence",
+                    "categoryBenchmarks",
                   ].includes(
                     feature.key
                   )
