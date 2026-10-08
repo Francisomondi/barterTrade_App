@@ -689,10 +689,7 @@ export const getPublicBusinessProfile = async (
  * Returns ACTIVE listings belonging to the Business owner.
  */
 
-export const getPublicBusinessListings = async (
-  req,
-  res
-) => {
+export const getPublicBusinessListings = async (req, res) => {
   try {
     const { slug } = req.params;
 
@@ -780,6 +777,59 @@ export const getPublicBusinessListings = async (
       userId: business.userId,
       status: "ACTIVE",
     };
+    
+      /*
+      * ============================================================
+      * PUBLIC FEATURED LISTINGS — BUSINESS PRO ONLY
+      * ============================================================
+      */
+
+      const entitlement = await getBusinessProEntitlement(
+        business.userId
+      );
+
+      const canShowFeaturedListings =
+        entitlement?.isBusinessPro === true &&
+        entitlement?.businessId === business.id;
+
+      let featuredListings = [];
+
+      if (canShowFeaturedListings) {
+        const featuredRecords =
+          await prisma.businessFeaturedListing.findMany({
+            where: {
+              businessId: business.id,
+              listing: {
+                is: {
+                  userId: business.userId,
+                  status: "ACTIVE",
+                },
+              },
+            },
+            orderBy: [
+              { sortOrder: "asc" },
+              { createdAt: "asc" },
+            ],
+            take: 6,
+            select: {
+              listing: {
+                include: {
+                  images: {
+                    orderBy: {
+                      sortOrder: "asc",
+                    },
+                  },
+                  category: true,
+                },
+              },
+            },
+          });
+
+        featuredListings = featuredRecords.map(
+          (record) => record.listing
+        );
+      }
+
 
     const [
       listings,
@@ -838,6 +888,8 @@ export const getPublicBusinessListings = async (
       },
 
       listings,
+
+      featuredListings,
 
       pagination: {
         page,

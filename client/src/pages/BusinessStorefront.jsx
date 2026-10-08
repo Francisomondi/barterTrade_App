@@ -18,6 +18,7 @@ import {
   Package,
   Phone,
   ShieldCheck,
+  Star,
   Store,
 } from "lucide-react";
 import {
@@ -70,10 +71,9 @@ const resolvePublicBranding = (business) => {
 };
 const BusinessStorefront = () => {
   const { slug } = useParams();
-  const [business, setBusiness] =
-    useState(null);
-  const [listings, setListings] =
-    useState([]);
+  const [business, setBusiness] = useState(null);
+  const [listings, setListings] = useState([]);
+  const [featuredListings, setFeaturedListings] = useState([]);
   const [pagination, setPagination] =
     useState({
       page: 1,
@@ -83,16 +83,10 @@ const BusinessStorefront = () => {
       hasNextPage: false,
       hasPreviousPage: false,
     });
-  const [page, setPage] =
-    useState(1);
-  const [loading, setLoading] =
-    useState(true);
-  const [
-    listingsLoading,
-    setListingsLoading,
-  ] = useState(false);
-  const [error, setError] =
-    useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [ listingsLoading, setListingsLoading] = useState(false);
+  const [error, setError] = useState("");
   /*
    * ==========================================================
    * LOAD BUSINESS
@@ -153,6 +147,12 @@ const BusinessStorefront = () => {
           response.listings ||
             []
         );
+
+        setFeaturedListings(
+          Array.isArray(response.featuredListings)
+            ? response.featuredListings
+            : []
+        );
         setPagination(
           response.pagination ||
             {
@@ -171,6 +171,7 @@ const BusinessStorefront = () => {
           err
         );
         setListings([]);
+        setFeaturedListings([]);
       } finally {
         setListingsLoading(
           false
@@ -1134,6 +1135,135 @@ const isMinimal = layoutStyle === "MINIMAL";
           </div>
         </div>
       </section>
+      
+    {/* ======================================================
+        BUSINESS PRO — FEATURED LISTINGS
+    ====================================================== */}
+
+    {business.storefront?.tier === "BUSINESS_PRO" &&
+      featuredListings.length > 0 && (
+        <section className="mx-auto mt-8 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div
+                className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em]"
+                style={{ color: accentColor }}
+              >
+                <Star
+                  size={15}
+                  fill={secondaryColor}
+                  strokeWidth={2}
+                />
+                Business Pro Selection
+              </div>
+
+              <h2
+                className="text-xl font-black tracking-tight sm:text-2xl"
+                style={{ color: primaryColor }}
+              >
+                Featured Listings
+              </h2>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Handpicked items from {business.businessName}.
+              </p>
+            </div>
+
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-bold text-amber-800">
+              {featuredListings.length} featured
+            </span>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {featuredListings.map((listing, index) => {
+              const image = getPrimaryImage(listing);
+
+              const formattedValue = Number(
+                listing.estimatedValue || 0
+              ).toLocaleString("en-KE");
+
+              return (
+                <Link
+                  key={listing.id}
+                  to={`/listings/${listing.id}`}
+                  className="group overflow-hidden rounded-2xl border border-[#E8DFDB] bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
+                >
+                  <div className="relative aspect-[4/3] overflow-hidden bg-[#F0E9E6]">
+                    {image ? (
+                      <img
+                        src={image}
+                        alt={listing.title}
+                        loading="lazy"
+                        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <Package
+                          size={36}
+                          className="text-[#BDA8A0]"
+                        />
+                      </div>
+                    )}
+
+                    <span
+                      className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black shadow-sm"
+                      style={{
+                        backgroundColor: secondaryColor,
+                        color: "#241515",
+                      }}
+                    >
+                      <Star size={12} fill="currentColor" />
+                      Featured #{index + 1}
+                    </span>
+                  </div>
+
+                  <div className="p-4">
+                    {listing.category?.name && (
+                      <p
+                        className="text-[9px] font-black uppercase tracking-wide"
+                        style={{ color: accentColor }}
+                      >
+                        {listing.category.name}
+                      </p>
+                    )}
+
+                    <h3 className="mt-1 line-clamp-2 text-sm font-black text-[#3D0F18] transition-colors group-hover:text-[#8A2638]">
+                      {listing.title}
+                    </h3>
+
+                    <p className="mt-2 text-base font-black" style={{ color: primaryColor }}>
+                      KES {formattedValue}
+                    </p>
+
+                    {listing.location && (
+                      <p className="mt-2 flex items-center gap-1 text-[11px] text-gray-500">
+                        <MapPin size={13} />
+                        <span className="truncate">
+                          {listing.location}
+                        </span>
+                      </p>
+                    )}
+
+                    <div className="mt-4 flex items-center justify-between border-t border-[#F0E9E6] pt-3">
+                      <span className="text-[11px] font-semibold text-gray-600">
+                        View listing
+                      </span>
+
+                      <span
+                        className="flex h-8 w-8 items-center justify-center rounded-full text-white transition-transform group-hover:translate-x-1"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        <ChevronRight size={16} />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* ======================================================
           LISTINGS
       ====================================================== */}
