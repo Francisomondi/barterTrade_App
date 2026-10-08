@@ -230,7 +230,8 @@ model BusinessProfile {
   user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   storefrontSettings BusinessStorefrontSettings?
 
-  analyticsEvents BusinessAnalyticsEvent[]
+  analyticsEvents  BusinessAnalyticsEvent[]
+  featuredListings BusinessFeaturedListing[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -298,17 +299,38 @@ model Listing {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  user                    User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category                Category                 @relation(fields: [categoryId], references: [id])
-  images                  ListingImage[]
-  valueEstimates          ValueEstimate[]
-  offersSent              Offer[]                  @relation("OfferedListing")
-  offersReceived          Offer[]                  @relation("RequestedListing")
-  matchesAsA              Match[]                  @relation("ListingA")
-  matchesAsB              Match[]                  @relation("ListingB")
-  tradeItems              TradeItem[]
-  promotions              Promotion[]
-  businessAnalyticsEvents BusinessAnalyticsEvent[]
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category                 Category                  @relation(fields: [categoryId], references: [id])
+  images                   ListingImage[]
+  valueEstimates           ValueEstimate[]
+  offersSent               Offer[]                   @relation("OfferedListing")
+  offersReceived           Offer[]                   @relation("RequestedListing")
+  matchesAsA               Match[]                   @relation("ListingA")
+  matchesAsB               Match[]                   @relation("ListingB")
+  tradeItems               TradeItem[]
+  promotions               Promotion[]
+  businessAnalyticsEvents  BusinessAnalyticsEvent[]
+  businessFeaturedListings BusinessFeaturedListing[]
+}
+
+model BusinessFeaturedListing {
+  id String @id @default(uuid())
+
+  businessId String
+  listingId  String
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, listingId])
+  @@index([businessId, sortOrder])
+  @@index([listingId])
 }
 
 model ListingImage {

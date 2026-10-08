@@ -59,6 +59,13 @@ import {
 import {
   analyticsVisitor,
 } from "../middleware/analyticsVisitor.js";
+import {
+  getMyBusinessFeaturedListings,
+  addMyBusinessFeaturedListing,
+  removeMyBusinessFeaturedListing,
+  reorderMyBusinessFeaturedListings,
+  getMyBusinessFeaturedListingSummary,
+} from "../controllers/businessFeaturedListingsController.js";
 
 const router = express.Router();
 
@@ -150,6 +157,47 @@ router.patch(
   "/me/storefront/branding",
   protect,
   updateMyBusinessStorefrontBranding
+);
+router.get(
+  "/me/storefront/featured-listings",
+  protect,
+  getMyBusinessFeaturedListings
+);
+
+/*
+ * GET FEATURED LISTINGS SUMMARY
+ */
+router.get(
+  "/me/storefront/featured-listings/summary",
+  protect,
+  getMyBusinessFeaturedListingSummary
+);
+
+/*
+ * ADD FEATURED LISTING
+ */
+router.post(
+  "/me/storefront/featured-listings",
+  protect,
+  addMyBusinessFeaturedListing
+);
+
+/*
+ * REORDER FEATURED LISTINGS
+ */
+router.patch(
+  "/me/storefront/featured-listings/reorder",
+  protect,
+  reorderMyBusinessFeaturedListings
+);
+
+/*
+ * REMOVE FEATURED LISTING
+ */
+router.delete(
+  "/me/storefront/featured-listings/:listingId",
+  protect,
+  removeMyBusinessFeaturedListing
 );
 
 /**
