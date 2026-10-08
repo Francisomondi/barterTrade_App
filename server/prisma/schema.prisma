@@ -227,7 +227,8 @@ model BusinessProfile {
   createdAt          DateTime                   @default(now())
   updatedAt          DateTime                   @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  storefrontSettings BusinessStorefrontSettings?
 
   analyticsEvents BusinessAnalyticsEvent[]
 
@@ -236,6 +237,38 @@ model BusinessProfile {
   @@index([businessName])
   @@index([category])
   @@index([createdAt])
+}
+
+/**
+ * ============================================================
+ * BUSINESS STOREFRONT SETTINGS
+ * ============================================================
+ * Optional one-to-one configuration for business storefronts.
+ * Standard logo and cover images remain in BusinessProfile.
+ * Advanced customization requires Business Pro entitlement.
+ */
+
+model BusinessStorefrontSettings {
+  id         String @id @default(uuid())
+  businessId String @unique
+
+  // Advanced brand colors
+  primaryColor   String @default("#5B1725")
+  secondaryColor String @default("#D6B15E")
+  accentColor    String @default("#8A2638")
+
+  // Storefront presentation
+  layoutStyle String @default("CLASSIC")
+
+  // Optional brand messaging
+  tagline String? @db.VarChar(120)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([layoutStyle])
 }
 
 model Category {

@@ -210,11 +210,79 @@ export const getPublicBusinessListings = async ({
  * - frontend flags
  */
 
-export const getMyBusinessAnalyticsEntitlement =
-  async () => {
+export const getMyBusinessAnalyticsEntitlement = async () => {
     const response = await api.get(
       "/business/me/analytics/entitlement"
     );
 
     return response.data;
   };
+
+  
+/**
+ * ============================================================
+ * GET BUSINESS STOREFRONT ENTITLEMENT
+ * ============================================================
+ *
+ * GET /api/business/me/storefront/entitlement
+ *
+ * Returns the authenticated business owner's:
+ *
+ * - Business Free / Business Pro tier
+ * - Storefront feature permissions
+ * - Featured listing allowance
+ * - Current Business Pro subscription information
+ *
+ * The backend is the source of truth.
+ */
+
+export const getMyBusinessStorefrontEntitlement =
+  async () => {
+    const response = await api.get(
+      "/business/me/storefront/entitlement"
+    );
+
+    return response.data;
+  };
+
+  
+/**
+ * ============================================================
+ * GET MY BUSINESS STOREFRONT BRANDING
+ * ============================================================
+ *
+ * Available to authenticated Business Free and Pro owners.
+ * Returns effective branding and customization access.
+ */
+export const getMyBusinessStorefrontBranding = async () => {
+  const response = await api.get(
+    "/business/me/storefront/branding"
+  );
+
+  return response.data;
+};
+
+/**
+ * ============================================================
+ * UPDATE MY BUSINESS STOREFRONT BRANDING
+ * ============================================================
+ *
+ * Requires active Business Pro entitlement.
+ *
+ * Supported fields:
+ * - primaryColor
+ * - secondaryColor
+ * - accentColor
+ * - layoutStyle
+ * - tagline
+ */
+export const updateMyBusinessStorefrontBranding = async (
+  brandingData
+) => {
+  const response = await api.patch(
+    "/business/me/storefront/branding",
+    brandingData
+  );
+
+  return response.data;
+};

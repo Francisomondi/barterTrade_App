@@ -15,6 +15,15 @@ import {
 } from "../controllers/businessController.js";
 
 import {
+  getMyBusinessStorefrontEntitlement,
+} from "../controllers/businessStorefrontController.js";
+
+import {
+  getMyBusinessStorefrontBranding,
+  updateMyBusinessStorefrontBranding,
+} from "../controllers/businessStorefrontBrandingController.js";
+
+import {
   getMyBusinessAnalytics,
   getMyBusinessAnalyticsOverview,
   getMyBusinessListingAnalytics,
@@ -123,6 +132,24 @@ router.delete(
   "/me/cover",
   protect,
   deleteBusinessCover
+);
+
+router.get(
+  "/me/storefront/entitlement",
+  protect,
+  getMyBusinessStorefrontEntitlement
+);
+
+router.get(
+  "/me/storefront/branding",
+  protect,
+  getMyBusinessStorefrontBranding
+);
+
+router.patch(
+  "/me/storefront/branding",
+  protect,
+  updateMyBusinessStorefrontBranding
 );
 
 /**

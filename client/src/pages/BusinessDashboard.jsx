@@ -49,6 +49,7 @@ import {
 
 import BusinessBadge from "../components/business/BusinessBadge";
 import PremiumBadge from "../components/PremiumBadge";
+import BusinessStorefrontBrandingSettings from "../components/business/BusinessStorefrontBrandingSettings";
 
 /*
  * ============================================================
@@ -89,6 +90,18 @@ const BusinessDashboard = () => {
 
   const [error, setError] =
     useState("");
+    const [activeDashboardView, setActiveDashboardView] =
+  useState("overview");
+
+const openBrandingSettings = () => {
+  setActiveDashboardView("branding");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
+
+const closeBrandingSettings = () => {
+  setActiveDashboardView("overview");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+};
 
   /*
    * ==========================================================
@@ -718,6 +731,44 @@ const premiumExpiryLabel =
     isVerified,
   };
 
+  
+/*
+ * ============================================================
+ * STOREFRONT BRANDING VIEW
+ * ============================================================
+ */
+
+if (activeDashboardView === "branding") {
+  return (
+    <div className="min-h-screen bg-[#F8F5F3] pb-16 font-sans">
+      <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+        {/* NAVIGATION */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={closeBrandingSettings}
+            className="inline-flex items-center gap-2 rounded-xl border border-[#E8DFDB] bg-white px-4 py-2.5 text-xs font-black text-[#5B1725] shadow-sm transition hover:bg-[#F5EFEC]"
+          >
+            <ArrowRight size={15} className="rotate-180" />
+            Back to Dashboard
+          </button>
+
+          {isBusinessPro && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[10px] font-black text-amber-800">
+              <Crown size={13} />
+              Business Pro
+            </span>
+          )}
+        </div>
+
+        {/* BRANDING EDITOR */}
+        <BusinessStorefrontBrandingSettings />
+      </main>
+    </div>
+  );
+}
+
+
   /*
    * ==========================================================
    * PAGE
@@ -763,7 +814,9 @@ const premiumExpiryLabel =
                   size={13}
                 />
               </Link>
+              
             )}
+            
         </div>
 
         {/* ====================================================
@@ -1439,7 +1492,7 @@ const premiumExpiryLabel =
             Quick Actions
           </h2>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <DashboardAction
               to="/listings/create"
               icon={Package}
@@ -1470,6 +1523,46 @@ const premiumExpiryLabel =
               title="Business Reports"
               description="View performance reports"
             />
+
+            
+            <button
+              type="button"
+              onClick={openBrandingSettings}
+              className="group flex items-center gap-3 rounded-xl border border-[#EEE6E2] bg-[#FAF8F7] p-3 text-left transition hover:border-[#D9C7C1] hover:bg-[#F5EFEC]"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+                <Settings
+                  size={16}
+                  className="text-[#5B1725]"
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[11px] font-black text-[#3D0F18]">
+                    Storefront Branding
+                  </p>
+
+                  {!isBusinessPro && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-800">
+                      PRO
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-0.5 text-[9px] text-gray-500">
+                  {isBusinessPro
+                    ? "Customize your store appearance"
+                    : "Preview advanced store branding"}
+                </p>
+              </div>
+
+              <ChevronRight
+                size={14}
+                className="shrink-0 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-[#5B1725]"
+              />
+            </button>
+
 
             {business.slug &&
               isActive && (

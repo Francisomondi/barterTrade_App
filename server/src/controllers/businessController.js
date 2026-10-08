@@ -2,19 +2,11 @@ import prisma from "../config/prisma.js";
 import cloudinary from "../config/cloudinary.js";
 import uploadToCloudinary from "../utils/uploadToCloudinary.js";
 
-import {
-  DEFAULT_BUSINESS_STATE,
-  validateBusinessProfileInput,
-} from "../config/businessConfig.js";
-
-import {
-  generateUniqueBusinessSlug,
-  getBusinessProfileByUserId,
-} from "../services/businessService.js";
-
-import {
-  trackStorefrontView,
-} from "../services/businessAnalyticsTrackingService.js";
+import { DEFAULT_BUSINESS_STATE, validateBusinessProfileInput} from "../config/businessConfig.js";
+import { generateUniqueBusinessSlug, getBusinessProfileByUserId} from "../services/businessService.js";
+import { trackStorefrontView} from "../services/businessAnalyticsTrackingService.js";
+import { getBusinessProEntitlement } from "../services/subscriptionService.js";
+import { DEFAULT_STOREFRONT_BRANDING} from "../config/businessStorefrontBranding.js";
 
 /*
  * ============================================================
@@ -486,6 +478,16 @@ export const getPublicBusinessProfile = async (
 
           createdAt: true,
 
+          storefrontSettings: {
+            select: {
+              primaryColor: true,
+              secondaryColor: true,
+              accentColor: true,
+              layoutStyle: true,
+              tagline: true,
+            },
+          },
+
           user: {
             select: {
               id: true,
@@ -518,6 +520,42 @@ export const getPublicBusinessProfile = async (
           "Business not found.",
       });
     }
+
+        
+    /*
+    * ============================================================
+    * RESOLVE PUBLIC STOREFRONT BRANDING
+    * ============================================================
+    */
+
+    const entitlement = await getBusinessProEntitlement(
+      business.userId
+    );
+
+    const isBusinessPro =
+      entitlement?.isBusinessPro === true &&
+      entitlement?.businessId === business.id;
+
+    const effectiveBranding = isBusinessPro
+      ? {
+          ...DEFAULT_STOREFRONT_BRANDING,
+          ...(business.storefrontSettings
+            ? {
+                primaryColor:
+                  business.storefrontSettings.primaryColor,
+                secondaryColor:
+                  business.storefrontSettings.secondaryColor,
+                accentColor:
+                  business.storefrontSettings.accentColor,
+                layoutStyle:
+                  business.storefrontSettings.layoutStyle,
+                tagline:
+                  business.storefrontSettings.tagline,
+              }
+            : {}),
+        }
+      : { ...DEFAULT_STOREFRONT_BRANDING };
+
 
     /**
      * ========================================================
@@ -590,12 +628,13 @@ export const getPublicBusinessProfile = async (
      * them.
      */
 
-    const {
-      user,
-      userId: _userId,
-      status: _status,
-      ...businessData
-    } = business;
+  const {
+    user,
+    userId: _userId,
+    status: _status,
+    storefrontSettings: _storefrontSettings,
+    ...businessData
+  } = business;
 
     /**
      * ========================================================
@@ -606,16 +645,23 @@ export const getPublicBusinessProfile = async (
     return res.status(200).json({
       success: true,
 
-      business: {
-        ...businessData,
+    business: {
+      ...businessData,
 
-        isVerified:
-          business.verificationStatus ===
-          "VERIFIED",
+      isVerified:
+        business.verificationStatus === "VERIFIED",
 
-        activeListingCount:
-          user?._count?.listings || 0,
+      activeListingCount:
+        user?._count?.listings || 0,
+
+      storefront: {
+        tier: isBusinessPro
+          ? "BUSINESS_PRO"
+          : "BUSINESS_FREE",
+
+        branding: effectiveBranding,
       },
+    },
     });
   } catch (error) {
     console.error(

@@ -4,6 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "test:storefront:branding": "vitest run src/tests/businessStorefrontBranding.test.js",
+    "test:storefront:branding:protected": "vitest run src/tests/businessStorefrontBrandingProtected.test.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed": "node prisma/seed.js",

@@ -3,12 +3,10 @@ import {
   useEffect,
   useState,
 } from "react";
-
 import {
   Link,
   useParams,
 } from "react-router-dom";
-
 import {
   BriefcaseBusiness,
   ChevronLeft,
@@ -22,30 +20,60 @@ import {
   ShieldCheck,
   Store,
 } from "lucide-react";
-
 import {
   getPublicBusiness,
   getPublicBusinessListings,
 } from "../api/business";
-
 import {
   trackContactClick,
   trackPhoneClick,
   trackWebsiteClick,
 } from "../api/businessAnalytics";
-
 import BusinessBadge from "../components/business/BusinessBadge";
-
-
+const DEFAULT_BRANDING = {
+  primaryColor: "#5B1725",
+  secondaryColor: "#D6B15E",
+  accentColor: "#8A2638",
+  layoutStyle: "CLASSIC",
+  tagline: null,
+};
+const VALID_LAYOUTS = [
+  "CLASSIC",
+  "MODERN",
+  "MINIMAL",
+];
+const HEX_COLOR_REGEX = /^#[0-9a-fA-F]{6}$/;
+const resolvePublicBranding = (business) => {
+  const custom = business?.storefront?.branding;
+  const isBusinessPro =
+    business?.storefront?.tier === "BUSINESS_PRO";
+  if (!isBusinessPro || !custom) {
+    return { ...DEFAULT_BRANDING };
+  }
+  const branding = { ...DEFAULT_BRANDING };
+  for (const field of [
+    "primaryColor",
+    "secondaryColor",
+    "accentColor",
+  ]) {
+    if (HEX_COLOR_REGEX.test(custom[field] || "")) {
+      branding[field] = custom[field];
+    }
+  }
+  if (VALID_LAYOUTS.includes(custom.layoutStyle)) {
+    branding.layoutStyle = custom.layoutStyle;
+  }
+  if (typeof custom.tagline === "string") {
+    branding.tagline = custom.tagline.slice(0, 120);
+  }
+  return branding;
+};
 const BusinessStorefront = () => {
   const { slug } = useParams();
-
   const [business, setBusiness] =
     useState(null);
-
   const [listings, setListings] =
     useState([]);
-
   const [pagination, setPagination] =
     useState({
       page: 1,
@@ -55,37 +83,29 @@ const BusinessStorefront = () => {
       hasNextPage: false,
       hasPreviousPage: false,
     });
-
   const [page, setPage] =
     useState(1);
-
   const [loading, setLoading] =
     useState(true);
-
   const [
     listingsLoading,
     setListingsLoading,
   ] = useState(false);
-
   const [error, setError] =
     useState("");
-
   /*
    * ==========================================================
    * LOAD BUSINESS
    * ==========================================================
    */
-
   const loadBusiness =
     useCallback(async () => {
       try {
         setError("");
-
         const response =
           await getPublicBusiness(
             slug
           );
-
         setBusiness(
           response.business
         );
@@ -94,7 +114,6 @@ const BusinessStorefront = () => {
           "LOAD BUSINESS ERROR:",
           err
         );
-
         if (
           err?.response?.status ===
           404
@@ -111,20 +130,17 @@ const BusinessStorefront = () => {
         }
       }
     }, [slug]);
-
   /*
    * ==========================================================
    * LOAD LISTINGS
    * ==========================================================
    */
-
   const loadListings =
     useCallback(async () => {
       try {
         setListingsLoading(
           true
         );
-
         const response =
           await getPublicBusinessListings(
             {
@@ -133,12 +149,10 @@ const BusinessStorefront = () => {
               limit: 12,
             }
           );
-
         setListings(
           response.listings ||
             []
         );
-
         setPagination(
           response.pagination ||
             {
@@ -156,7 +170,6 @@ const BusinessStorefront = () => {
           "LOAD BUSINESS LISTINGS ERROR:",
           err
         );
-
         setListings([]);
       } finally {
         setListingsLoading(
@@ -164,48 +177,39 @@ const BusinessStorefront = () => {
         );
       }
     }, [slug, page]);
-
   /*
    * ==========================================================
    * INITIAL LOAD
    * ==========================================================
    */
-
   useEffect(() => {
     const load =
       async () => {
         setLoading(true);
-
         await Promise.all([
           loadBusiness(),
           loadListings(),
         ]);
-
         setLoading(false);
       };
-
     load();
   }, [
     loadBusiness,
     loadListings,
   ]);
-
   /*
    * ==========================================================
    * RESET PAGE WHEN STORE CHANGES
    * ==========================================================
    */
-
   useEffect(() => {
     setPage(1);
   }, [slug]);
-
   /*
    * ==========================================================
    * HELPERS
    * ==========================================================
    */
-
   const getPrimaryImage = (
     listing
   ) => {
@@ -218,13 +222,11 @@ const BusinessStorefront = () => {
     ) {
       return null;
     }
-
     const primary =
       listing.images.find(
         (image) =>
           image.isPrimary
       );
-
     return (
       primary?.url ||
       primary?.imageUrl ||
@@ -234,9 +236,6 @@ const BusinessStorefront = () => {
       null
     );
   };
-
-  // UPDATE — frontend/src/pages/BusinessStorefront.jsx
-
   /*
    * ==========================================================
    * BUSINESS ENGAGEMENT ANALYTICS
@@ -249,49 +248,41 @@ const BusinessStorefront = () => {
    *
    * The analytics API handles its own errors and does not throw.
    */
-
   const handlePhoneClick = () => {
     if (!business?.slug) {
       return;
     }
-
     void trackPhoneClick({
       slug: business.slug,
       source:
         "BUSINESS_STOREFRONT",
     });
   };
-
   const handleEmailClick = () => {
     if (!business?.slug) {
       return;
     }
-
     void trackContactClick({
       slug: business.slug,
       source:
         "BUSINESS_STOREFRONT",
     });
   };
-
   const handleWebsiteClick = () => {
     if (!business?.slug) {
       return;
     }
-
     void trackWebsiteClick({
       slug: business.slug,
       source:
         "BUSINESS_STOREFRONT",
     });
   };
-
   /*
    * ==========================================================
    * LOADING
    * ==========================================================
    */
-
   if (loading) {
     return (
       <div
@@ -320,7 +311,6 @@ const BusinessStorefront = () => {
                 sm:h-60
               "
             />
-
             <div
               className="
                 mx-auto
@@ -334,7 +324,6 @@ const BusinessStorefront = () => {
                 sm:w-28
               "
             />
-
             <div
               className="
                 mx-auto
@@ -345,7 +334,6 @@ const BusinessStorefront = () => {
                 bg-[#E8DFDB]
               "
             />
-
             <div
               className="
                 mx-auto
@@ -357,7 +345,6 @@ const BusinessStorefront = () => {
                 bg-[#E8DFDB]
               "
             />
-
             <div
               className="
                 mt-10
@@ -388,7 +375,6 @@ const BusinessStorefront = () => {
                         bg-[#E8DFDB]
                       "
                     />
-
                     <div className="p-3">
                       <div
                         className="
@@ -398,7 +384,6 @@ const BusinessStorefront = () => {
                           bg-[#E8DFDB]
                         "
                       />
-
                       <div
                         className="
                           mt-2
@@ -418,13 +403,11 @@ const BusinessStorefront = () => {
       </div>
     );
   }
-
   /*
    * ==========================================================
    * ERROR
    * ==========================================================
    */
-
   if (
     error ||
     !business
@@ -460,7 +443,6 @@ const BusinessStorefront = () => {
               text-[#6B1D2C]
             "
           />
-
           <h1
             className="
               mt-4
@@ -472,7 +454,6 @@ const BusinessStorefront = () => {
           >
             Business unavailable
           </h1>
-
           <p
             className="
               mt-2
@@ -484,7 +465,6 @@ const BusinessStorefront = () => {
             {error ||
               "This Business Storefront is currently unavailable."}
           </p>
-
           <Link
             to="/marketplace"
             className="
@@ -507,34 +487,25 @@ const BusinessStorefront = () => {
       </div>
     );
   }
-
   /*
    * ==========================================================
    * BUSINESS BADGE DATA
    * ==========================================================
    */
-
   const badgeBusiness = {
     isBusiness: true,
-
     businessName:
       business.businessName,
-
     slug:
       business.slug,
-
     logo:
       business.logo,
-
     category:
       business.category,
-
     location:
       business.location,
-
     verificationStatus:
       business.verificationStatus,
-
     isVerified:
       business.verificationStatus ===
         "VERIFIED" ||
@@ -542,13 +513,21 @@ const BusinessStorefront = () => {
         business.isVerified
       ),
   };
-
+  const branding = resolvePublicBranding(business);
+const {
+  primaryColor,
+  secondaryColor,
+  accentColor,
+  layoutStyle,
+  tagline,
+} = branding;
+const isModern = layoutStyle === "MODERN";
+const isMinimal = layoutStyle === "MINIMAL";
   /*
    * ==========================================================
    * PAGE
    * ==========================================================
    */
-
   return (
     <div
       className="
@@ -562,19 +541,17 @@ const BusinessStorefront = () => {
       {/* ======================================================
           COVER
       ====================================================== */}
-
       <section
-        className="
-          relative
-          h-44
-          overflow-hidden
-          bg-linear-to-br
-          from-[#3D0F18]
-          via-[#6B1D2C]
-          to-[#9A5D37]
-          sm:h-56
-          lg:h-60
-        "
+        className={`relative overflow-hidden ${
+          isMinimal
+            ? "h-32 sm:h-40"
+            : isModern
+              ? "h-56 sm:h-72 lg:h-80"
+              : "h-44 sm:h-56 lg:h-60"
+        }`}
+        style={{
+          background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
+        }}
       >
         {business.coverImage ? (
           <>
@@ -589,7 +566,6 @@ const BusinessStorefront = () => {
                 object-cover
               "
             />
-
             <div
               className="
                 absolute
@@ -614,7 +590,6 @@ const BusinessStorefront = () => {
                 bg-white/10
               "
             />
-
             <div
               className="
                 absolute
@@ -626,7 +601,6 @@ const BusinessStorefront = () => {
                 bg-white/5
               "
             />
-
             <div
               className="
                 absolute
@@ -644,19 +618,11 @@ const BusinessStorefront = () => {
           </div>
         )}
       </section>
-
       {/* ======================================================
           BUSINESS HEADER
       ====================================================== */}
-
       <section
-        className="
-          mx-auto
-          max-w-7xl
-          px-4
-          sm:px-6
-          lg:px-8
-        "
+        className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
       >
         <div
           className="
@@ -671,17 +637,12 @@ const BusinessStorefront = () => {
             sm:-mt-12
           "
         >
-          <div
-            className="
-              h-1
-              w-full
-              bg-linear-to-r
-              from-[#5B1725]
-              via-[#8A2638]
-              to-[#D6B15E]
-            "
-          />
-
+        <div
+          className="h-1 w-full"
+          style={{
+            background: `linear-gradient(90deg, ${primaryColor}, ${accentColor}, ${secondaryColor})`,
+          }}
+        />
           <div
             className="
               p-4
@@ -689,33 +650,23 @@ const BusinessStorefront = () => {
             "
           >
             <div
-              className="
-                flex
-                flex-col
-                gap-4
-                sm:flex-row
-                sm:items-start
-              "
+              className={`flex flex-col gap-4 ${
+                isModern
+                  ? "items-center text-center"
+                  : isMinimal
+                    ? "sm:flex-row sm:items-center"
+                    : "sm:flex-row sm:items-start"
+              }`}
             >
               {/* LOGO */}
-
               <div
-                className="
-                  flex
-                  h-20
-                  w-20
-                  shrink-0
-                  items-center
-                  justify-center
-                  overflow-hidden
-                  rounded-2xl
-                  border-4
-                  border-white
-                  bg-[#F4ECE9]
-                  shadow-md
-                  sm:h-24
-                  sm:w-24
-                "
+                className={`flex shrink-0 items-center justify-center overflow-hidden border-4 border-white bg-[#F4ECE9] shadow-md ${
+                  isModern
+                    ? "h-28 w-28 rounded-3xl"
+                    : isMinimal
+                      ? "h-16 w-16 rounded-xl"
+                      : "h-20 w-20 rounded-2xl sm:h-24 sm:w-24"
+                }`}
               >
                 {business.logo ? (
                   <img
@@ -740,9 +691,7 @@ const BusinessStorefront = () => {
                   />
                 )}
               </div>
-
               {/* DETAILS */}
-
               <div
                 className="
                   min-w-0
@@ -758,6 +707,7 @@ const BusinessStorefront = () => {
                   "
                 >
                   <h1
+                    style={{ color: primaryColor }}
                     className="
                       min-w-0
                       text-[21px]
@@ -772,14 +722,23 @@ const BusinessStorefront = () => {
                       business.businessName
                     }
                   </h1>
-
                   {/*
                    * Reusable Business badge.
                    *
                    * We are already on the storefront,
                    * so linkToStore is deliberately omitted.
                    */}
-
+                   {business.storefront?.tier === "BUSINESS_PRO" && (
+                      <span
+                        className="rounded-full px-2.5 py-1 text-[9px] font-black"
+                        style={{
+                          backgroundColor: secondaryColor,
+                          color: "#241515",
+                        }}
+                      >
+                        BUSINESS PRO
+                      </span>
+                    )}
                   <BusinessBadge
                     business={
                       badgeBusiness
@@ -788,7 +747,20 @@ const BusinessStorefront = () => {
                     showVerified
                   />
                 </div>
-
+                {tagline && (
+                  <p
+                    className={`mt-2 font-semibold ${
+                      isModern
+                        ? "text-[15px] sm:text-[17px]"
+                        : isMinimal
+                        ? "text-[11px]"
+                        : "text-[12px] sm:text-[13px]"
+                    }`}
+                    style={{ color: accentColor }}
+                  >
+                    {tagline}
+                  </p>
+                )}
                 {business.category && (
                   <div
                     className="
@@ -806,13 +778,11 @@ const BusinessStorefront = () => {
                     <BriefcaseBusiness
                       size={12}
                     />
-
                     {
                       business.category
                     }
                   </div>
                 )}
-
                 {business.description && (
                   <p
                     className="
@@ -830,9 +800,7 @@ const BusinessStorefront = () => {
                     }
                   </p>
                 )}
-
                 {/* QUICK STATS */}
-
                 <div
                   className="
                     mt-4
@@ -861,7 +829,6 @@ const BusinessStorefront = () => {
                     >
                       Listings
                     </p>
-
                     <div
                       className="
                         mt-1
@@ -876,7 +843,6 @@ const BusinessStorefront = () => {
                           text-[#8A2638]
                         "
                       />
-
                       <p
                         className="
                           text-[15px]
@@ -890,7 +856,6 @@ const BusinessStorefront = () => {
                       </p>
                     </div>
                   </div>
-
                   <div
                     className="
                       min-w-25
@@ -911,7 +876,6 @@ const BusinessStorefront = () => {
                     >
                       Status
                     </p>
-
                     <div
                       className="
                         mt-1
@@ -926,18 +890,15 @@ const BusinessStorefront = () => {
                       <ShieldCheck
                         size={14}
                       />
-
                       Active
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-
             {/* ==================================================
                 CONTACT INFORMATION
             ================================================== */}
-
             {(business.location ||
               business.phone ||
               business.email ||
@@ -973,7 +934,6 @@ const BusinessStorefront = () => {
                         text-[#6B1D2C]
                       "
                     />
-
                     <div className="min-w-0">
                       <p
                         className="
@@ -986,7 +946,6 @@ const BusinessStorefront = () => {
                       >
                         Location
                       </p>
-
                       <p
                         className="
                           mt-1
@@ -999,7 +958,6 @@ const BusinessStorefront = () => {
                           business.location
                         }
                       </p>
-
                       {business.address && (
                         <p
                           className="
@@ -1017,7 +975,6 @@ const BusinessStorefront = () => {
                     </div>
                   </div>
                 )}
-
                 {business.phone && (
                   <a
                   href={`tel:${business.phone}`}
@@ -1041,7 +998,6 @@ const BusinessStorefront = () => {
                       text-[#6B1D2C]
                     "
                   />
-
                   <div className="min-w-0">
                     <p
                       className="
@@ -1054,7 +1010,6 @@ const BusinessStorefront = () => {
                     >
                       Phone
                     </p>
-
                     <p
                       className="
                         mt-1
@@ -1069,7 +1024,6 @@ const BusinessStorefront = () => {
                   </div>
                 </a>
                 )}
-
                 {business.email && (
                   <a
                     href={`mailto:${business.email}`}
@@ -1093,7 +1047,6 @@ const BusinessStorefront = () => {
                         text-[#6B1D2C]
                       "
                     />
-
                     <div className="min-w-0">
                       <p
                         className="
@@ -1106,7 +1059,6 @@ const BusinessStorefront = () => {
                       >
                         Email
                       </p>
-
                       <p
                         className="
                           mt-1
@@ -1121,7 +1073,6 @@ const BusinessStorefront = () => {
                     </div>
                   </a>
                 )}
-
                 {business.website && (
                   <a
                     href={business.website}
@@ -1147,7 +1098,6 @@ const BusinessStorefront = () => {
                         text-[#6B1D2C]
                       "
                     />
-
                     <div className="min-w-0">
                       <p
                         className="
@@ -1160,7 +1110,6 @@ const BusinessStorefront = () => {
                       >
                         Website
                       </p>
-
                       <p
                         className="
                           mt-1
@@ -1173,7 +1122,6 @@ const BusinessStorefront = () => {
                         "
                       >
                         Visit website
-
                         <ExternalLink
                           size={11}
                         />
@@ -1186,11 +1134,9 @@ const BusinessStorefront = () => {
           </div>
         </div>
       </section>
-
       {/* ======================================================
           LISTINGS
       ====================================================== */}
-
       <section
         className="
           mx-auto
@@ -1213,6 +1159,7 @@ const BusinessStorefront = () => {
         >
           <div>
             <p
+              style={{ color: accentColor }}
               className="
                 text-[9px]
                 font-black
@@ -1223,8 +1170,8 @@ const BusinessStorefront = () => {
             >
               Storefront
             </p>
-
             <h2
+              style={{ color: primaryColor }}
               className="
                 mt-1
                 text-xl
@@ -1236,7 +1183,6 @@ const BusinessStorefront = () => {
             >
               Available listings
             </h2>
-
             <p
               className="
                 mt-1
@@ -1255,7 +1201,6 @@ const BusinessStorefront = () => {
               .
             </p>
           </div>
-
           <div
             className="
               flex
@@ -1269,7 +1214,6 @@ const BusinessStorefront = () => {
             <Package
               size={15}
             />
-
             {
               pagination.totalListings
             }{" "}
@@ -1280,7 +1224,6 @@ const BusinessStorefront = () => {
               : "s"}
           </div>
         </div>
-
         {listingsLoading ? (
           <div
             className="
@@ -1312,7 +1255,6 @@ const BusinessStorefront = () => {
                       bg-[#E8DFDB]
                     "
                   />
-
                   <div className="p-3">
                     <div
                       className="
@@ -1322,7 +1264,6 @@ const BusinessStorefront = () => {
                         bg-[#E8DFDB]
                       "
                     />
-
                     <div
                       className="
                         mt-2
@@ -1358,7 +1299,6 @@ const BusinessStorefront = () => {
                 text-[#BDA8A0]
               "
             />
-
             <h3
               className="
                 mt-3
@@ -1369,7 +1309,6 @@ const BusinessStorefront = () => {
             >
               No active listings
             </h3>
-
             <p
               className="
                 mx-auto
@@ -1401,14 +1340,12 @@ const BusinessStorefront = () => {
                   getPrimaryImage(
                     listing
                   );
-
                 const formattedValue =
                   Number(
                     listing
                       ?.estimatedValue ||
                       0
                   ).toLocaleString();
-
                 return (
                   <Link
                     key={
@@ -1476,7 +1413,6 @@ const BusinessStorefront = () => {
                           />
                         </div>
                       )}
-
                       {listing.condition && (
                         <span
                           className="
@@ -1503,7 +1439,6 @@ const BusinessStorefront = () => {
                         </span>
                       )}
                     </div>
-
                     <div
                       className="
                         flex
@@ -1530,7 +1465,6 @@ const BusinessStorefront = () => {
                           }
                         </p>
                       )}
-
                       <h3
                         className="
                           mt-1.5
@@ -1548,7 +1482,6 @@ const BusinessStorefront = () => {
                           listing.title
                         }
                       </h3>
-
                       {listing.description && (
                         <p
                           className="
@@ -1566,7 +1499,6 @@ const BusinessStorefront = () => {
                           }
                         </p>
                       )}
-
                       <div
                         className="
                           mt-auto
@@ -1591,7 +1523,6 @@ const BusinessStorefront = () => {
                           >
                             Barter value
                           </p>
-
                           <p
                             className="
                               mt-0.5
@@ -1613,13 +1544,11 @@ const BusinessStorefront = () => {
                             >
                               KES
                             </span>
-
                             {
                               formattedValue
                             }
                           </p>
                         </div>
-
                         <span
                           className="
                             flex
@@ -1648,11 +1577,9 @@ const BusinessStorefront = () => {
             )}
           </div>
         )}
-
         {/* ====================================================
             PAGINATION
         ==================================================== */}
-
         {pagination.totalPages >
           1 && (
           <div
@@ -1701,10 +1628,8 @@ const BusinessStorefront = () => {
               <ChevronLeft
                 size={15}
               />
-
               Previous
             </button>
-
             <span
               className="
                 rounded-xl
@@ -1721,7 +1646,6 @@ const BusinessStorefront = () => {
                 pagination.totalPages
               }
             </span>
-
             <button
               type="button"
               disabled={
@@ -1754,7 +1678,6 @@ const BusinessStorefront = () => {
               "
             >
               Next
-
               <ChevronRight
                 size={15}
               />
@@ -1765,5 +1688,4 @@ const BusinessStorefront = () => {
     </div>
   );
 };
-
 export default BusinessStorefront;
