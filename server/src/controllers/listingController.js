@@ -8,6 +8,7 @@ import { expirePromotions } from "../services/promotionExpiryService.js";
 import { getListingLimit } from "../services/premiumEntitlementService.js";
 import processListingImage from "../utils/processListingImage.js";
 
+
 const getActivePremiumSubscriptionSelect = (now) => ({
   where: {
     plan: "PREMIUM",
@@ -183,45 +184,80 @@ const validConditions = [
   "POOR",
 ];
 
+const cleanupUploadedListingImages = async (images = []) => {
+  const publicIds = [
+    ...new Set(
+      images
+        .map((image) => image?.publicId)
+        .filter(Boolean)
+    ),
+  ];
+
+  if (publicIds.length === 0) return;
+
+  const results = await Promise.allSettled(
+    publicIds.map((publicId) =>
+      cloudinary.uploader.destroy(publicId, {
+        resource_type: "image",
+      })
+    )
+  );
+
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error(
+        `[CLOUDINARY] Cleanup failed for ${publicIds[index]}:`,
+        result.reason
+      );
+    } else if (
+      result.value?.result !== "ok" &&
+      result.value?.result !== "not found"
+    ) {
+      console.warn(
+        `[CLOUDINARY] Unexpected cleanup result for ${publicIds[index]}:`,
+        result.value
+      );
+    }
+  });
+};
+
 /* =========================================================
    CREATE LISTING
 ========================================================= */
 
-export const createListing = async (
-  req,
-  res
-) => {
+
+export const createListing = async (req, res) => {
   try {
     const userId = req.user.id;
 
     /*
+     * ============================================================
+     * 1. CHECK LISTING ENTITLEMENT
+     * ============================================================
+     *
      * FREE    = 10 active listings
      * PREMIUM = 30 active listings
      *
      * Business Account does NOT change listing allowance.
      */
+
     const {
       isPremium,
       tier,
       limit,
     } = await getListingLimit(userId);
 
-    const activeListingCount =
-      await prisma.listing.count({
-        where: {
-          userId,
-          status: "ACTIVE",
-        },
-      });
+    const activeListingCount = await prisma.listing.count({
+      where: {
+        userId,
+        status: "ACTIVE",
+      },
+    });
 
-    if (
-      activeListingCount >= limit
-    ) {
+    if (activeListingCount >= limit) {
       return res.status(403).json({
         success: false,
-
-        code:
-          "ACTIVE_LISTING_LIMIT_REACHED",
+        code: "ACTIVE_LISTING_LIMIT_REACHED",
 
         message: isPremium
           ? `You have reached your Premium limit of ${limit} active listings.`
@@ -231,14 +267,19 @@ export const createListing = async (
           tier,
           isPremium,
           limit,
-          active:
-            activeListingCount,
+          active: activeListingCount,
           remaining: 0,
         },
       });
     }
 
     const now = new Date();
+
+    /*
+     * ============================================================
+     * 2. EXTRACT REQUEST BODY
+     * ============================================================
+     */
 
     const {
       categoryId,
@@ -253,12 +294,22 @@ export const createListing = async (
       longitude,
     } = req.body;
 
+    /*
+     * ============================================================
+     * 3. VALIDATE REQUIRED FIELDS
+     * ============================================================
+     */
+
     if (
       !categoryId ||
-      !title ||
-      !description ||
+      typeof title !== "string" ||
+      !title.trim() ||
+      typeof description !== "string" ||
+      !description.trim() ||
       !condition ||
-      estimatedValue === undefined
+      estimatedValue === undefined ||
+      estimatedValue === null ||
+      estimatedValue === ""
     ) {
       return res.status(400).json({
         success: false,
@@ -267,25 +318,22 @@ export const createListing = async (
       });
     }
 
-    if (
-      !validConditions.includes(
-        condition
-      )
-    ) {
+    if (!validConditions.includes(condition)) {
       return res.status(400).json({
         success: false,
-        message:
-          "Invalid item condition",
+        message: "Invalid item condition",
       });
     }
 
-    const value =
-      Number(estimatedValue);
+    /*
+     * ============================================================
+     * 4. VALIDATE ESTIMATED VALUE
+     * ============================================================
+     */
 
-    if (
-      !Number.isFinite(value) ||
-      value <= 0
-    ) {
+    const value = Number(estimatedValue);
+
+    if (!Number.isFinite(value) || value <= 0) {
       return res.status(400).json({
         success: false,
         message:
@@ -293,37 +341,54 @@ export const createListing = async (
       });
     }
 
-    if (
-      minimumValue !== undefined &&
-      minimumValue !== null &&
-      Number(minimumValue) < 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Minimum value cannot be negative",
-      });
+    /*
+     * ============================================================
+     * 5. VALIDATE OPTIONAL BARTER VALUES
+     * ============================================================
+     */
+
+    for (const [field, rawValue] of [
+      ["minimumValue", minimumValue],
+      ["maximumValue", maximumValue],
+    ]) {
+      if (
+        rawValue !== undefined &&
+        rawValue !== null &&
+        rawValue !== ""
+      ) {
+        const numericValue = Number(rawValue);
+
+        if (
+          !Number.isFinite(numericValue) ||
+          numericValue < 0
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              `${field} must be a valid non-negative number.`,
+          });
+        }
+      }
     }
 
-    if (
-      maximumValue !== undefined &&
-      maximumValue !== null &&
-      Number(maximumValue) < 0
-    ) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Maximum value cannot be negative",
-      });
-    }
+    const parsedMinimum =
+      minimumValue === undefined ||
+      minimumValue === null ||
+      minimumValue === ""
+        ? null
+        : Number(minimumValue);
+
+    const parsedMaximum =
+      maximumValue === undefined ||
+      maximumValue === null ||
+      maximumValue === ""
+        ? null
+        : Number(maximumValue);
 
     if (
-      minimumValue !== undefined &&
-      minimumValue !== null &&
-      maximumValue !== undefined &&
-      maximumValue !== null &&
-      Number(minimumValue) >
-        Number(maximumValue)
+      parsedMinimum !== null &&
+      parsedMaximum !== null &&
+      parsedMinimum > parsedMaximum
     ) {
       return res.status(400).json({
         success: false,
@@ -332,146 +397,186 @@ export const createListing = async (
       });
     }
 
-    const category =
-      await prisma.category.findUnique({
-        where: {
-          id: categoryId,
-        },
+    /*
+     * ============================================================
+     * 6. VALIDATE OPTIONAL COORDINATES
+     * ============================================================
+     */
+
+    const parseCoordinate = (rawValue) => {
+      if (
+        rawValue === undefined ||
+        rawValue === null ||
+        rawValue === ""
+      ) {
+        return null;
+      }
+
+      return Number(rawValue);
+    };
+
+    const parsedLatitude = parseCoordinate(latitude);
+    const parsedLongitude = parseCoordinate(longitude);
+
+    if (
+      (parsedLatitude !== null &&
+        (!Number.isFinite(parsedLatitude) ||
+          parsedLatitude < -90 ||
+          parsedLatitude > 90)) ||
+      (parsedLongitude !== null &&
+        (!Number.isFinite(parsedLongitude) ||
+          parsedLongitude < -180 ||
+          parsedLongitude > 180))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid listing coordinates",
       });
+    }
+
+    /*
+     * ============================================================
+     * 7. VERIFY CATEGORY
+     * ============================================================
+     */
+
+    const category = await prisma.category.findUnique({
+      where: {
+        id: categoryId,
+      },
+    });
 
     if (!category) {
       return res.status(404).json({
         success: false,
-        message:
-          "Category not found",
+        message: "Category not found",
       });
     }
 
+    /*
+     * ============================================================
+     * 8. PROCESS AND UPLOAD LISTING IMAGES
+     * ============================================================
+     *
+     * Promise.allSettled waits for all upload attempts.
+     *
+     * If any image fails, successfully uploaded images
+     * are cleaned up before returning an error.
+     */
+
     let uploadedImages = [];
 
-    if (
-      req.files &&
-      req.files.length > 0
-    ) {
-      try {
-    uploadedImages =
-      await Promise.all(
-        req.files.map(
-          async (file, index) => {
-            console.log(
-              `[CREATE LISTING] Processing image ${
-                index + 1
-              }/${req.files.length}`
-            );
+    if (req.files?.length > 0) {
+      const uploadResults = await Promise.allSettled(
+        req.files.map(async (file, index) => {
+          console.log(
+            `[CREATE LISTING] Processing image ${
+              index + 1
+            }/${req.files.length}`
+          );
 
-            /**
-             * Compress locally BEFORE Cloudinary.
-             */
-            const processedBuffer =
-              await processListingImage(
-                file.buffer
-              );
+          const processedBuffer =
+            await processListingImage(file.buffer);
 
-            /**
-             * Upload compressed buffer.
-             */
-            const result =
-              await uploadToCloudinary(
-                processedBuffer,
-                "barter-trade/listings"
-              );
+          console.log(
+            `[CREATE LISTING] Image ${
+              index + 1
+            } compressed: ${(
+              processedBuffer.length /
+              1024 /
+              1024
+            ).toFixed(2)} MB`
+          );
 
-            return {
-              url:
-                result.secure_url,
+          const result = await uploadToCloudinary(
+            processedBuffer,
+            "barter-trade/listings"
+          );
 
-              publicId:
-                result.public_id,
-
-              isPrimary:
-                index === 0,
-
-              sortOrder:
-                index,
-            };
-          }
-        )
+          return {
+            url: result.secure_url,
+            publicId: result.public_id,
+            isPrimary: index === 0,
+            sortOrder: index,
+          };
+        })
       );
-      } catch (uploadError) {
+
+      const successfulUploads = uploadResults
+        .filter(
+          (result) => result.status === "fulfilled"
+        )
+        .map((result) => result.value);
+
+      const failedUploads = uploadResults.filter(
+        (result) => result.status === "rejected"
+      );
+
+      if (failedUploads.length > 0) {
         console.error(
-          "CLOUDINARY UPLOAD ERROR:",
-          uploadError
+          "[CREATE LISTING] Image upload failures:",
+          failedUploads.map(
+            (result) => result.reason
+          )
         );
 
-        return res
-          .status(500)
-          .json({
-            success: false,
-            message:
-              "Unable to upload listing images",
-          });
+        await cleanupUploadedListingImages(
+          successfulUploads
+        );
+
+        return res.status(502).json({
+          success: false,
+          code: "LISTING_IMAGE_UPLOAD_FAILED",
+          message:
+            "Some images could not be uploaded. Please try again.",
+        });
       }
+
+      uploadedImages = successfulUploads;
+
+      console.log(
+        `[CREATE LISTING] Successfully uploaded ${uploadedImages.length} images`
+      );
     }
 
-    const listing =
-      await prisma.listing.create({
+    /*
+     * ============================================================
+     * 9. CREATE LISTING IN DATABASE
+     * ============================================================
+     *
+     * If database creation fails, remove Cloudinary
+     * images to avoid orphaned uploads.
+     */
+
+    let listing;
+
+    try {
+      listing = await prisma.listing.create({
         data: {
           userId,
           categoryId,
 
-          title:
-            title.trim(),
-
-          description:
-            description.trim(),
+          title: title.trim(),
+          description: description.trim(),
 
           condition,
 
-          estimatedValue:
-            value,
-
-          minimumValue:
-            minimumValue !==
-              undefined &&
-            minimumValue !== null
-              ? Number(
-                  minimumValue
-                )
-              : null,
-
-          maximumValue:
-            maximumValue !==
-              undefined &&
-            maximumValue !== null
-              ? Number(
-                  maximumValue
-                )
-              : null,
+          estimatedValue: value,
+          minimumValue: parsedMinimum,
+          maximumValue: parsedMaximum,
 
           location:
-            location?.trim() ||
-            null,
-
-          latitude:
-            latitude !==
-              undefined &&
-            latitude !== null
-              ? Number(latitude)
+            typeof location === "string"
+              ? location.trim() || null
               : null,
 
-          longitude:
-            longitude !==
-              undefined &&
-            longitude !== null
-              ? Number(longitude)
-              : null,
+          latitude: parsedLatitude,
+          longitude: parsedLongitude,
 
           images:
-            uploadedImages.length >
-            0
+            uploadedImages.length > 0
               ? {
-                  create:
-                    uploadedImages,
+                  create: uploadedImages,
                 }
               : undefined,
         },
@@ -486,8 +591,7 @@ export const createListing = async (
               name: true,
               avatar: true,
               barterScore: true,
-              completedTrades:
-                true,
+              completedTrades: true,
 
               subscriptions:
                 getActivePremiumSubscriptionSelect(
@@ -500,56 +604,87 @@ export const createListing = async (
           },
         },
       });
+    } catch (databaseError) {
+      console.error(
+        "[CREATE LISTING] Database creation failed:",
+        databaseError
+      );
 
-    await invalidateAllListingsCache();
+      await cleanupUploadedListingImages(
+        uploadedImages
+      );
+
+      throw databaseError;
+    }
+
+    /*
+     * ============================================================
+     * 10. INVALIDATE MARKETPLACE CACHE
+     * ============================================================
+     *
+     * Cache failures must not turn a successfully
+     * created listing into an HTTP 500 response.
+     */
+
+    try {
+      await invalidateAllListingsCache();
+    } catch (cacheError) {
+      console.error(
+        "[CREATE LISTING] Cache invalidation failed:",
+        cacheError
+      );
+    }
+
+    /*
+     * ============================================================
+     * 11. CALCULATE REMAINING LISTING ALLOWANCE
+     * ============================================================
+     */
 
     const updatedActiveCount =
       activeListingCount + 1;
 
-    const remaining =
-      Math.max(
-        0,
-        limit -
-          updatedActiveCount
-      );
+    const remaining = Math.max(
+      0,
+      limit - updatedActiveCount
+    );
 
-    return res
-      .status(201)
-      .json({
-        success: true,
+    /*
+     * ============================================================
+     * 12. RETURN SUCCESS RESPONSE
+     * ============================================================
+     */
 
-        message:
-          "Listing created successfully",
+    return res.status(201).json({
+      success: true,
 
-        listing:
-          normalizeListingPremiumUser(
-            listing
-          ),
+      message: "Listing created successfully",
 
-        listingLimit: {
-          tier,
-          isPremium,
-          limit,
-          active:
-            updatedActiveCount,
-          remaining,
-        },
-      });
+      listing: normalizeListingPremiumUser(
+        listing
+      ),
+
+      listingLimit: {
+        tier,
+        isPremium,
+        limit,
+        active: updatedActiveCount,
+        remaining,
+      },
+    });
   } catch (error) {
     console.error(
       "CREATE LISTING ERROR:",
       error
     );
 
-    return res
-      .status(500)
-      .json({
-        success: false,
-        message:
-          "Unable to create listing",
-      });
+    return res.status(500).json({
+      success: false,
+      message: "Unable to create listing",
+    });
   }
 };
+
 
 /* =========================================================
    GET MARKETPLACE LISTINGS

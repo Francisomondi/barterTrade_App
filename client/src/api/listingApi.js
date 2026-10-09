@@ -71,7 +71,10 @@ export const getMyListings = async () => {
  */
 
 export const createListing = async (formData) => {
-  const response = await api.post("/listings", formData);
+  const response = await api.post("/listings", formData,{
+    timeout:120000,
+  });
+
 
   return response.data;
 };

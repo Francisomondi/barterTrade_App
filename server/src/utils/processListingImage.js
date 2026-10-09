@@ -1,15 +1,42 @@
+
 import sharp from "sharp";
 
+/**
+ * ============================================================
+ * LISTING IMAGE PROCESSING CONFIGURATION
+ * ============================================================
+ */
+
+const MAX_IMAGE_DIMENSION = 1400;
+const JPEG_QUALITY = 78;
+const MAX_INPUT_SIZE = 5 * 1024 * 1024;
+
+/**
+ * ============================================================
+ * PROCESS LISTING IMAGE
+ * ============================================================
+ *
+ * - Validates the input buffer
+ * - Automatically rotates images using EXIF orientation
+ * - Resizes images to fit within 1400 x 1400
+ * - Converts supported images to optimized JPEG
+ * - Removes unnecessary metadata
+ * - Logs processing duration and size reduction
+ *
+ * @param {Buffer} buffer
+ * @returns {Promise<Buffer>}
+ */
+
 const processListingImage = async (buffer) => {
-  if (!Buffer.isBuffer(buffer)) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
     throw new Error(
-      "Listing image processing requires a valid image buffer."
+      "Listing image processing requires a non-empty Buffer."
     );
   }
 
-  if (buffer.length === 0) {
+  if (buffer.length > MAX_INPUT_SIZE) {
     throw new Error(
-      "Listing image processing received an empty image buffer."
+      "Listing image exceeds the maximum allowed size of 5 MB."
     );
   }
 
@@ -19,94 +46,63 @@ const processListingImage = async (buffer) => {
     buffer.length / 1024 / 1024;
 
   console.log(
-    `[LISTING IMAGE] Original: ${originalSizeMB.toFixed(2)} MB`
+    `[LISTING IMAGE] Original size: ${originalSizeMB.toFixed(2)} MB`
   );
 
   try {
-    const metadata =
-      await sharp(buffer).metadata();
+    const metadata = await sharp(buffer).metadata();
 
-    console.log(
-      `[LISTING IMAGE] Original dimensions: ${
-        metadata.width || "unknown"
-      }x${metadata.height || "unknown"}`
-    );
-
-    const processedBuffer =
-      await sharp(buffer)
-        .rotate()
-        .resize({
-          width: 1600,
-          height: 1600,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .jpeg({
-          quality: 80,
-          progressive: true,
-          mozjpeg: true,
-        })
-        .toBuffer();
-
-    const processedMetadata =
-      await sharp(
-        processedBuffer
-      ).metadata();
-
-    console.log(
-      `[LISTING IMAGE] Processed: ${(
-        processedBuffer.length /
-        1024 /
-        1024
-      ).toFixed(2)} MB`
-    );
-
-    console.log(
-      `[LISTING IMAGE] Processed dimensions: ${
-        processedMetadata.width ||
-        "unknown"
-      }x${
-        processedMetadata.height ||
-        "unknown"
-      }`
-    );
-
-    /*
-     * If Sharp somehow creates a larger image,
-     * keep the original buffer instead.
-     *
-     * Exception:
-     * If the original image required resizing,
-     * we still want the processed version.
-     */
-    const requiredResize =
-      (metadata.width || 0) > 1600 ||
-      (metadata.height || 0) > 1600;
-
-    if (
-      !requiredResize &&
-      processedBuffer.length >= buffer.length
-    ) {
-      console.log(
-        "[LISTING IMAGE] Original is already smaller. Keeping original."
+    if (!metadata.width || !metadata.height) {
+      throw new Error(
+        "Unable to determine image dimensions."
       );
-
-      console.log(
-        `[LISTING IMAGE] Completed in ${
-          Date.now() - startedAt
-        }ms`
-      );
-
-      return buffer;
     }
 
     console.log(
-      `[LISTING IMAGE] Saved ${(
-        ((buffer.length -
-          processedBuffer.length) /
-          buffer.length) *
-        100
-      ).toFixed(1)}%`
+      `[LISTING IMAGE] Original dimensions: ${metadata.width}x${metadata.height}`
+    );
+
+    const processedBuffer = await sharp(buffer, {
+      limitInputPixels: 40_000_000,
+    })
+      .rotate()
+      .resize({
+        width: MAX_IMAGE_DIMENSION,
+        height: MAX_IMAGE_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .flatten({
+        background: "#ffffff",
+      })
+      .jpeg({
+        quality: JPEG_QUALITY,
+        progressive: true,
+        mozjpeg: false,
+      })
+      .toBuffer();
+
+    const processedMetadata =
+      await sharp(processedBuffer).metadata();
+
+    const processedSizeMB =
+      processedBuffer.length / 1024 / 1024;
+
+    const savedPercentage =
+      ((buffer.length - processedBuffer.length) /
+        buffer.length) *
+      100;
+
+    console.log(
+      `[LISTING IMAGE] Processed size: ${processedSizeMB.toFixed(2)} MB`
+    );
+
+    console.log(
+      `[LISTING IMAGE] Processed dimensions: ${processedMetadata.width}x${processedMetadata.height}`
+    );
+
+    console.log(
+      `[LISTING IMAGE] Size change: ${savedPercentage.toFixed(1)}%`
     );
 
     console.log(

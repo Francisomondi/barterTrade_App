@@ -2,6 +2,14 @@ import cloudinary from "../config/cloudinary.js";
 
 /**
  * ============================================================
+ * CLOUDINARY UPLOAD CONFIGURATION
+ * ============================================================
+ */
+
+const CLOUDINARY_UPLOAD_TIMEOUT_MS = 120000;
+
+/**
+ * ============================================================
  * UPLOAD IMAGE TO CLOUDINARY
  * ============================================================
  *
@@ -19,110 +27,88 @@ const uploadToCloudinary = (
   options = {}
 ) => {
   return new Promise((resolve, reject) => {
-    if (!Buffer.isBuffer(buffer)) {
-      reject(
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return reject(
         new Error(
-          "Cloudinary upload requires a valid Buffer."
+          "Cloudinary upload requires a non-empty Buffer."
         )
       );
-
-      return;
-    }
-
-    if (buffer.length === 0) {
-      reject(
-        new Error(
-          "Cloudinary upload received an empty Buffer."
-        )
-      );
-
-      return;
     }
 
     const startedAt = Date.now();
+    let settled = false;
 
-    console.log(
-      `[CLOUDINARY] Starting upload: ${(
-        buffer.length /
-        1024 /
-        1024
-      ).toFixed(2)} MB`
-    );
+    const finish = (error, result) => {
+      if (settled) return;
 
-    const uploadStream =
-      cloudinary.uploader.upload_stream(
-        {
-          folder,
+      settled = true;
 
-          resource_type: "image",
+      const elapsed = Date.now() - startedAt;
 
-          /*
-           * Cloudinary automatically determines
-           * the image format unless overridden.
-           */
-          ...options,
-        },
-
-        (error, result) => {
-          const elapsed =
-            Date.now() - startedAt;
-
-          if (error) {
-            console.error(
-              `[CLOUDINARY] Upload failed after ${elapsed}ms:`,
-              error
-            );
-
-            reject(error);
-
-            return;
-          }
-
-          if (
-            !result?.secure_url ||
-            !result?.public_id
-          ) {
-            reject(
-              new Error(
-                "Cloudinary upload completed without the expected result."
-              )
-            );
-
-            return;
-          }
-
-          console.log(
-            `[CLOUDINARY] Upload completed in ${elapsed}ms`
-          );
-
-          console.log(
-            `[CLOUDINARY] Result: ${result.width}x${result.height}, ${result.format}, ${(
-              (result.bytes || 0) /
-              1024 /
-              1024
-            ).toFixed(2)} MB`
-          );
-
-          resolve(result);
-        }
-      );
-
-    /*
-     * Catch stream-level errors as well.
-     */
-    uploadStream.on(
-      "error",
-      (error) => {
+      if (error) {
         console.error(
-          "[CLOUDINARY] Stream error:",
-          error
+          `[CLOUDINARY] Upload failed after ${elapsed}ms:`,
+          {
+            message: error.message,
+            http_code: error.http_code,
+            name: error.name,
+          }
         );
 
-        reject(error);
+        return reject(error);
       }
-    );
 
-    uploadStream.end(buffer);
+      if (!result?.secure_url || !result?.public_id) {
+        return reject(
+          new Error(
+            "Cloudinary upload completed without the expected result."
+          )
+        );
+      }
+
+      console.log(
+        `[CLOUDINARY] Upload completed in ${elapsed}ms`
+      );
+
+      console.log(
+        `[CLOUDINARY] Result: ${result.width}x${result.height}, ${result.format}, ${(
+          (result.bytes || 0) /
+          1024 /
+          1024
+        ).toFixed(2)} MB`
+      );
+
+      resolve(result);
+    };
+
+    try {
+      console.log(
+        `[CLOUDINARY] Starting upload: ${(
+          buffer.length /
+          1024 /
+          1024
+        ).toFixed(2)} MB`
+      );
+
+      const uploadStream =
+        cloudinary.uploader.upload_stream(
+          {
+            folder,
+            resource_type: "image",
+            timeout: CLOUDINARY_UPLOAD_TIMEOUT_MS,
+            ...options,
+          },
+          finish
+        );
+
+      uploadStream.on("error", (error) => {
+        finish(error);
+      });
+
+      uploadStream.end(buffer);
+    } catch (error) {
+      finish(error);
+    }
   });
 };
 
