@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -434,6 +435,15 @@ export default function BusinessFeaturedListingsManagement() {
                 up to six listings on your public
                 business storefront.
               </p>
+              
+            <Link
+            to="/business/pro"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#5B1725] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#3D0F18]"
+            >
+            <Crown size={15} />
+            Upgrade to Business Pro
+            </Link>
+
             </div>
           </div>
         </div>
@@ -709,11 +719,11 @@ export default function BusinessFeaturedListingsManagement() {
             </h3>
           </div>
 
-          <p className="mb-4 text-sm text-stone-500">
-            This preview shows your saved featured
-            listing order. Public featured placement
-            will be connected in the next step.
-          </p>
+            <p className="mb-4 text-sm text-stone-500">
+            {canManage
+                ? "These featured listings appear on your public business storefront in the order shown below."
+                : "Your featured selections are saved, but public featured placement is paused. Renew Business Pro to display them again."}
+            </p>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {featuredListings.map((item, index) => (

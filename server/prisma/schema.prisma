@@ -230,8 +230,9 @@ model BusinessProfile {
   user               User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   storefrontSettings BusinessStorefrontSettings?
 
-  analyticsEvents  BusinessAnalyticsEvent[]
-  featuredListings BusinessFeaturedListing[]
+  analyticsEvents       BusinessAnalyticsEvent[]
+  featuredListings      BusinessFeaturedListing[]
+  promotionalHighlights BusinessPromotionalHighlight[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -264,12 +265,50 @@ model BusinessStorefrontSettings {
   // Optional brand messaging
   tagline String? @db.VarChar(120)
 
+  // Business Pro introduction displayed on the storefront
+  introduction String? @db.VarChar(1000)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([layoutStyle])
+}
+
+/**
+ * ============================================================
+ * BUSINESS PROMOTIONAL HIGHLIGHTS
+ * ============================================================
+ * Business Pro storefront promotional messages.
+ * Highlights remain saved when Business Pro expires.
+ * Public visibility is controlled by active entitlement.
+ */
+
+model BusinessPromotionalHighlight {
+  id String @id @default(uuid())
+
+  businessId String
+
+  title       String  @db.VarChar(100)
+  description String? @db.VarChar(300)
+
+  // Optional visual icon identifier
+  icon String? @db.VarChar(50)
+
+  // Controls owner-selected display order
+  sortOrder Int @default(0)
+
+  // Allows individual highlights to be hidden
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business BusinessProfile @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, sortOrder])
+  @@index([businessId, isActive])
 }
 
 model Category {

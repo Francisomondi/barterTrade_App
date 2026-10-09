@@ -20,6 +20,15 @@ import {
   ShieldCheck,
   Star,
   Store,
+  BadgeCheck,
+  Gift,
+  HeartHandshake,
+  Lightbulb,
+  Megaphone,
+  Sparkles,
+  Tag,
+  Truck,
+  Zap,
 } from "lucide-react";
 import {
   getPublicBusiness,
@@ -69,6 +78,33 @@ const resolvePublicBranding = (business) => {
   }
   return branding;
 };
+
+
+/*
+ * ============================================================
+ * PROMOTIONAL HIGHLIGHT ICONS
+ * ============================================================
+ */
+
+const PROMOTIONAL_HIGHLIGHT_ICONS = {
+  "badge-check": BadgeCheck,
+  gift: Gift,
+  "heart-handshake": HeartHandshake,
+  lightbulb: Lightbulb,
+  megaphone: Megaphone,
+  sparkles: Sparkles,
+  tag: Tag,
+  truck: Truck,
+  zap: Zap,
+};
+
+const resolvePromotionalHighlightIcon = (iconName) => {
+  return (
+    PROMOTIONAL_HIGHLIGHT_ICONS[iconName] ||
+    Sparkles
+  );
+};
+
 const BusinessStorefront = () => {
   const { slug } = useParams();
   const [business, setBusiness] = useState(null);
@@ -524,6 +560,53 @@ const {
 } = branding;
 const isModern = layoutStyle === "MODERN";
 const isMinimal = layoutStyle === "MINIMAL";
+
+
+/*
+ * ============================================================
+ * BUSINESS PRO — PUBLIC INTRODUCTION
+ * ============================================================
+ *
+ * Only render introduction content returned for an
+ * active Business Pro storefront.
+ */
+
+const isBusinessPro =
+  business.storefront?.tier === "BUSINESS_PRO";
+
+const businessIntroduction =
+  isBusinessPro &&
+  typeof business.storefront?.introduction === "string"
+    ? business.storefront.introduction.trim()
+    : "";
+
+    
+/*
+ * ============================================================
+ * BUSINESS PRO — PUBLIC PROMOTIONAL HIGHLIGHTS
+ * ============================================================
+ */
+
+const promotionalHighlights =
+  isBusinessPro &&
+  Array.isArray(business.storefront?.promotionalHighlights)
+    ? business.storefront.promotionalHighlights
+        .filter(
+          (highlight) =>
+            highlight &&
+            typeof highlight.title === "string" &&
+            highlight.title.trim()
+        )
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.sortOrder ?? 0) -
+            (b.sortOrder ?? 0)
+        )
+        .slice(0, 6)
+    : [];
+
+
   /*
    * ==========================================================
    * PAGE
@@ -543,13 +626,17 @@ const isMinimal = layoutStyle === "MINIMAL";
           COVER
       ====================================================== */}
       <section
+
+
         className={`relative overflow-hidden ${
           isMinimal
-            ? "h-32 sm:h-40"
+            ? "h-28 sm:h-36 lg:h-40"
             : isModern
-              ? "h-56 sm:h-72 lg:h-80"
-              : "h-44 sm:h-56 lg:h-60"
+              ? "h-48 min-[400px]:h-56 sm:h-80 lg:h-96"
+              : "h-40 min-[400px]:h-48 sm:h-60 lg:h-68"
         }`}
+
+
         style={{
           background: `linear-gradient(135deg, ${primaryColor}, ${accentColor})`,
         }}
@@ -625,18 +712,15 @@ const isMinimal = layoutStyle === "MINIMAL";
       <section
         className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"
       >
-        <div
-          className="
-            relative
-            -mt-10
-            overflow-hidden
-            rounded-2xl
-            border
-            border-[#E8DFDB]
-            bg-white
-            shadow-[0_8px_30px_rgba(61,15,24,0.08)]
-            sm:-mt-12
-          "
+        <div  
+        className={`relative overflow-hidden border border-[#E8DFDB] bg-white ${
+          isModern
+            ? "-mt-10 rounded-2xl shadow-[0_20px_55px_rgba(61,15,24,0.14)] sm:-mt-20 sm:rounded-3xl"
+            : isMinimal
+              ? "-mt-4 rounded-lg shadow-[0_4px_18px_rgba(61,15,24,0.05)] sm:-mt-7 sm:rounded-xl"
+              : "-mt-8 rounded-xl shadow-[0_12px_36px_rgba(61,15,24,0.10)] sm:-mt-14 sm:rounded-2xl"
+        }`}
+
         >
         <div
           className="h-1 w-full"
@@ -651,23 +735,26 @@ const isMinimal = layoutStyle === "MINIMAL";
             "
           >
             <div
-              className={`flex flex-col gap-4 ${
+              className={`flex min-w-0 flex-col ${
                 isModern
-                  ? "items-center text-center"
+                  ? "items-center gap-4 py-2 text-center sm:gap-6 sm:py-5"
                   : isMinimal
-                    ? "sm:flex-row sm:items-center"
-                    : "sm:flex-row sm:items-start"
+                    ? "gap-3 sm:flex-row sm:items-center sm:gap-4"
+                    : "gap-4 sm:flex-row sm:items-start sm:gap-6"
               }`}
             >
               {/* LOGO */}
               <div
-                className={`flex shrink-0 items-center justify-center overflow-hidden border-4 border-white bg-[#F4ECE9] shadow-md ${
+                className={`flex shrink-0 items-center justify-center overflow-hidden border-4 border-white bg-[#F4ECE9] ${
                   isModern
-                    ? "h-28 w-28 rounded-3xl"
+                    ? "h-24 w-24 rounded-2xl shadow-[0_12px_32px_rgba(61,15,24,0.18)] sm:h-32 sm:w-32 sm:rounded-3xl lg:h-36 lg:w-36"
                     : isMinimal
-                      ? "h-16 w-16 rounded-xl"
-                      : "h-20 w-20 rounded-2xl sm:h-24 sm:w-24"
+                      ? "h-14 w-14 rounded-lg shadow-sm sm:h-16 sm:w-16"
+                      : "h-20 w-20 rounded-2xl shadow-[0_8px_24px_rgba(61,15,24,0.14)] sm:h-[104px] sm:w-[104px]"
                 }`}
+
+
+
               >
                 {business.logo ? (
                   <img
@@ -709,15 +796,14 @@ const isMinimal = layoutStyle === "MINIMAL";
                 >
                   <h1
                     style={{ color: primaryColor }}
-                    className="
-                      min-w-0
-                      text-[21px]
-                      font-black
-                      leading-tight
-                      tracking-tight
-                      text-[#3D0F18]
-                      sm:text-[26px]
-                    "
+                    className={`min-w-0 break-words font-black leading-tight tracking-tight ${
+                      isModern
+                        ? "text-2xl sm:text-4xl lg:text-[42px]"
+                        : isMinimal
+                          ? "text-xl leading-snug sm:text-2xl"
+                          : "text-xl sm:text-[26px]"
+                    }`}
+
                   >
                     {
                       business.businessName
@@ -784,32 +870,38 @@ const isMinimal = layoutStyle === "MINIMAL";
                     }
                   </div>
                 )}
+
                 {business.description && (
                   <p
-                    className="
-                      mt-3
-                      max-w-3xl
-                      text-[12px]
-                      leading-5
-                      text-gray-600
-                      sm:text-[13px]
-                      sm:leading-6
-                    "
-                  >
-                    {
-                      business.description
+                    className={`min-w-0 break-words text-gray-600 ${
+                      isModern
+                        ? "mx-auto mt-3 max-w-3xl text-[13px] leading-6 sm:mt-4 sm:text-sm sm:leading-7"
+                        : isMinimal
+                          ? "mt-2 max-w-2xl text-xs leading-6 sm:text-[13px]"
+                          : "mt-3 max-w-3xl border-l-[3px] pl-3 text-[13px] leading-6 sm:mt-4 sm:pl-4 sm:text-sm"
+                    }`}
+                    style={
+                      !isModern && !isMinimal
+                        ? { borderLeftColor: secondaryColor }
+                        : undefined
                     }
+                  >
+                    {business.description}
                   </p>
                 )}
+
                 {/* QUICK STATS */}
+             
                 <div
-                  className="
-                    mt-4
-                    flex
-                    flex-wrap
-                    gap-2
-                  "
+                  className={`flex min-w-0 flex-wrap ${
+                    isModern
+                      ? "mt-4 justify-center gap-2 sm:mt-5 sm:gap-3"
+                      : isMinimal
+                        ? "mt-3 gap-2"
+                        : "mt-4 gap-2 sm:mt-5 sm:gap-3"
+                  }`}
                 >
+
                   <div
                     className="
                       min-w-25
@@ -904,28 +996,24 @@ const isMinimal = layoutStyle === "MINIMAL";
               business.phone ||
               business.email ||
               business.website) && (
-              <div
-                className="
-                  mt-5
-                  grid
-                  gap-2.5
-                  border-t
-                  border-[#EEE6E2]
-                  pt-5
-                  sm:grid-cols-2
-                  lg:grid-cols-4
-                "
-              >
+            <div
+              className={`grid min-w-0 grid-cols-1 border-t border-[#EEE6E2] ${
+                isModern
+                  ? "mt-5 gap-3 pt-5 sm:mt-7 sm:grid-cols-2 sm:gap-4 sm:pt-7 xl:grid-cols-4"
+                  : isMinimal
+                    ? "mt-4 gap-2 pt-4 sm:grid-cols-2 xl:grid-cols-4"
+                    : "mt-5 gap-3 pt-5 sm:mt-6 sm:grid-cols-2 sm:pt-6 xl:grid-cols-4"
+              }`}
+            >
                 {business.location && (
                   <div
-                    className="
-                      flex
-                      items-start
-                      gap-2.5
-                      rounded-xl
-                      bg-[#FAF8F7]
-                      p-3
-                    "
+                    className={`flex min-w-0 items-start gap-2.5 ${
+                      isModern
+                        ? "rounded-2xl bg-[#FAF8F7] p-4"
+                        : isMinimal
+                          ? "rounded-lg bg-[#FAF8F7] p-2.5"
+                          : "rounded-xl border border-[#EEE6E2] bg-[#FAF8F7] p-4"
+                    }`}
                   >
                     <MapPin
                       size={16}
@@ -948,12 +1036,7 @@ const isMinimal = layoutStyle === "MINIMAL";
                         Location
                       </p>
                       <p
-                        className="
-                          mt-1
-                          text-[11px]
-                          font-bold
-                          text-gray-700
-                        "
+                        className="mt-1 break-words text-[11px] font-bold leading-5 text-gray-700"
                       >
                         {
                           business.location
@@ -980,16 +1063,15 @@ const isMinimal = layoutStyle === "MINIMAL";
                   <a
                   href={`tel:${business.phone}`}
                   onClick={handlePhoneClick}
-                  className="
-                    flex
-                    items-start
-                    gap-2.5
-                    rounded-xl
-                    bg-[#FAF8F7]
-                    p-3
-                    transition
-                    hover:bg-[#F3ECE9]
-                  "
+
+                    className={`flex items-start gap-2.5 transition-colors hover:bg-[#F3ECE9] ${
+                      isModern
+                        ? "rounded-2xl bg-[#FAF8F7] p-4"
+                        : isMinimal
+                          ? "rounded-lg bg-[#FAF8F7] p-2.5"
+                          : "rounded-xl border border-[#EEE6E2] bg-[#FAF8F7] p-4 hover:border-[#D6B15E]"
+                    }`}
+
                 >
                   <Phone
                     size={16}
@@ -1029,16 +1111,9 @@ const isMinimal = layoutStyle === "MINIMAL";
                   <a
                     href={`mailto:${business.email}`}
                     onClick={handleEmailClick}
-                    className="
-                      flex
-                      items-start
-                      gap-2.5
-                      rounded-xl
-                      bg-[#FAF8F7]
-                      p-3
-                      transition
-                      hover:bg-[#F3ECE9]
-                    "
+                   
+                    className="flex min-w-0 items-start gap-2.5 rounded-xl bg-[#FAF8F7] p-3 transition hover:bg-[#F3ECE9] sm:p-4"
+
                   >
                     <Mail
                       size={16}
@@ -1135,6 +1210,206 @@ const isMinimal = layoutStyle === "MINIMAL";
           </div>
         </div>
       </section>
+
+      
+  {/* ======================================================
+      BUSINESS PRO — BUSINESS INTRODUCTION
+  ====================================================== */}
+
+    {isBusinessPro && businessIntroduction && (
+      <section className="mx-auto mt-8 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div
+          className={`relative overflow-hidden border bg-white ${
+            isModern
+              ? "rounded-2xl border-[#E8DFDB] px-4 py-7 text-center shadow-[0_16px_45px_rgba(61,15,24,0.09)] sm:rounded-3xl sm:px-12 sm:py-14"
+              : isMinimal
+                ? "rounded-lg border-[#EEE6E2] p-4 shadow-none sm:p-6"
+                : "rounded-xl border-[#E8DFDB] p-4 shadow-[0_8px_28px_rgba(61,15,24,0.06)] sm:rounded-2xl sm:p-8"
+
+
+          }`}
+        >
+          <div
+            className={`flex items-center gap-3 ${
+              isModern
+                ? "mb-6 justify-center"
+                : "mb-4"
+            }`}
+          >
+
+          <div
+            className={`rounded-full ${
+              isModern
+                ? "h-10 w-1.5"
+                : isMinimal
+                  ? "h-7 w-1"
+                  : "h-11 w-1.5"
+            }`}
+            style={{ backgroundColor: secondaryColor }}
+          />
+
+
+            <div>
+              <p
+                className="text-[10px] font-black uppercase tracking-[0.15em]"
+                style={{ color: accentColor }}
+              >
+                Get to Know Us
+              </p>
+
+
+                <h2
+                  className={`mt-1 font-black tracking-tight ${
+                    isModern
+                      ? "text-[26px] leading-tight sm:text-4xl"
+                      : isMinimal
+                         ? "text-lg font-bold leading-snug tracking-tight sm:text-[22px]"
+                        : "text-xl sm:text-[26px]"
+                  }`}
+
+                  style={{ color: primaryColor }}
+                >
+                  About {business.businessName}
+                </h2>
+
+            </div>
+          </div>
+
+          <p
+          className={`whitespace-pre-line wrap-break-word text-gray-600 ${
+            isModern
+              ? "mx-auto max-w-3xl text-[15px] leading-8 sm:text-[17px] sm:leading-9"
+              : isMinimal
+                ? "max-w-3xl text-sm leading-7"
+                : "max-w-4xl text-sm leading-7 sm:text-[15px]"
+          }`}
+          >
+            {businessIntroduction}
+          </p>
+        </div>
+      </section>
+    )}
+
+    
+    {/* ======================================================
+        BUSINESS PRO — PROMOTIONAL HIGHLIGHTS
+    ====================================================== */}
+
+    {isBusinessPro && promotionalHighlights.length > 0 && (
+      <section className="mx-auto mt-8 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-5">
+          <div
+            className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.15em]"
+            style={{ color: accentColor }}
+          >
+            <Sparkles size={15} />
+
+            Why Choose Us
+          </div>
+
+          <h2
+            className="text-xl font-black tracking-tight sm:text-2xl"
+            style={{ color: primaryColor }}
+          >
+            What Makes Us Different
+          </h2>
+
+          <p className="mt-1 text-xs text-gray-500">
+            Discover what {business.businessName} has to offer.
+          </p>
+        </div>
+
+        <div
+          className={`grid min-w-0 grid-cols-1 ${
+            isModern
+              ? "gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3 lg:gap-6"
+              : isMinimal
+                ? "gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:gap-4"
+                : "gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+          }`}
+
+        >
+          {promotionalHighlights.map((highlight) => {
+            const HighlightIcon =
+              resolvePromotionalHighlightIcon(highlight.icon);
+
+            return (
+              <article
+                key={highlight.id}
+                className={`relative overflow-hidden border bg-white transition-all duration-300 ${
+                  isModern
+                    ? "rounded-3xl border-[#E8DFDB] px-6 py-9 text-center shadow-[0_10px_35px_rgba(61,15,24,0.08)] hover:-translate-y-1 hover:shadow-xl sm:px-8"
+                    : isMinimal
+                     ? "rounded-lg border-[#EEE6E2] p-4 shadow-none hover:border-[#D6B15E] sm:p-5"
+                      : "rounded-2xl border-[#E8DFDB] p-6 shadow-sm hover:-translate-y-1 hover:border-[#D6B15E] hover:shadow-md"
+                }`}
+              >
+                <div
+                  className={`mb-4 flex ${
+                    isModern ? "justify-center" : ""
+                  }`}
+                >
+                  <div
+                    className={`flex items-center justify-center ${
+                      isModern
+                        ? "h-14 w-14 rounded-2xl"
+                        : isMinimal
+                          ? "h-10 w-10 rounded-lg"
+                          : "h-12 w-12 rounded-xl"
+                    }`}
+                    style={{
+                      backgroundColor: `${primaryColor}12`,
+                      color: primaryColor,
+                    }}
+                  >
+                    <HighlightIcon size={23} strokeWidth={1.8} />
+                  </div>
+                </div>
+
+                <h3                 
+                className={`wrap-break-word font-black ${
+                  isModern
+                    ? "text-base leading-6 sm:text-lg"
+                    : isMinimal
+                       ? "text-sm font-semibold leading-5"
+                      : "text-sm"
+                }`}
+
+                  style={{ color: primaryColor }}
+                >
+                  {highlight.title}
+                </h3>
+
+                {highlight.description && (                
+                  <p
+                    className={`mt-2 whitespace-pre-line wrap-break-word text-gray-600 ${
+                      isModern
+                        ? "text-[13px] leading-7"
+                        : isMinimal
+                          ? "text-xs leading-6"
+                          : "text-xs leading-6"
+                    }`}
+                  >
+                    {highlight.description}
+                  </p>
+                )}
+
+                <div
+                  className={`mt-5 h-1 w-10 rounded-full ${
+                    isModern ? "mx-auto" : ""
+                  }`}
+                  style={{
+                    backgroundColor: secondaryColor,
+                  }}
+                />
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    )}
+
+
       
     {/* ======================================================
         BUSINESS PRO — FEATURED LISTINGS
@@ -1174,7 +1449,17 @@ const isMinimal = layoutStyle === "MINIMAL";
             </span>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div
+          className={`grid min-w-0 grid-cols-1 ${
+            isModern
+              ? "gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 xl:gap-8"
+              : isMinimal
+                ? "gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4"
+                : "gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3"
+          }`}
+
+
+          >
             {featuredListings.map((listing, index) => {
               const image = getPrimaryImage(listing);
 
@@ -1186,9 +1471,24 @@ const isMinimal = layoutStyle === "MINIMAL";
                 <Link
                   key={listing.id}
                   to={`/listings/${listing.id}`}
-                  className="group overflow-hidden rounded-2xl border border-[#E8DFDB] bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
+                  className={`group flex h-full min-w-0 flex-col overflow-hidden border bg-white transition-all duration-300 ${
+                    isModern
+                      ? "rounded-3xl border-[#E8DFDB] shadow-[0_12px_36px_rgba(61,15,24,0.10)] hover:-translate-y-1.5 hover:border-[#D6B15E] hover:shadow-[0_20px_48px_rgba(61,15,24,0.16)]"
+                      : isMinimal
+                        ? "rounded-lg border-[#EEE6E2] shadow-none hover:border-[#D6B15E] hover:shadow-sm"
+                        : "rounded-2xl border-[#E8DFDB] shadow-sm hover:-translate-y-1 hover:border-[#D6B15E] hover:shadow-md"
+                  }`}
                 >
-                  <div className="relative aspect-[4/3] overflow-hidden bg-[#F0E9E6]">
+                  <div
+                    className={`relative overflow-hidden bg-[#F0E9E6] ${
+                      isModern
+                        ? "aspect-4/3 sm:aspect-5/4"
+                        : isMinimal
+                          ? "aspect-square" 
+                          : "aspect-4/3"
+                    }`}
+
+                  >
                     {image ? (
                       <img
                         src={image}
@@ -1217,7 +1517,15 @@ const isMinimal = layoutStyle === "MINIMAL";
                     </span>
                   </div>
 
-                  <div className="p-4">
+                  <div
+                    className={
+                      isModern
+                        ? "flex flex-1 flex-col p-5 sm:p-6 lg:p-7"
+                        : isMinimal
+                          ? "p-3 sm:p-4"
+                          : "p-4 sm:p-5"
+                    }
+                  >
                     {listing.category?.name && (
                       <p
                         className="text-[9px] font-black uppercase tracking-wide"
@@ -1356,13 +1664,13 @@ const isMinimal = layoutStyle === "MINIMAL";
         </div>
         {listingsLoading ? (
           <div
-            className="
-              grid
-              gap-4
-              sm:grid-cols-2
-              lg:grid-cols-3
-              xl:grid-cols-4
-            "
+            className={`grid ${
+              isModern
+                ? "gap-6 sm:grid-cols-2 lg:grid-cols-3"
+                : isMinimal
+                  ? "gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5"
+                  : "gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            }`}
           >
             {Array.from({
               length: 8,
@@ -1482,24 +1790,16 @@ const isMinimal = layoutStyle === "MINIMAL";
                       listing.id
                     }
                     to={`/listings/${listing.id}`}
-                    className="
-                      group
-                      flex
-                      h-full
-                      min-w-0
-                      flex-col
-                      overflow-hidden
-                      rounded-xl
-                      border
-                      border-[#E9E2E3]
-                      bg-white
-                      shadow-sm
-                      transition-all
-                      duration-300
-                      hover:-translate-y-1
-                      hover:border-[#D4BEC3]
-                      hover:shadow-md
-                    "
+                    
+                    className={`group flex h-full min-w-0 flex-col overflow-hidden border bg-white transition-all duration-300 ${
+                      isModern
+                        ? "rounded-3xl border-[#E8DFDB] shadow-[0_10px_32px_rgba(61,15,24,0.09)] hover:-translate-y-1.5 hover:border-[#D6B15E] hover:shadow-[0_18px_44px_rgba(61,15,24,0.15)]"
+                        : isMinimal
+                          ? "rounded-lg border-[#EEE6E2] shadow-none hover:border-[#D6B15E] hover:shadow-sm"
+                          : "rounded-xl border-[#E9E2E3] shadow-sm hover:-translate-y-1 hover:border-[#D6B15E] hover:shadow-md"
+                    }`}
+
+
                   >
                     <div
                       className="
@@ -1712,14 +2012,8 @@ const isMinimal = layoutStyle === "MINIMAL";
         ==================================================== */}
         {pagination.totalPages >
           1 && (
-          <div
-            className="
-              mt-8
-              flex
-              items-center
-              justify-center
-              gap-2
-            "
+          <div            
+            className="mt-6 flex flex-wrap items-center justify-center gap-2 px-1 sm:mt-8"
           >
             <button
               type="button"

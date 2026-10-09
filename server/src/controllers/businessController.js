@@ -376,18 +376,6 @@ export const getMyBusinessProfile = async (
   }
 };
 
-/*
- * ============================================================
- * GET PUBLIC BUSINESS PROFILE
- * ============================================================
- *
- * GET /api/business/:slug
- *
- * Public endpoint.
- *
- * Only ACTIVE businesses are publicly accessible.
- */
-
 /**
  * ============================================================
  * GET PUBLIC BUSINESS PROFILE
@@ -451,10 +439,6 @@ export const getPublicBusinessProfile = async (
 
         select: {
           id: true,
-
-          /**
-           * Internal analytics fields.
-           */
           userId: true,
           status: true,
 
@@ -478,15 +462,41 @@ export const getPublicBusinessProfile = async (
 
           createdAt: true,
 
-          storefrontSettings: {
-            select: {
-              primaryColor: true,
-              secondaryColor: true,
-              accentColor: true,
-              layoutStyle: true,
-              tagline: true,
-            },
+
+        storefrontSettings: {
+          select: {
+            primaryColor: true,
+            secondaryColor: true,
+            accentColor: true,
+            layoutStyle: true,
+            tagline: true,
+            introduction: true,
           },
+        },
+
+        
+        promotionalHighlights: {
+          where: {
+            isActive: true,
+          },
+          orderBy: [
+            {
+              sortOrder: "asc",
+            },
+            {
+              createdAt: "asc",
+            },
+          ],
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            icon: true,
+            sortOrder: true,
+          },
+        },
+
+
 
           user: {
             select: {
@@ -555,6 +565,28 @@ export const getPublicBusinessProfile = async (
             : {}),
         }
       : { ...DEFAULT_STOREFRONT_BRANDING };
+
+      
+    /*
+    * ============================================================
+    * RESOLVE PUBLIC STOREFRONT CONTENT
+    * ============================================================
+    *
+    * Business Introduction and Promotional Highlights are
+    * exclusive to businesses with an active Business Pro plan.
+    *
+    * Content remains stored when a subscription expires,
+    * but must not be included in the public response.
+    */
+
+    const effectiveIntroduction = isBusinessPro
+      ? business.storefrontSettings?.introduction ?? null
+      : null;
+
+    const effectivePromotionalHighlights = isBusinessPro
+      ? business.promotionalHighlights ?? []
+      : [];
+
 
 
     /**
@@ -628,13 +660,16 @@ export const getPublicBusinessProfile = async (
      * them.
      */
 
+
   const {
     user,
     userId: _userId,
     status: _status,
     storefrontSettings: _storefrontSettings,
+    promotionalHighlights: _promotionalHighlights,
     ...businessData
   } = business;
+
 
     /**
      * ========================================================
@@ -660,6 +695,10 @@ export const getPublicBusinessProfile = async (
           : "BUSINESS_FREE",
 
         branding: effectiveBranding,
+
+        introduction: effectiveIntroduction,
+
+        promotionalHighlights: effectivePromotionalHighlights,
       },
     },
     });
@@ -714,14 +753,17 @@ export const getPublicBusinessListings = async (req, res) => {
           status: "ACTIVE",
         },
 
-        select: {
-          id: true,
-          userId: true,
-          businessName: true,
-          slug: true,
-          logo: true,
-          verificationStatus: true,
-        },
+
+      select: {
+        id: true,
+        userId: true,
+        businessName: true,
+        slug: true,
+        logo: true,
+        verificationStatus: true,
+        status: true,
+      },
+
       });
 
     if (!business) {
@@ -789,6 +831,7 @@ export const getPublicBusinessListings = async (req, res) => {
       );
 
       const canShowFeaturedListings =
+        business.status === "ACTIVE" &&
         entitlement?.isBusinessPro === true &&
         entitlement?.businessId === business.id;
 

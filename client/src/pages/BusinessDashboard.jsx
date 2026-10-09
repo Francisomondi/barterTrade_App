@@ -49,8 +49,12 @@ import {
 
 import BusinessBadge from "../components/business/BusinessBadge";
 import PremiumBadge from "../components/PremiumBadge";
+
 import BusinessStorefrontBrandingSettings from "../components/business/BusinessStorefrontBrandingSettings";
 import BusinessFeaturedListingsManagement from "../components/business/BusinessFeaturedListingsManagement";
+import BusinessIntroductionManagement from "../components/business/BusinessIntroductionManagement";
+import BusinessPromotionalHighlightsManagement from "../components/business/BusinessPromotionalHighlightsManagement";
+
 
 /*
  * ============================================================
@@ -762,13 +766,25 @@ if (activeDashboardView === "branding") {
           )}
         </div>
 
-        {/* BRANDING AND FEATURED LISTINGS MANAGEMENT */}
+
+        {/* ====================================================
+            STOREFRONT CUSTOMIZATION MANAGEMENT
+        ==================================================== */}
+
         <div className="space-y-8">
+          {/* 9.11.22.3 — Storefront Branding */}
           <BusinessStorefrontBrandingSettings />
 
-          {/* 9.11.22.4.6 — Featured Listings Management */}
+          {/* 9.11.22.4 — Featured Listings */}
           <BusinessFeaturedListingsManagement />
+
+          {/* 9.11.22.5 — Business Introduction */}
+          <BusinessIntroductionManagement />
+
+          {/* 9.11.22.5 — Promotional Highlights */}
+          <BusinessPromotionalHighlightsManagement />
         </div>
+
       </main>
     </div>
   );

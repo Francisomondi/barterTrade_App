@@ -66,6 +66,15 @@ import {
   reorderMyBusinessFeaturedListings,
   getMyBusinessFeaturedListingSummary,
 } from "../controllers/businessFeaturedListingsController.js";
+import {
+  getMyBusinessIntroduction,
+  updateMyBusinessIntroduction,
+  getMyBusinessPromotionalHighlights,
+  createMyBusinessPromotionalHighlight,
+  updateMyBusinessPromotionalHighlight,
+  deleteMyBusinessPromotionalHighlight,
+  reorderMyBusinessPromotionalHighlights,
+} from "../controllers/businessStorefrontContentController.js";
 
 const router = express.Router();
 
@@ -199,6 +208,71 @@ router.delete(
   protect,
   removeMyBusinessFeaturedListing
 );
+
+
+/**
+ * =========================================================
+ * BUSINESS INTRODUCTION
+ * =========================================================
+ *
+ * GET: Business Free and Business Pro can read saved content.
+ * PATCH: Active Business Pro subscription required.
+ */
+
+router.get(
+  "/me/storefront/introduction",
+  protect,
+  getMyBusinessIntroduction
+);
+
+router.patch(
+  "/me/storefront/introduction",
+  protect,
+  updateMyBusinessIntroduction
+);
+
+/**
+ * =========================================================
+ * BUSINESS PROMOTIONAL HIGHLIGHTS
+ * =========================================================
+ *
+ * GET: Business Free and Business Pro can read saved highlights.
+ * POST/PATCH/DELETE: Active Business Pro required.
+ */
+
+router.get(
+  "/me/storefront/highlights",
+  protect,
+  getMyBusinessPromotionalHighlights
+);
+
+router.post(
+  "/me/storefront/highlights",
+  protect,
+  createMyBusinessPromotionalHighlight
+);
+
+/**
+ * Reorder must appear before the dynamic :highlightId route.
+ */
+router.patch(
+  "/me/storefront/highlights/reorder",
+  protect,
+  reorderMyBusinessPromotionalHighlights
+);
+
+router.patch(
+  "/me/storefront/highlights/:highlightId",
+  protect,
+  updateMyBusinessPromotionalHighlight
+);
+
+router.delete(
+  "/me/storefront/highlights/:highlightId",
+  protect,
+  deleteMyBusinessPromotionalHighlight
+);
+
 
 /**
  * =========================================================

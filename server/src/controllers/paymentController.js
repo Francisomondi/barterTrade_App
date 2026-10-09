@@ -299,6 +299,7 @@ export const initiateMpesaPayment = async (req, res) => {
 
         checkoutRequestId:
           CheckoutRequestID,
+          
 
         resultCode:
           ResponseCode !== undefined

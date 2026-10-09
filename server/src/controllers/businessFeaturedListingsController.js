@@ -164,14 +164,15 @@ const resolveAccess = async (req) => {
     entitlement?.features?.featuredListings === true
   );
 
-  const configuredLimit =
+
+    const configuredLimit =
     entitlement?.features?.maxFeaturedListings;
 
-  const maxFeaturedListings =
-    Number.isInteger(configuredLimit) &&
-    configuredLimit >= 0
-      ? configuredLimit
-      : 0;
+    const maxFeaturedListings =
+    canManage && Number.isInteger(configuredLimit)
+        ? Math.min(6, Math.max(0, configuredLimit))
+        : 0;
+
 
   return {
     business,
