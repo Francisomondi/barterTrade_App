@@ -130,8 +130,11 @@ export const updateMyBusinessIntroduction = async (req, res) => {
     const { introduction } = req.body ?? {};
 
     if (
-      introduction !== null &&
-      typeof introduction !== "string"
+      introduction === undefined ||
+      (
+        introduction !== null &&
+        typeof introduction !== "string"
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -440,13 +443,48 @@ export const updateMyBusinessPromotionalHighlight = async (req, res) => {
       });
     }
 
-    const updated = await prisma.businessPromotionalHighlight.update({
+const result = await prisma.$transaction(async (tx) => {
+  // Coordinate with create, delete, and reorder operations.
+  await tx.$queryRaw`
+    SELECT id FROM "BusinessProfile"
+    WHERE id = ${access.business.id}
+    FOR UPDATE
+  `;
+
+  const updateResult =
+    await tx.businessPromotionalHighlight.updateMany({
       where: {
         id: existing.id,
         businessId: access.business.id,
+        updatedAt: existing.updatedAt,
       },
       data: validation.data,
     });
+
+  if (updateResult.count !== 1) {
+    return { conflict: true };
+  }
+
+  const updated =
+    await tx.businessPromotionalHighlight.findUnique({
+      where: {
+        id: existing.id,
+      },
+    });
+
+  return { conflict: false, updated };
+});
+
+if (result.conflict) {
+  return res.status(409).json({
+    success: false,
+    code: "HIGHLIGHT_UPDATE_CONFLICT",
+    message:
+      "This highlight was changed. Refresh and try again.",
+  });
+}
+
+const updated = result.updated;
 
     return res.status(200).json({
       success: true,
@@ -472,13 +510,24 @@ export const deleteMyBusinessPromotionalHighlight = async (req, res) => {
     if (!access) return;
     if (!requirePromotionalHighlightsPro(access, res)) return;
 
-    const result =
-      await prisma.businessPromotionalHighlight.deleteMany({
+    const result = await prisma.$transaction(async (tx) => {
+      /*
+      * Serialize highlight deletion with creation
+      * and reordering for this business.
+      */
+      await tx.$queryRaw`
+        SELECT id FROM "BusinessProfile"
+        WHERE id = ${access.business.id}
+        FOR UPDATE
+      `;
+
+      return tx.businessPromotionalHighlight.deleteMany({
         where: {
           id: req.params.highlightId,
           businessId: access.business.id,
         },
       });
+    });
 
     if (result.count === 0) {
       return res.status(404).json({

@@ -2,6 +2,42 @@ import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.js";
 
 /**
+ * Extract exactly one Bearer token.
+ *
+ * Returns null for missing or malformed credentials.
+ */
+const extractBearerToken = (req) => {
+  const authorization = req.headers.authorization;
+
+  if (typeof authorization !== "string") {
+    return null;
+  }
+
+  const match = /^Bearer ([^\s]+)$/i.exec(
+    authorization.trim()
+  );
+
+  return match?.[1] || null;
+};
+
+/**
+ * Verify tokens signed by our authentication service.
+ *
+ * IMPORTANT:
+ * The algorithm must match the algorithm used
+ * when issuing JWTs in authController.js.
+ */
+const verifyAccessToken = (token) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured.");
+  }
+
+  return jwt.verify(token, process.env.JWT_SECRET, {
+    algorithms: ["HS256"],
+  });
+};
+
+/**
  * =========================================================
  * PROTECT
  * =========================================================

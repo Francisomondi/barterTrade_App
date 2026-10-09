@@ -26,7 +26,15 @@ export const initiateMpesaPayment = async (req, res) => {
      * STEP 1
      * Validate required fields.
      */
-    if (!amount || Number(amount) <= 0) {
+      if (
+        amount === null ||
+        amount === undefined ||
+        amount === "" ||
+        !Number.isFinite(Number(amount)) ||
+        Number(amount) <= 0 ||
+        !Number.isSafeInteger(Math.round(Number(amount))) ||
+        Math.round(Number(amount)) < 1
+      ) {
       return res.status(400).json({
         success: false,
         message: "Payment amount must be greater than zero.",
@@ -65,6 +73,14 @@ export const initiateMpesaPayment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid payment type.",
+      });
+    }
+
+    if (type === "SUBSCRIPTION" || type === "PROMOTION") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Use the dedicated subscription or promotion checkout endpoint.",
       });
     }
 
@@ -299,7 +315,7 @@ export const initiateMpesaPayment = async (req, res) => {
 
         checkoutRequestId:
           CheckoutRequestID,
-          
+
 
         resultCode:
           ResponseCode !== undefined
@@ -509,8 +525,12 @@ export const mpesaCallback = async (req, res) => {
        * a payment as completed if the callback amount
        * does not match our original payment.
        */
-      if (callbackAmount !== null && callbackAmount !== payment.amount) {
-        console.error("M-PESA CALLBACK: Amount mismatch.",
+        if (
+          !Number.isFinite(callbackAmount) ||
+          callbackAmount !== payment.amount
+        ) {
+                console.error("M-PESA CALLBACK: Amount mismatch.",
+                
           {
             paymentId: payment.id,
             expected: payment.amount,

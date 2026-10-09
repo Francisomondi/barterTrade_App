@@ -7,6 +7,92 @@ import { generateUniqueBusinessSlug, getBusinessProfileByUserId} from "../servic
 import { trackStorefrontView} from "../services/businessAnalyticsTrackingService.js";
 import { getBusinessProEntitlement } from "../services/subscriptionService.js";
 import { DEFAULT_STOREFRONT_BRANDING} from "../config/businessStorefrontBranding.js";
+import { validateBusinessImage} from "../utils/validateBusinessImage.js";
+
+/**
+ * Replace a business image safely.
+ *
+ * Uses optimistic concurrency:
+ * the database is updated only if the image has not
+ * changed since the business profile was loaded.
+ */
+const replaceBusinessImageSafely = async ({
+  business,
+  uploadedImage,
+  imageField,
+  publicIdField,
+}) => {
+  let updated = false;
+
+  try {
+    const updatedBusiness =
+      await prisma.businessProfile.update({
+        where: {
+          id: business.id,
+          status: { not: "SUSPENDED" },
+          [publicIdField]:
+            business[publicIdField] ?? null,
+          [imageField]:
+            business[imageField] ?? null,
+        },
+        data: {
+          [imageField]: uploadedImage.secure_url,
+          [publicIdField]: uploadedImage.public_id,
+        },
+      });
+
+    updated = true;
+
+    return {
+      success: true,
+      business: updatedBusiness,
+    };
+  } catch (error) {
+    if (error.code === "P2025") {
+      return {
+        success: false,
+        conflict: true,
+      };
+    }
+
+    throw error;
+  } finally {
+    if (!updated && uploadedImage?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(
+          uploadedImage.public_id
+        );
+      } catch (cleanupError) {
+        console.error(
+          "NEW BUSINESS IMAGE CLEANUP ERROR:",
+          cleanupError
+        );
+      }
+    }
+  }
+};
+
+/**
+ * Remove an old Cloudinary image after a successful
+ * database change.
+ */
+const cleanupPreviousBusinessImage = async (
+  oldPublicId,
+  newPublicId = null
+) => {
+  if (!oldPublicId || oldPublicId === newPublicId) {
+    return;
+  }
+
+  try {
+    await cloudinary.uploader.destroy(oldPublicId);
+  } catch (error) {
+    console.error(
+      "PREVIOUS BUSINESS IMAGE CLEANUP ERROR:",
+      error
+    );
+  }
+};
 
 /*
  * ============================================================
@@ -435,6 +521,11 @@ export const getPublicBusinessProfile = async (
         where: {
           slug,
           status: "ACTIVE",
+          user: {
+            is: {
+              status: "ACTIVE",
+            },
+          },
         },
 
         select: {
@@ -751,6 +842,11 @@ export const getPublicBusinessListings = async (req, res) => {
         where: {
           slug,
           status: "ACTIVE",
+          user: {
+            is: {
+              status: "ACTIVE",
+            },
+          },
         },
 
 
@@ -780,14 +876,11 @@ export const getPublicBusinessListings = async (req, res) => {
      * ========================================================
      */
 
-    const rawPage =
-      Number.parseInt(req.query.page, 10);
-
-    const rawLimit =
-      Number.parseInt(req.query.limit, 10);
+    const rawPage = Number(req.query.page);
+    const rawLimit = Number(req.query.limit);
 
     const page =
-      Number.isFinite(rawPage) &&
+      Number.isSafeInteger(rawPage) &&
       rawPage > 0
         ? rawPage
         : 1;
@@ -797,13 +890,24 @@ export const getPublicBusinessListings = async (req, res) => {
      */
 
     const limit =
-      Number.isFinite(rawLimit) &&
+      Number.isSafeInteger(rawLimit) &&
       rawLimit > 0
         ? Math.min(rawLimit, 50)
         : 12;
 
-    const skip =
-      (page - 1) * limit;
+    const skip = (page - 1) * limit;
+
+      if (
+        !Number.isSafeInteger(skip) ||
+        skip > 2_147_483_647
+      ) {
+        return res.status(400).json({
+          success: false,
+          code: "INVALID_PAGINATION",
+          message:
+            "Requested page is too large.",
+        });
+      }
 
     /*
      * ========================================================
@@ -1017,6 +1121,15 @@ export const updateMyBusinessProfile = async (req, res) => {
       });
     }
 
+    if (existingBusiness.status === "SUSPENDED") {
+      return res.status(403).json({
+        success: false,
+        code: "BUSINESS_ACCOUNT_SUSPENDED",
+        message:
+          "This Business Account is suspended and cannot be modified.",
+      });
+    }
+
     /*
      * ========================================================
      * BUILD COMPLETE VALIDATION INPUT
@@ -1107,11 +1220,12 @@ export const updateMyBusinessProfile = async (req, res) => {
      * fields such as verificationStatus or status.
      */
 
-    const business =
-      await prisma.businessProfile.update({
-        where: {
-          userId,
-        },
+      const business =
+        await prisma.businessProfile.update({
+          where: {
+            userId,
+            status: existingBusiness.status,
+          },
 
         data: {
           businessName:
@@ -1286,17 +1400,31 @@ export const updateMyBusinessStatus = async (
      * ========================================================
      */
 
-    const business =
-      await prisma.businessProfile.update({
-        where: {
-          userId,
-        },
+   const updateResult =
+    await prisma.businessProfile.updateMany({
+      where: {
+        userId,
+        status: existingBusiness.status,
+      },
 
-        data: {
-          status:
-            requestedStatus,
-        },
-      });
+      data: {
+        status: requestedStatus,
+      },
+    });
+
+  if (updateResult.count !== 1) {
+    return res.status(409).json({
+      success: false,
+      code: "BUSINESS_STATUS_CONFLICT",
+      message:
+        "Business Account status changed. Please refresh and try again.",
+    });
+  }
+
+  const business =
+    await prisma.businessProfile.findUnique({
+      where: { userId },
+    });
 
     return res.status(200).json({
       success: true,
@@ -1392,6 +1520,8 @@ export const uploadBusinessLogo = async (req, res) => {
       });
     }
 
+    await validateBusinessImage(req.file.buffer);
+
     /*
      * ========================================================
      * UPLOAD NEW IMAGE FIRST
@@ -1424,75 +1554,40 @@ export const uploadBusinessLogo = async (req, res) => {
      * ========================================================
      */
 
-    let updatedBusiness;
+/*
+ * ========================================================
+ * UPDATE DATABASE SAFELY
+ * ========================================================
+ */
 
-    try {
-      updatedBusiness =
-        await prisma.businessProfile.update({
-          where: {
-            userId,
-          },
+const replacement = await replaceBusinessImageSafely({
+  business,
+  uploadedImage,
+  imageField: "logo",
+  publicIdField: "logoPublicId",
+});
 
-          data: {
-            logo:
-              uploadedImage.secure_url,
+if (!replacement.success) {
+  return res.status(409).json({
+    success: false,
+    code: "BUSINESS_IMAGE_CONFLICT",
+    message:
+      "Business logo changed during upload. Please try again.",
+  });
+}
 
-            logoPublicId:
-              uploadedImage.public_id,
-          },
-        });
-    } catch (databaseError) {
-      /*
-       * Database update failed after Cloudinary succeeded.
-       *
-       * Remove the newly uploaded image so it doesn't become
-       * an orphaned Cloudinary asset.
-       */
+const updatedBusiness = replacement.business;
 
-      try {
-        await cloudinary.uploader.destroy(
-          uploadedImage.public_id
-        );
-      } catch (cleanupError) {
-        console.error(
-          "NEW BUSINESS LOGO CLEANUP ERROR:",
-          cleanupError
-        );
-      }
+/*
+ * ========================================================
+ * DELETE PREVIOUS LOGO
+ * ========================================================
+ */
 
-      throw databaseError;
-    }
-
-    /*
-     * ========================================================
-     * DELETE PREVIOUS LOGO
-     * ========================================================
-     *
-     * Database now points to the new image, so the old asset
-     * can safely be removed.
-     */
-
-    if (
-      business.logoPublicId &&
-      business.logoPublicId !==
-        uploadedImage.public_id
-    ) {
-      try {
-        await cloudinary.uploader.destroy(
-          business.logoPublicId
-        );
-      } catch (cleanupError) {
-        /*
-         * Do not fail the successful replacement just because
-         * old Cloudinary cleanup failed.
-         */
-
-        console.error(
-          "OLD BUSINESS LOGO CLEANUP ERROR:",
-          cleanupError
-        );
-      }
-    }
+await cleanupPreviousBusinessImage(
+  business.logoPublicId,
+  uploadedImage.public_id
+);
 
     return res.status(200).json({
       success: true,
@@ -1501,17 +1596,27 @@ export const uploadBusinessLogo = async (req, res) => {
       business: updatedBusiness,
     });
   } catch (error) {
-    console.error(
-      "UPLOAD BUSINESS LOGO ERROR:",
-      error
-    );
+      console.error(
+        "UPLOAD BUSINESS LOGO ERROR:",
+        error
+      );
 
-    return res.status(500).json({
+  // Handle invalid image content
+  if (error.statusCode === 400) {
+    return res.status(400).json({
       success: false,
-      message:
-        "Unable to update Business logo.",
+      code: error.code || "INVALID_IMAGE",
+      message: error.message,
     });
   }
+
+  // Handle unexpected server errors
+  return res.status(500).json({
+    success: false,
+    message:
+      "Unable to update Business logo.",
+  });
+}
 };
 /*
  * ============================================================
@@ -1574,17 +1679,35 @@ export const deleteBusinessLogo = async (req, res) => {
      * ========================================================
      */
 
-    const updatedBusiness =
-      await prisma.businessProfile.update({
-        where: {
-          userId,
-        },
+  const result = await prisma.businessProfile.updateMany({
+    where: {
+      userId,
+      status: { not: "SUSPENDED" },
+      logo: business.logo ?? null,
+      logoPublicId: business.logoPublicId ?? null,
+    },
 
-        data: {
-          logo: null,
-          logoPublicId: null,
-        },
-      });
+    data: {
+      logo: null,
+      logoPublicId: null,
+    },
+  });
+
+  if (result.count !== 1) {
+    return res.status(409).json({
+      success: false,
+      code: "BUSINESS_IMAGE_CONFLICT",
+      message:
+        "Business logo changed. Refresh and try again.",
+    });
+  }
+
+  const updatedBusiness =
+    await prisma.businessProfile.findUnique({
+      where: {
+        userId,
+      },
+    });
 
     /*
      * ========================================================
@@ -1592,18 +1715,7 @@ export const deleteBusinessLogo = async (req, res) => {
      * ========================================================
      */
 
-    if (oldPublicId) {
-      try {
-        await cloudinary.uploader.destroy(
-          oldPublicId
-        );
-      } catch (cleanupError) {
-        console.error(
-          "DELETE BUSINESS LOGO CLOUDINARY ERROR:",
-          cleanupError
-        );
-      }
-    }
+    await cleanupPreviousBusinessImage(oldPublicId);
 
     return res.status(200).json({
       success: true,
@@ -1676,6 +1788,8 @@ export const uploadBusinessCover = async (req, res) => {
       });
     }
 
+    await validateBusinessImage(req.file.buffer);
+
     /*
      * ========================================================
      * UPLOAD NEW COVER
@@ -1703,65 +1817,40 @@ export const uploadBusinessCover = async (req, res) => {
      * ========================================================
      */
 
-    let updatedBusiness;
+/*
+ * ========================================================
+ * UPDATE DATABASE SAFELY
+ * ========================================================
+ */
 
-    try {
-      updatedBusiness =
-        await prisma.businessProfile.update({
-          where: {
-            userId,
-          },
+const replacement = await replaceBusinessImageSafely({
+  business,
+  uploadedImage,
+  imageField: "coverImage",
+  publicIdField: "coverImagePublicId",
+});
 
-          data: {
-            coverImage:
-              uploadedImage.secure_url,
+if (!replacement.success) {
+  return res.status(409).json({
+    success: false,
+    code: "BUSINESS_IMAGE_CONFLICT",
+    message:
+      "Business cover changed during upload. Please try again.",
+  });
+}
 
-            coverImagePublicId:
-              uploadedImage.public_id,
-          },
-        });
-    } catch (databaseError) {
-      /*
-       * Remove newly uploaded image if database persistence
-       * fails.
-       */
+const updatedBusiness = replacement.business;
 
-      try {
-        await cloudinary.uploader.destroy(
-          uploadedImage.public_id
-        );
-      } catch (cleanupError) {
-        console.error(
-          "NEW BUSINESS COVER CLEANUP ERROR:",
-          cleanupError
-        );
-      }
+/*
+ * ========================================================
+ * DELETE PREVIOUS COVER
+ * ========================================================
+ */
 
-      throw databaseError;
-    }
-
-    /*
-     * ========================================================
-     * DELETE PREVIOUS COVER
-     * ========================================================
-     */
-
-    if (
-      business.coverImagePublicId &&
-      business.coverImagePublicId !==
-        uploadedImage.public_id
-    ) {
-      try {
-        await cloudinary.uploader.destroy(
-          business.coverImagePublicId
-        );
-      } catch (cleanupError) {
-        console.error(
-          "OLD BUSINESS COVER CLEANUP ERROR:",
-          cleanupError
-        );
-      }
-    }
+await cleanupPreviousBusinessImage(
+  business.coverImagePublicId,
+  uploadedImage.public_id
+);
 
     return res.status(200).json({
       success: true,
@@ -1770,17 +1859,27 @@ export const uploadBusinessCover = async (req, res) => {
       business: updatedBusiness,
     });
   } catch (error) {
-    console.error(
-      "UPLOAD BUSINESS COVER ERROR:",
-      error
-    );
+  console.error(
+    "UPLOAD BUSINESS COVER ERROR:",
+    error
+  );
 
-    return res.status(500).json({
+  // Handle invalid image content
+  if (error.statusCode === 400) {
+    return res.status(400).json({
       success: false,
-      message:
-        "Unable to update Business cover image.",
+      code: error.code || "INVALID_IMAGE",
+      message: error.message,
     });
   }
+
+  // Handle unexpected server errors
+  return res.status(500).json({
+    success: false,
+    message:
+      "Unable to update Business cover image.",
+  });
+}
 };
 /*
  * ============================================================
@@ -1793,6 +1892,12 @@ export const uploadBusinessCover = async (req, res) => {
 export const deleteBusinessCover = async (req, res) => {
   try {
     const userId = req.user.id;
+
+    /*
+     * ========================================================
+     * FIND BUSINESS
+     * ========================================================
+     */
 
     const business =
       await prisma.businessProfile.findUnique({
@@ -1809,6 +1914,12 @@ export const deleteBusinessCover = async (req, res) => {
       });
     }
 
+    /*
+     * ========================================================
+     * BLOCK SUSPENDED BUSINESSES
+     * ========================================================
+     */
+
     if (business.status === "SUSPENDED") {
       return res.status(403).json({
         success: false,
@@ -1817,6 +1928,12 @@ export const deleteBusinessCover = async (req, res) => {
           "This Business Account is suspended.",
       });
     }
+
+    /*
+     * ========================================================
+     * NOTHING TO DELETE
+     * ========================================================
+     */
 
     if (
       !business.coverImage &&
@@ -1835,14 +1952,21 @@ export const deleteBusinessCover = async (req, res) => {
 
     /*
      * ========================================================
-     * CLEAR DATABASE
+     * CLEAR DATABASE SAFELY
      * ========================================================
+     *
+     * Only delete the cover if it has not changed
+     * since we loaded the business profile.
      */
 
-    const updatedBusiness =
-      await prisma.businessProfile.update({
+    const result =
+      await prisma.businessProfile.updateMany({
         where: {
           userId,
+          status: { not: "SUSPENDED" },
+          coverImage: business.coverImage ?? null,
+          coverImagePublicId:
+            business.coverImagePublicId ?? null,
         },
 
         data: {
@@ -1853,22 +1977,48 @@ export const deleteBusinessCover = async (req, res) => {
 
     /*
      * ========================================================
-     * DELETE CLOUDINARY ASSET
+     * HANDLE CONCURRENT CHANGES
      * ========================================================
      */
 
-    if (oldPublicId) {
-      try {
-        await cloudinary.uploader.destroy(
-          oldPublicId
-        );
-      } catch (cleanupError) {
-        console.error(
-          "DELETE BUSINESS COVER CLOUDINARY ERROR:",
-          cleanupError
-        );
-      }
+    if (result.count !== 1) {
+      return res.status(409).json({
+        success: false,
+        code: "BUSINESS_IMAGE_CONFLICT",
+        message:
+          "Business cover changed. Refresh and try again.",
+      });
     }
+
+    /*
+     * ========================================================
+     * FETCH UPDATED BUSINESS
+     * ========================================================
+     */
+
+    const updatedBusiness =
+      await prisma.businessProfile.findUnique({
+        where: {
+          userId,
+        },
+      });
+
+    /*
+     * ========================================================
+     * DELETE OLD CLOUDINARY COVER
+     * ========================================================
+     *
+     * Database has already been updated.
+     * Cloudinary cleanup should not undo the deletion.
+     */
+
+    await cleanupPreviousBusinessImage(oldPublicId);
+
+    /*
+     * ========================================================
+     * SUCCESS RESPONSE
+     * ========================================================
+     */
 
     return res.status(200).json({
       success: true,

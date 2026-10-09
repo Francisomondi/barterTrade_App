@@ -612,7 +612,8 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, type, referenceId, referenceType])
+  @@index([userId, type, referenceId, referenceType])
+  @@index([userId, read, createdAt])
 }
 
 model Payment {

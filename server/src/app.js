@@ -1,6 +1,7 @@
 // UPDATE — server/src/app.js
 
 import express from "express";
+import multer from "multer";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
@@ -27,7 +28,7 @@ import businessRoutes from "./routes/businessRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 
 const app = express();
-
+app.disable("x-powered-by");
 /**
  * =========================================================
  * TRUST PROXY
@@ -50,12 +51,26 @@ if (process.env.NODE_ENV === "production") {
  * =========================================================
  */
 
-const allowedOrigins = [
-  "http://localhost:5173",
+const normalizeOrigin = (origin) =>
+ origin.trim().replace(/\/+$/, "");
 
+const configuredOrigins = [
   process.env.CLIENT_URL,
   process.env.FRONTEND_URL,
-].filter(Boolean);
+  process.env.ALLOWED_ORIGINS,
+]
+  .filter(Boolean)
+  .flatMap((value) => value.split(","))
+  .map(normalizeOrigin)
+  .filter(Boolean);
+
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+
+  ...(process.env.NODE_ENV !== "production"
+    ? ["http://localhost:5173"]
+    : []),
+]);
 
 app.use(
   cors({
@@ -75,11 +90,7 @@ app.use(
         );
       }
 
-      if (
-        allowedOrigins.includes(
-          origin
-        )
-      ) {
+      if (allowedOrigins.has(normalizeOrigin(origin))) {
         return callback(
           null,
           true
@@ -123,11 +134,17 @@ app.use(
  * =========================================================
  */
 
-app.use(express.json());
+app.use(
+  express.json({
+    limit: "1mb",
+  })
+);
 
 app.use(
   express.urlencoded({
     extended: true,
+    limit: "1mb",
+    parameterLimit: 1000,
   })
 );
 
@@ -158,16 +175,14 @@ app.use(passport.initialize());
  * =========================================================
  */
 
-app.get(
-  "/api/health",
-  (req, res) => {
-    res.json({
-      success: true,
-      message:
-        "Barter Trade API is running",
-    });
-  }
-);
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    service: "BarterConnekt API",
+    status: "running",
+    timestamp: new Date().toISOString(),
+  });
+});
 
 /**
  * =========================================================
@@ -287,4 +302,90 @@ app.use(
   businessRoutes
 );
 
+/**
+ * =========================================================
+ * API 404 HANDLER
+ * =========================================================
+ */
+
+app.use("/api", (req, res) => {
+  return res.status(404).json({
+    success: false,
+    message: "API endpoint not found.",
+  });
+});
+
+
+/**
+ * ============================================================
+ * GLOBAL ERROR HANDLER
+ * ============================================================
+ *
+ * Handles:
+ * - Multer upload errors
+ * - Invalid image types
+ * - Other application errors
+ *
+ * Must be registered AFTER all API routes.
+ */
+app.use((error, req, res, next) => {
+  console.error("EXPRESS ERROR:", error);
+
+  // 1. Handle Multer upload errors
+  if (error instanceof multer.MulterError) {
+    const messages = {
+      LIMIT_FILE_SIZE:
+        "Image must not exceed 5 MB.",
+
+      LIMIT_FILE_COUNT:
+        "Too many images uploaded.",
+
+      LIMIT_UNEXPECTED_FILE:
+        "Unexpected image field or too many files.",
+
+      LIMIT_FIELD_COUNT:
+        "Too many form fields.",
+
+      LIMIT_PART_COUNT:
+        "Too many multipart fields or files.",
+    };
+
+    return res.status(400).json({
+      success: false,
+      code: error.code,
+      message:
+        messages[error.code] ||
+        "Invalid image upload.",
+    });
+  }
+
+  // 2. Handle invalid image types from upload.js
+  if (error.code === "INVALID_IMAGE_TYPE") {
+    return res.status(400).json({
+      success: false,
+      code: "INVALID_IMAGE_TYPE",
+      message: error.message,
+    });
+  }
+
+  // 3. Handle other known application errors
+  const statusCode =
+    Number.isInteger(error.statusCode) &&
+    error.statusCode >= 400 &&
+    error.statusCode <= 599
+      ? error.statusCode
+      : 500;
+
+  return res.status(statusCode).json({
+    success: false,
+    code:
+      statusCode >= 500
+        ? "INTERNAL_SERVER_ERROR"
+        : error.code || "REQUEST_ERROR",
+    message:
+      statusCode >= 500
+        ? "An unexpected server error occurred."
+        : error.message || "Request failed.",
+  });
+});
 export default app;

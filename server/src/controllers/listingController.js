@@ -573,20 +573,18 @@ export const getListings = async (
 
     await expirePromotions();
 
-    const pageNumber =
-      Math.max(
-        Number(page) || 1,
-        1
-      );
+const parsedPage = Number(page);
+const parsedLimit = Number(limit);
 
-    const limitNumber =
-      Math.min(
-        Math.max(
-          Number(limit) || 12,
-          1
-        ),
-        50
-      );
+const pageNumber =
+  Number.isSafeInteger(parsedPage) && parsedPage > 0
+    ? parsedPage
+    : 1;
+
+const limitNumber =
+  Number.isSafeInteger(parsedLimit) && parsedLimit > 0
+    ? Math.min(parsedLimit, 50)
+    : 12;
 
     const skip =
       (pageNumber - 1) *
@@ -601,10 +599,19 @@ export const getListings = async (
         categoryId;
     }
 
-    if (condition) {
-      where.condition =
-        condition;
+  if (condition) {
+    if (
+      typeof condition !== "string" ||
+      !validConditions.includes(condition)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid item condition filter.",
+      });
     }
+
+    where.condition = condition;
+  }
 
     if (location) {
       where.location = {
@@ -630,22 +637,43 @@ export const getListings = async (
       ];
     }
 
-    if (
-      minValue ||
-      maxValue
-    ) {
-      where.estimatedValue = {};
+const hasMinValue =
+  minValue !== undefined && minValue !== "";
 
-      if (minValue) {
-        where.estimatedValue.gte =
-          Number(minValue);
-      }
+const hasMaxValue =
+  maxValue !== undefined && maxValue !== "";
 
-      if (maxValue) {
-        where.estimatedValue.lte =
-          Number(maxValue);
-      }
-    }
+const parsedMinValue = hasMinValue
+  ? Number(minValue)
+  : null;
+
+const parsedMaxValue = hasMaxValue
+  ? Number(maxValue)
+  : null;
+
+if (
+  (hasMinValue &&
+    (!Number.isFinite(parsedMinValue) ||
+      parsedMinValue < 0)) ||
+  (hasMaxValue &&
+    (!Number.isFinite(parsedMaxValue) ||
+      parsedMaxValue < 0)) ||
+  (hasMinValue &&
+    hasMaxValue &&
+    parsedMinValue > parsedMaxValue)
+) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid marketplace value range.",
+  });
+}
+
+if (hasMinValue || hasMaxValue) {
+  where.estimatedValue = {
+    ...(hasMinValue ? { gte: parsedMinValue } : {}),
+    ...(hasMaxValue ? { lte: parsedMaxValue } : {}),
+  };
+}
 
     const now = new Date();
 
@@ -2011,9 +2039,12 @@ export const addListingImages =
               file,
               index
             ) => {
+              const processedBuffer =
+                await processListingImage(file.buffer);
+
               const result =
                 await uploadToCloudinary(
-                  file.buffer,
+                  processedBuffer,
                   "barter-trade/listings"
                 );
 

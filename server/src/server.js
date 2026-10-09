@@ -8,8 +8,15 @@ const PORT = process.env.PORT || 5000;
 
 //startPromotionCleanupJob();
 
-app.listen(PORT, () => {
-  console.log(
-    `Barter Trade server running on port ${PORT}`
-  );
+const server = app.listen(PORT, () => {
+  console.log("========================================");
+  console.log("🚀 BarterConnekt Backend Started");
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🔌 Port: ${PORT}`);
+  console.log("========================================");
+});
+
+server.on("error", (error) => {
+  console.error("SERVER STARTUP ERROR:", error);
+  process.exit(1);
 });

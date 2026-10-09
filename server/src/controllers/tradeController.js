@@ -1,5 +1,29 @@
 import prisma from "../config/prisma.js";
 import { createNotification } from "../services/notificationService.js";
+import { invalidateListingCache } from "../utils/listingCache.js";
+
+const invalidateTradeListingCaches = async (listingIds) => {
+  const results = await Promise.all(
+    [...new Set(listingIds)].map((id) =>
+      invalidateListingCache(id)
+    )
+  );
+
+  if (results.some((result) => result === false)) {
+    console.warn(
+      "TRADE LISTING CACHE INVALIDATION INCOMPLETE:",
+      listingIds
+    );
+  }
+};
+
+const notifySafely = async (payload) => {
+  try {
+    await createNotification(payload);
+  } catch (error) {
+    console.error("TRADE NOTIFICATION ERROR:", error);
+  }
+};
 
 /**
  * Allowed trade status transitions.
@@ -343,147 +367,6 @@ export const getTradeById = async (req, res) => {
  *
  * prevents duplicate confirmation.
  */
-const confirmTradeStage = async (tradeId,userId,stage) => {
-  const trade = await prisma.trade.findUnique({
-    where: {
-      id: tradeId,
-    },
-
-    include: {
-      traderA: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-
-      traderB: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-    },
-  });
-
-  if (!trade) {
-    const error = new Error("Trade not found.");
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const isTraderA = trade.traderAId === userId;
-  const isTraderB = trade.traderBId === userId;
-
-  if (!isTraderA && !isTraderB) {
-    const error = new Error(
-      "You are not a participant in this trade."
-    );
-
-    error.statusCode = 403;
-    throw error;
-  }
-
-  /*
-   * Check whether this trader has already confirmed
-   * this stage.
-   *
-   * IMPORTANT:
-   * This is idempotent.
-   *
-   * A repeated request does NOT produce an error.
-   * We simply reuse the existing confirmation.
-   */
-  let confirmation =
-    await prisma.tradeConfirmation.findUnique({
-      where: {
-        tradeId_userId_stage: {
-          tradeId,
-          userId,
-          stage,
-        },
-      },
-    });
-
-  if (!confirmation) {
-    try {
-      confirmation =
-        await prisma.tradeConfirmation.create({
-          data: {
-            tradeId,
-            userId,
-            stage,
-          },
-        });
-    } catch (error) {
-      /*
-       * Another identical request may have inserted
-       * the confirmation first.
-       *
-       * Re-read it instead of returning an error.
-       */
-      if (error.code === "P2002") {
-        confirmation =
-          await prisma.tradeConfirmation.findUnique({
-            where: {
-              tradeId_userId_stage: {
-                tradeId,
-                userId,
-                stage,
-              },
-            },
-          });
-
-        if (!confirmation) {
-          throw error;
-        }
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  /*
-   * Get every confirmation for the current stage.
-   */
-  const confirmations =
-    await prisma.tradeConfirmation.findMany({
-      where: {
-        tradeId,
-        stage,
-      },
-
-      select: {
-        userId: true,
-        confirmedAt: true,
-      },
-    });
-
-  const traderAConfirmed =
-    confirmations.some(
-      (item) =>
-        item.userId === trade.traderAId
-    );
-
-  const traderBConfirmed =
-    confirmations.some(
-      (item) =>
-        item.userId === trade.traderBId
-    );
-
-  const bothConfirmed =
-    traderAConfirmed &&
-    traderBConfirmed;
-
-  return {
-    trade,
-    confirmation,
-    traderAConfirmed,
-    traderBConfirmed,
-    bothConfirmed,
-  };
-};
-
 
 export const confirmTrade = async (req, res) => {
   try {
@@ -989,6 +872,67 @@ export const confirmTrade = async (req, res) => {
 
             throw error;
           }
+
+          if (nextStatus === "COMPLETED") {
+            const tradeItems = await tx.tradeItem.findMany({
+              where: {
+                tradeId,
+              },
+              select: {
+                listingId: true,
+              },
+            });
+
+            if (tradeItems.length !== 2) {
+              throw new Error(
+                "Trade completion requires exactly two trade items."
+              );
+            }
+
+            const listingIds = tradeItems.map(
+              (item) => item.listingId
+            );
+
+            const listingUpdate = await tx.listing.updateMany({
+              where: {
+                id: {
+                  in: listingIds,
+                },
+                status: "RESERVED",
+              },
+              data: {
+                status: "TRADED",
+              },
+            });
+
+            if (listingUpdate.count !== listingIds.length) {
+              throw new Error(
+                "Unable to finalize traded listings."
+              );
+            }
+
+            await tx.user.update({
+              where: {
+                id: trade.traderAId,
+              },
+              data: {
+                completedTrades: {
+                  increment: 1,
+                },
+              },
+            });
+
+            await tx.user.update({
+              where: {
+                id: trade.traderBId,
+              },
+              data: {
+                completedTrades: {
+                  increment: 1,
+                },
+              },
+            });
+          }
         }
 
         /**
@@ -1164,6 +1108,28 @@ export const confirmTrade = async (req, res) => {
       }
     );
 
+    if (result.newStatus === "COMPLETED") {
+      try {
+        const tradeItems = await prisma.tradeItem.findMany({
+          where: {
+            tradeId,
+          },
+          select: {
+            listingId: true,
+          },
+        });
+
+        await invalidateTradeListingCaches(
+          tradeItems.map((item) => item.listingId)
+        );
+      } catch (error) {
+        console.error(
+          "TRADE COMPLETION CACHE ERROR:",
+          error
+        );
+      }
+    }
+
     /**
      * =======================================================
      * NOTIFICATIONS
@@ -1306,6 +1272,14 @@ export const confirmTrade = async (req, res) => {
       error
     );
 
+    if (error.code === "P2034") {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This trade was updated by another request. Please refresh and try again.",
+      });
+    }
+
     return res.status(
       error.statusCode || 500
     ).json({
@@ -1321,7 +1295,7 @@ export const confirmTrade = async (req, res) => {
 
 export const updateTradeStatus = async (req, res) => {
   try {
-    const { id: tradeId } = req.params;
+    const { id } = req.params;
     const { status } = req.body;
     const userId = req.user.id;
 
@@ -1466,25 +1440,107 @@ export const updateTradeStatus = async (req, res) => {
     /*
      * Atomically update the trade.
      */
-    const statusUpdate =
-      await prisma.trade.updateMany({
-        where: {
-          id,
-          status: trade.status,
-        },
+const statusUpdate = await prisma.$transaction(
+  async (tx) => {
+    const updateResult = await tx.trade.updateMany({
+      where: {
+        id,
+        status: trade.status,
+      },
+      data: {
+        status,
+      },
+    });
 
-        data: {
-          status,
-        },
-      });
-
-    if (statusUpdate.count !== 1) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "The trade was updated by another request. Please refresh and try again.",
-      });
+    if (updateResult.count !== 1) {
+      return { count: 0 };
     }
+
+    if (status === "CANCELLED") {
+      await tx.offer.updateMany({
+        where: {
+          id: trade.offerId,
+          status: "ACCEPTED",
+        },
+        data: {
+          status: "CANCELLED",
+        },
+      });
+
+      const tradeItems = await tx.tradeItem.findMany({
+        where: {
+          tradeId: id,
+        },
+        select: {
+          listingId: true,
+        },
+      });
+
+      if (tradeItems.length !== 2) {
+        throw new Error(
+          "Trade cancellation requires exactly two trade items."
+        );
+      }
+
+      const listingIds = tradeItems.map(
+        (item) => item.listingId
+      );
+
+      const releasedListings = await tx.listing.updateMany({
+        where: {
+          id: {
+            in: listingIds,
+          },
+          status: "RESERVED",
+        },
+        data: {
+          status: "ACTIVE",
+        },
+      });
+
+      if (releasedListings.count !== listingIds.length) {
+        throw new Error(
+          "Unable to release all reserved trade listings."
+        );
+      }
+    }
+
+    return updateResult;
+  },
+  {
+    isolationLevel: "Serializable",
+  }
+);
+
+if (statusUpdate.count !== 1) {
+  return res.status(409).json({
+    success: false,
+    message:
+      "The trade was updated by another request. Please refresh and try again.",
+  });
+}
+
+if (status === "CANCELLED") {
+  const tradeItems = await prisma.tradeItem.findMany({
+    where: {
+      tradeId: id,
+    },
+    select: {
+      listingId: true,
+    },
+  });
+
+  try {
+    await invalidateTradeListingCaches(
+      tradeItems.map((item) => item.listingId)
+    );
+  } catch (error) {
+    console.error(
+      "TRADE CANCELLATION CACHE ERROR:",
+      error
+    );
+  }
+}
 
     const updatedTrade =
       await prisma.trade.findUnique({
@@ -1606,7 +1662,7 @@ export const updateTradeStatus = async (req, res) => {
      * Cancellation only notifies the other trader.
      */
     if (status === "CANCELLED") {
-      await createNotification({
+      await notifySafely({
         userId: otherTraderId,
         type: "TRADE",
         title: "Trade Cancelled",
@@ -1623,7 +1679,7 @@ export const updateTradeStatus = async (req, res) => {
       const message =
         `Trade ${trade.tradeNumber} is now ${status}.`;
 
-      await createNotification({
+     await notifySafely({
         userId: trade.traderAId,
         type: "TRADE",
         title: "Trade Status Updated",
@@ -1632,7 +1688,7 @@ export const updateTradeStatus = async (req, res) => {
         message,
       });
 
-      await createNotification({
+      await notifySafely({
         userId: trade.traderBId,
         type: "TRADE",
         title: "Trade Status Updated",

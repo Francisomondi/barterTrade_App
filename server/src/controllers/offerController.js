@@ -1,6 +1,21 @@
 
 import prisma from "../config/prisma.js";
 import { createNotification } from "../services/notificationService.js";
+import {
+  invalidateListingCache,
+  invalidateAllListingsCache,
+} from "../utils/listingCache.js";
+
+const sendOfferNotificationSafely = async (data) => {
+  try {
+    await createNotification(data);
+  } catch (error) {
+    console.error(
+      "OFFER NOTIFICATION ERROR:",
+      error
+    );
+  }
+};
 
 export const createOffer = async (req, res) => {
   try {
@@ -12,6 +27,21 @@ export const createOffer = async (req, res) => {
       requestedListingId,
       message,
     } = req.body;
+
+    if (
+      message !== undefined &&
+      message !== null &&
+      (
+        typeof message !== "string" ||
+        message.length > 1000
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Offer message must be text with a maximum of 1000 characters.",
+      });
+    }
 
     // Validate required fields
     if (!receiverId || !offeredListingId || !requestedListingId) {
@@ -177,7 +207,7 @@ export const createOffer = async (req, res) => {
     });
 
     // Notify receiver
-    await createNotification({
+    await sendOfferNotificationSafely({
       userId: receiverId,
       type: "OFFER",
       title: "New barter offer",
@@ -598,8 +628,22 @@ export const acceptOffer = async (req, res) => {
       }
     );
 
+    try {
+      await Promise.all([
+        invalidateListingCache(result.offer.offeredListingId),
+        invalidateListingCache(result.offer.requestedListingId),
+      ]);
+
+      await invalidateAllListingsCache();
+    } catch (cacheError) {
+      console.error(
+        "OFFER ACCEPTANCE CACHE INVALIDATION ERROR:",
+        cacheError
+      );
+    }
+
   
-    await createNotification({
+    await sendOfferNotificationSafely({
       userId: result.offer.senderId,
       type: "TRADE",
       title: "Offer accepted",
@@ -705,18 +749,31 @@ export const rejectOffer = async (req, res) => {
       });
     }
 
-    const updatedOffer = await prisma.offer.update({
-      where: {
-        id,
-      },
+  const updateResult = await prisma.offer.updateMany({
+    where: {
+      id,
+      receiverId: userId,
+      status: "PENDING",
+    },
+    data: {
+      status: "REJECTED",
+    },
+  });
 
-      data: {
-        status: "REJECTED",
-      },
+  if (updateResult.count !== 1) {
+    return res.status(409).json({
+      success: false,
+      message:
+        "This offer has already been processed. Please refresh.",
     });
+  }
+
+  const updatedOffer = await prisma.offer.findUnique({
+    where: { id },
+  });
 
     // Notify sender
-    await createNotification({
+    await sendOfferNotificationSafely({
       userId: offer.senderId,
       type: "OFFER",
       title: "Offer rejected",
@@ -774,18 +831,31 @@ export const cancelOffer = async (req, res) => {
       });
     }
 
-    const updatedOffer = await prisma.offer.update({
+    const updateResult = await prisma.offer.updateMany({
       where: {
         id,
+        senderId: userId,
+        status: "PENDING",
       },
-
       data: {
         status: "CANCELLED",
       },
     });
 
+    if (updateResult.count !== 1) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "This offer has already been processed. Please refresh.",
+      });
+    }
+
+    const updatedOffer = await prisma.offer.findUnique({
+      where: { id },
+    });
+
     // Notify receiver
-    await createNotification({
+    await sendOfferNotificationSafely({
       userId: offer.receiverId,
       type: "OFFER",
       title: "Offer cancelled",

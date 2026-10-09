@@ -49,7 +49,9 @@ import {
   trackPublicBusinessEvent,
 } from "../controllers/businessAnalyticsTrackingController.js";
 
-import upload from "../middleware/upload.js";
+import {
+  businessImageUpload,
+} from "../middleware/upload.js";
 
 import {
   protect,
@@ -121,7 +123,7 @@ router.patch(
 router.patch(
   "/me/logo",
   protect,
-  upload.single("logo"),
+  businessImageUpload.single("logo"),
   uploadBusinessLogo
 );
 
@@ -140,7 +142,7 @@ router.delete(
 router.patch(
   "/me/cover",
   protect,
-  upload.single("cover"),
+  businessImageUpload.single("cover"),
   uploadBusinessCover
 );
 
